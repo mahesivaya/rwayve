@@ -12,7 +12,9 @@ services:
       - "5432:5432"
 
   actix_api:
-    build: .
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     depends_on:
       - postgres_db
     environment:
