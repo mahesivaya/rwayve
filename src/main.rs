@@ -6,10 +6,49 @@ use tokio::time::{sleep, Duration};
 mod gmail;
 use crate::gmail::{gmail_login, oauth_callback};
 
+
+use serde::Serialize;
+use sqlx::FromRow;
+
+#[derive(Serialize, FromRow)]
+struct Email {
+    id: i32,
+    sender: String,
+    subject: String,
+    body: String,
+    created_at: chrono::NaiveDateTime,
+}
+
+
 #[get("/")]
 async fn index() -> HttpResponse {
     HttpResponse::Ok().body("Email Import Running")
 }
+
+
+use actix_web::{Responder};
+
+async fn get_emails(pool: web::Data<PgPool>) -> impl Responder {
+    let result = sqlx::query_as::<_, Email>(
+        r#"
+        SELECT id, sender, subject, body, created_at
+        FROM emails
+        ORDER BY created_at DESC
+        LIMIT 50
+        "#
+    )
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(rows) => HttpResponse::Ok().json(rows),
+        Err(e) => {
+            println!("DB error: {:?}", e);
+            HttpResponse::InternalServerError().body("error")
+        }
+    }
+}
+
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -49,6 +88,7 @@ async fn main() -> std::io::Result<()> {
             .service(index)
             .route("/gmail/login", web::get().to(gmail_login))
             .route("/oauth/callback", web::get().to(oauth_callback))
+            .route("/emails", web::get().to(get_emails))
     })
     .bind(("0.0.0.0", 8080))?
     .run()
