@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+
+  postgres_db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: wayve_db
+      POSTGRES_USER: wayve_user
+      POSTGRES_PASSWORD: wayve_password
+    ports:
+      - "5432:5432"
+
+  actix_api:
+    build: .
+    depends_on:
+      - postgres_db
+    environment:
+      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_db
+    ports:
+      - "8080:8080"
