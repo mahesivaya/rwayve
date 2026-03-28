@@ -1,0 +1,56 @@
+/* src/pages/emails.css */
+
+.email-container {
+    display: flex;
+    height: calc(100vh - 60px);
+    font-family: Arial, sans-serif;
+  }
+  
+  /* Sidebar */
+  .sidebar {
+    width: 200px;
+    background: #f4f4f4;
+    padding: 15px;
+    border-right: 1px solid #ccc;
+  }
+  
+  .sidebar button {
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 8px;
+    border: none;
+    background: #e0e0e0;
+    cursor: pointer;
+  }
+  
+  .sidebar button:hover {
+    background: #d0d0d0;
+  }
+  
+  /* Email List */
+  .email-list {
+    width: 300px;
+    border-right: 1px solid #ccc;
+    overflow-y: auto;
+  }
+  
+  .email-item {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+  }
+  
+  .email-item:hover {
+    background: #f5f5f5;
+  }
+  
+  .email-item.active {
+    background: #e8f0fe;
+  }
+  
+  /* Email Detail */
+  .email-detail {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+  }

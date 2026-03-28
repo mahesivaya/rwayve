@@ -2,6 +2,8 @@ use actix_web::{get, web, App, HttpServer, HttpResponse};
 use sqlx::PgPool;
 use std::env;
 use tokio::time::{sleep, Duration};
+use actix_cors::Cors;
+
 
 mod gmail;
 use crate::gmail::{gmail_login, oauth_callback};
@@ -83,6 +85,16 @@ async fn main() -> std::io::Result<()> {
 
     // ✅ Actix server
     HttpServer::new(move || {
+
+        let cors = Cors::default()
+            .allowed_origin("http://localhost:3000") // React dev server
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
+            .allowed_headers(vec![
+                actix_web::http::header::CONTENT_TYPE,
+                actix_web::http::header::AUTHORIZATION,
+            ])
+            .supports_credentials();
+            
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .service(index)
