@@ -31,6 +31,40 @@ struct MessageResponse {
     message: String,
 }
 
+#[derive(Serialize, FromRow)]
+struct Email {
+    id: i32,
+    sender: String,
+    subject: String,
+    body: String,
+    created_at: chrono::NaiveDateTime,
+}
+
+#[derive(serde::Serialize)]
+struct Account {
+    id: i32,
+    email: String,
+}
+
+#[derive(Deserialize)]
+struct LoginInput {
+    email: String,
+    password: String,
+}
+
+#[derive(Serialize)]
+struct LoginResponse {
+    token: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Claims {
+    sub: i32,
+    email: String,
+    exp: usize,
+}
+
+
 #[post("/api/register")]
 async fn register(
     pool: web::Data<PgPool>,
@@ -72,16 +106,6 @@ async fn register(
     }
 }
 
-#[derive(Deserialize)]
-struct LoginInput {
-    email: String,
-    password: String,
-}
-
-#[derive(Serialize)]
-struct LoginResponse {
-    token: String,
-}
 
 #[post("/api/login")]
 async fn login(
@@ -98,7 +122,7 @@ async fn login(
     if let Ok(Some(user)) = user {
         match verify(&data.password, &user.password) {
             Ok(true) => {
-                let token = create_jwt(user.id);
+                let token = create_jwt(user.id, user.email.clone());
                 return HttpResponse::Ok().json(LoginResponse { token });
             }
             Ok(false) => {}
@@ -116,14 +140,8 @@ async fn login(
     })
 }
 
-#[derive(Serialize)]
-struct Claims {
-    sub: i32,
-    email: user.email.clone(),
-    exp: usize,
-}
 
-fn create_jwt(user_id: i32) -> String {
+fn create_jwt(user_id: i32, email: String) -> String {
     let expiration = Utc::now()
         .checked_add_signed(ChronoDuration::hours(24))
         .unwrap()
@@ -131,6 +149,7 @@ fn create_jwt(user_id: i32) -> String {
 
     let claims = Claims {
         sub: user_id,
+        email,
         exp: expiration,
     };
 
@@ -140,15 +159,6 @@ fn create_jwt(user_id: i32) -> String {
         &EncodingKey::from_secret("secret".as_ref()),
     )
     .unwrap()
-}
-
-#[derive(Serialize, FromRow)]
-struct Email {
-    id: i32,
-    sender: String,
-    subject: String,
-    body: String,
-    created_at: chrono::NaiveDateTime,
 }
 
 #[get("/")]

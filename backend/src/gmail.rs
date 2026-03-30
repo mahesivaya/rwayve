@@ -14,6 +14,11 @@ use actix_web::{web, HttpResponse, Responder};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
+pub struct OAuthQuery {
+    code: String,
+}
+
+#[derive(Deserialize)]
 pub struct CallbackQuery {
     pub code: String,
 }
@@ -69,15 +74,15 @@ pub async fn oauth_callback(
     .unwrap()
     .to_string();
 
-let client_secret = secrets["web"]["client_secret"]
-    .as_str()
-    .unwrap()
-    .to_string();
+    let client_secret = secrets["web"]["client_secret"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
-let redirect_uri = secrets["web"]["redirect_uris"][0]
-    .as_str()
-    .unwrap()
-    .to_string();
+    let redirect_uri = secrets["web"]["redirect_uris"][0]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // 🔁 exchange code → tokens
     let res: Value = HTTP_CLIENT
@@ -122,7 +127,7 @@ let redirect_uri = secrets["web"]["redirect_uris"][0]
 
     HttpResponse::Found()
         .append_header(("Location", redirect))
-        .finish()
+        .finish();
 
     // 💾 SAVE TO DB (THIS WAS MISSING)
     match sqlx::query(

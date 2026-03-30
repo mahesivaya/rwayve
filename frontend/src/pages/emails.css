@@ -48,14 +48,15 @@
 /* MAIN LAYOUT */
 .main {
   display: flex;
-  flex: 1;
+  height: calc(100vh - 60px);
 }
 
 /* SIDEBAR */
 .sidebar {
-  width: 200px;
-  background: #f3f3f3;
-  padding: 15px;
+  width: 240px;
+  background: #ffffff;
+  padding: 16px;
+  border-right: 1px solid #ddd;
 }
 
 .sidebar button {
@@ -100,4 +101,84 @@
 .main {
   display: flex;
   flex: 1;
+}
+
+.sidebar {
+  width: 220px;
+  padding: 16px;
+  background: #f5f5f5;
+  height: 100vh;
+}
+
+/* Add Email button */
+.add-email-btn {
+  width: 100%;
+  background: #000;
+  color: #fff;
+  border: none;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  margin-bottom: 20px;
+  transition: 0.2s;
+}
+
+/* Mailbox title */
+.mailbox-title {
+  margin-bottom: 12px;
+  color: #555;
+}
+
+/* Mail buttons */
+.mail-btn {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.mail-btn:hover {
+  background: #eee;
+}
+
+
+/* ================= ACCOUNT LIST ================= */
+
+.account-list {
+  margin-bottom: 20px;
+}
+
+/* Each email account */
+.account-item {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  transition: 0.2s;
+}
+
+.account-item:hover {
+  background: #f1f3f4;
+}
+
+/* Selected account */
+.account-item.active {
+  background: #e8f0fe;
+  color: #1a73e8;
+  font-weight: 500;
+}
+
+/* No accounts text */
+.no-accounts {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 10px;
 }
