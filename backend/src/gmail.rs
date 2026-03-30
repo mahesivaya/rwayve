@@ -404,7 +404,7 @@ where
     // ✅ Bind values safely (correct types)
     let mut q = sqlx::query(&query);
 
-    for (gmail_id, subject, sender, receiver, body) in batch.iter() {
+    for (gmail_id, sender, receiver, subject, body) in batch.iter() {
         q = q
             .bind(gmail_id)     // TEXT
             .bind(sender)       // TEXT
@@ -468,10 +468,10 @@ async fn fetch_email_detail(
         .to_string();
 
     Ok((
-        msg_id.to_string(), // 🔥 REAL gmail_id
-        subject,
+        msg_id.to_string(),
         sender,
         receiver,
+        subject,
         snippet,
     ))
 }
