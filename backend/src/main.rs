@@ -1,16 +1,146 @@
-use actix_web::{get, web, App, HttpServer, HttpResponse};
-use sqlx::PgPool;
+use actix_cors::Cors;
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use bcrypt::{hash, verify, DEFAULT_COST};
+use chrono::{Duration as ChronoDuration, Utc};
+use jsonwebtoken::{encode, EncodingKey, Header};
+use serde::{Deserialize, Serialize};
+use sqlx::{FromRow, PgPool};
 use std::env;
 use tokio::time::{sleep, Duration};
-use actix_cors::Cors;
 
-
-mod gmail;
 use crate::gmail::{gmail_login, oauth_callback};
 
+mod gmail;
 
-use serde::Serialize;
-use sqlx::FromRow;
+#[derive(FromRow)]
+struct User {
+    id: i32,
+    email: String,
+    password: String,
+}
+
+#[derive(Deserialize)]
+struct RegisterInput {
+    email: String,
+    password: String,
+    confirm_password: String,
+}
+
+#[derive(Serialize)]
+struct MessageResponse {
+    message: String,
+}
+
+#[post("/api/register")]
+async fn register(
+    pool: web::Data<PgPool>,
+    data: web::Json<RegisterInput>,
+) -> HttpResponse {
+    if data.password != data.confirm_password {
+        return HttpResponse::BadRequest().json(MessageResponse {
+            message: "Passwords do not match".to_string(),
+        });
+    }
+
+    let hashed = match hash(&data.password, DEFAULT_COST) {
+        Ok(h) => h,
+        Err(_) => {
+            return HttpResponse::InternalServerError().json(MessageResponse {
+                message: "Failed to hash password".to_string(),
+            });
+        }
+    };
+
+    let result = sqlx::query(
+        "INSERT INTO users (email, password) VALUES ($1, $2)"
+    )
+    .bind(&data.email)
+    .bind(&hashed)
+    .execute(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(_) => HttpResponse::Ok().json(MessageResponse {
+            message: "User created".to_string(),
+        }),
+        Err(e) => {
+            println!("register db error: {:?}", e);
+            HttpResponse::BadRequest().json(MessageResponse {
+                message: "User exists or insert failed".to_string(),
+            })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct LoginInput {
+    email: String,
+    password: String,
+}
+
+#[derive(Serialize)]
+struct LoginResponse {
+    token: String,
+}
+
+#[post("/api/login")]
+async fn login(
+    pool: web::Data<PgPool>,
+    data: web::Json<LoginInput>,
+) -> HttpResponse {
+    let user = sqlx::query_as::<_, User>(
+        "SELECT id, email, password FROM users WHERE email = $1"
+    )
+    .bind(&data.email)
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    if let Ok(Some(user)) = user {
+        match verify(&data.password, &user.password) {
+            Ok(true) => {
+                let token = create_jwt(user.id);
+                return HttpResponse::Ok().json(LoginResponse { token });
+            }
+            Ok(false) => {}
+            Err(e) => {
+                println!("bcrypt verify error: {:?}", e);
+                return HttpResponse::InternalServerError().json(MessageResponse {
+                    message: "Login failed".to_string(),
+                });
+            }
+        }
+    }
+
+    HttpResponse::Unauthorized().json(MessageResponse {
+        message: "Invalid credentials".to_string(),
+    })
+}
+
+#[derive(Serialize)]
+struct Claims {
+    sub: i32,
+    email: user.email.clone(),
+    exp: usize,
+}
+
+fn create_jwt(user_id: i32) -> String {
+    let expiration = Utc::now()
+        .checked_add_signed(ChronoDuration::hours(24))
+        .unwrap()
+        .timestamp() as usize;
+
+    let claims = Claims {
+        sub: user_id,
+        exp: expiration,
+    };
+
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret("secret".as_ref()),
+    )
+    .unwrap()
+}
 
 #[derive(Serialize, FromRow)]
 struct Email {
@@ -21,14 +151,10 @@ struct Email {
     created_at: chrono::NaiveDateTime,
 }
 
-
 #[get("/")]
 async fn index() -> HttpResponse {
     HttpResponse::Ok().body("Email Import Running")
 }
-
-
-use actix_web::{Responder};
 
 async fn get_emails(pool: web::Data<PgPool>) -> impl Responder {
     let result = sqlx::query_as::<_, Email>(
@@ -51,31 +177,21 @@ async fn get_emails(pool: web::Data<PgPool>) -> impl Responder {
     }
 }
 
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let db_url = env::var("DATABASE_URL").expect("DATABASE_URL missing");
 
-    let db_url =
-        env::var("DATABASE_URL")
-            .expect("DATABASE_URL missing");
-
-    let pool =
-        PgPool::connect(&db_url)
-            .await
-            .expect("DB failed");
+    let pool = PgPool::connect(&db_url)
+        .await
+        .expect("DB failed");
 
     let pool_clone = pool.clone();
 
-    // ✅ background sync worker
     tokio::spawn(async move {
-
         loop {
-
             println!("Sync loop");
 
-            if let Err(e) =
-                gmail::sync_all(&pool_clone).await
-            {
+            if let Err(e) = gmail::sync_all(&pool_clone).await {
                 println!("sync error {:?}", e);
             }
 
@@ -83,21 +199,26 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
-    // ✅ Actix server
     HttpServer::new(move || {
-
         let cors = Cors::default()
-            .allowed_origin("http://localhost:3000") // React dev server
-            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
+            .allowed_origin("http://localhost")
+            .allowed_origin("http://localhost:3000")
+            .allowed_origin("http://127.0.0.1:3000")
+            .allowed_origin("http://localhost:5173")
+            .allowed_origin("http://127.0.0.1:5173")
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
             .allowed_headers(vec![
                 actix_web::http::header::CONTENT_TYPE,
                 actix_web::http::header::AUTHORIZATION,
             ])
             .supports_credentials();
-            
+
         App::new()
+            .wrap(cors)
             .app_data(web::Data::new(pool.clone()))
             .service(index)
+            .service(register)
+            .service(login)
             .route("/gmail/login", web::get().to(gmail_login))
             .route("/oauth/callback", web::get().to(oauth_callback))
             .route("/emails", web::get().to(get_emails))

@@ -115,6 +115,14 @@ let redirect_uri = secrets["web"]["redirect_uris"][0]
     let email = user_info["email"].as_str().unwrap_or("");
 
     println!("✅ Logged in: {}", email);
+    let frontend = std::env::var("FRONTEND_URL")
+    .unwrap_or("http://localhost:5173".to_string());
+
+    let redirect = format!("{}/emails", frontend);
+
+    HttpResponse::Found()
+        .append_header(("Location", redirect))
+        .finish()
 
     // 💾 SAVE TO DB (THIS WAS MISSING)
     match sqlx::query(
