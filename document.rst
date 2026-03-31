@@ -40,6 +40,15 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    sender_id INT,
+    receiver_id INT,
+    content TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
 http://localhost:8080/gmail/login
 http://localhost:8080/emails
 

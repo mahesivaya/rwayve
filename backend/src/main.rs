@@ -8,7 +8,9 @@ use sqlx::{FromRow, PgPool};
 use std::env;
 use tokio::time::{sleep, Duration};
 use crate::gmail::{gmail_login, oauth_callback, send};
-
+use crate::chat::chat_ws;
+use crate::chat::ChatSession;
+mod chat;
 mod gmail;
 
 #[derive(FromRow)]
@@ -254,6 +256,7 @@ async fn main() -> std::io::Result<()> {
             .route("/oauth/callback", web::get().to(oauth_callback))
             .route("/emails", web::get().to(get_emails))
             .route("/accounts", web::get().to(get_accounts))
+            .route("/ws/chat", web::get().to(chat_ws))
     })
     .bind(("0.0.0.0", 8080))?
     .run()
