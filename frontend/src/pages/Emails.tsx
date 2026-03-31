@@ -139,7 +139,13 @@ export default function Emails() {
             <h2>{selected.subject}</h2>
             <p><b>From:</b> {selected.sender}</p>
             <hr />
-            <p>{selected.body}</p>
+            <div className="email-body">
+        {selected.body ? (
+          <div dangerouslySetInnerHTML={{ __html: selected.body }} />
+        ) : (
+          <p>No content available</p>
+        )}
+      </div>
           </>
         ) : (
           <p>Select an email</p>

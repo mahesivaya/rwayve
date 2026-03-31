@@ -9,7 +9,6 @@ use std::env;
 use tokio::time::{sleep, Duration};
 use crate::gmail::{gmail_login, oauth_callback, send};
 use crate::chat::chat_ws;
-use crate::chat::ChatSession;
 mod chat;
 mod gmail;
 

@@ -1,4 +1,4 @@
-use actix::{Actor, StreamHandler, ActorContext};
+use actix::{Actor, StreamHandler, ActorContext, AsyncContext};
 use actix_web::{web, HttpRequest, HttpResponse, Error};
 use actix_web_actors::ws;
 use serde::Deserialize;
@@ -15,6 +15,7 @@ pub struct ChatSession {
     pub pool: PgPool,
 }
 
+// ✅ WebSocket entry point
 pub async fn chat_ws(
     req: HttpRequest,
     stream: web::Payload,
@@ -29,22 +30,25 @@ pub async fn chat_ws(
     )
 }
 
+// ✅ Actor setup
 impl Actor for ChatSession {
     type Context = ws::WebsocketContext<Self>;
 }
 
+// ✅ Handle messages
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Text(text)) => {
-                println!("Incoming: {}", text);
+                println!("📩 Incoming: {}", text);
 
                 let parsed: Result<ChatMessage, _> = serde_json::from_str(&text);
+                println!("🔍 Parsed: {:?}", parsed);
 
                 if let Ok(data) = parsed {
                     let pool = self.pool.clone();
 
-                    actix::spawn(async move {
+                    let fut = async move {
                         match sqlx::query(
                             "INSERT INTO messages (sender_id, receiver_id, content) VALUES ($1, $2, $3)"
                         )
@@ -57,9 +61,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                             Ok(_) => println!("✅ Message saved to DB"),
                             Err(e) => println!("❌ DB INSERT ERROR: {:?}", e),
                         }
-                    });
+                    };
+
+                    ctx.spawn(actix::fut::wrap_future(fut));
                 }
 
+                // echo back to UI
                 ctx.text(text);
             }
 

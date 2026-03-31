@@ -30,7 +30,7 @@ export default function Chat() {
 
   // ✅ WebSocket connect
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost/ws/chat");
+    const ws = new WebSocket(`ws://${window.location.host}/ws/chat`);
 
     ws.onopen = () => console.log("✅ WS connected");
 
