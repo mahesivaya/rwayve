@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 use std::env;
 use tokio::time::{sleep, Duration};
-
-use crate::gmail::{gmail_login, oauth_callback};
+use crate::gmail::{gmail_login, oauth_callback, send};
 
 mod gmail;
 
@@ -40,7 +39,7 @@ struct Email {
     created_at: chrono::NaiveDateTime,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, FromRow)]
 struct Account {
     id: i32,
     email: String,
@@ -187,6 +186,27 @@ async fn get_emails(pool: web::Data<PgPool>) -> impl Responder {
     }
 }
 
+
+async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
+    let result = sqlx::query_as::<_, Account>(
+        r#"
+        SELECT id, email FROM email_accounts
+        LIMIT 50
+        "#
+    )
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(rows) => HttpResponse::Ok().json(rows),
+        Err(e) => {
+            println!("DB error: {:?}", e);
+            HttpResponse::InternalServerError().body("error")
+        }
+    }
+}
+
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL missing");
@@ -229,9 +249,11 @@ async fn main() -> std::io::Result<()> {
             .service(index)
             .service(register)
             .service(login)
+            .service(send)
             .route("/gmail/login", web::get().to(gmail_login))
             .route("/oauth/callback", web::get().to(oauth_callback))
             .route("/emails", web::get().to(get_emails))
+            .route("/accounts", web::get().to(get_accounts))
     })
     .bind(("0.0.0.0", 8080))?
     .run()

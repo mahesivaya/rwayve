@@ -19,24 +19,24 @@ export default function Emails() {
   const [selected, setSelected] = useState<Email | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeAccount, setActiveAccount] = useState<number | null>(null);
-
+  const [showCompose, setShowCompose] = useState(false);
+  const [sentMessage, setSentMessage] = useState("");
   const connectGmail = () => {
     window.location.href = "http://localhost:8080/gmail/login";
   };
 
   useEffect(() => {
     fetch("/api/accounts")
-      .then(res => res.json())
-      .then((data: Account[]) => {
-        setAccounts(data);
-
-        // Auto select first account
-        if (data.length > 0) {
-          setActiveAccount(data[0].id);
-        }
-      })
-      .catch(err => console.error(err));
-  }, []);
+    .then(res => {
+      if (!res.ok) throw new Error("API failed");
+      return res.json();
+    })
+    .then(data => setAccounts(data))
+    .catch(err => {
+      console.error("Accounts error:", err);
+      setAccounts([]);
+    });
+  },[]);
 
   useEffect(() => {
     fetch("/api/emails")
@@ -68,6 +68,11 @@ export default function Emails() {
       {/* SIDEBAR */}
       
       <div className="sidebar">
+
+      <button onClick={() => setShowCompose(true)}>
+        + Compose
+      </button>
+
       <button onClick={connectGmail} className="add-email-btn">
         ➕ Add Email
       </button>
@@ -87,6 +92,23 @@ export default function Emails() {
               📧 {acc.email}
             </div>
           ))}
+
+        {showCompose && (
+          <div className="compose-modal">
+            <div className="compose-box">
+              <h3>New Message</h3>
+
+              <input placeholder="To" />
+              <input placeholder="Subject" />
+              <textarea placeholder="Message" />
+
+              <div style={{ marginTop: "10px" }}>
+                <button>Send</button>
+                <button onClick={() => setShowCompose(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
         </div>
         <h3>Mailbox</h3>
         <button>Inbox</button>

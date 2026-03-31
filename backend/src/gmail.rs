@@ -5,13 +5,12 @@ use std::fs;
 use futures::stream::{FuturesUnordered, StreamExt};
 use once_cell::sync::Lazy;
 use anyhow::Result;
-
+use actix_web::post;
 const MAX_EMAIL_CONCURRENCY: usize = 20;
 const BATCH_SIZE: usize = 50;
-
-
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{get, web, HttpResponse, Responder};
 use serde::Deserialize;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 
 #[derive(Deserialize)]
 pub struct OAuthQuery {
@@ -25,20 +24,15 @@ pub struct CallbackQuery {
 
 // LOGIN
 pub async fn gmail_login() -> impl Responder {
-
     let secrets = load_google_secrets();
-
     let client_id = secrets["web"]["client_id"]
         .as_str()
         .unwrap();
-
     let redirect_uri = secrets["web"]["redirect_uris"][0]
         .as_str()
         .unwrap();
-
     let scope = "https://www.googleapis.com/auth/userinfo.email \
                  https://www.googleapis.com/auth/gmail.readonly";
-
     let url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth\
         ?client_id={}\
@@ -507,4 +501,96 @@ async fn refresh_access_token(
         .as_str()
         .unwrap_or("")
         .to_string())
+}
+
+
+#[derive(Deserialize)]
+struct SendEmailRequest {
+    to: String,
+    subject: String,
+    body: String,
+}
+
+#[post("/api/send")]
+async fn send(
+    data: web::Json<SendEmailRequest>,
+    pool: web::Data<PgPool>,
+) -> HttpResponse {
+
+    let access_token = get_access_token(&pool).await;
+
+    let raw_email = format!(
+        "To: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{}",
+        data.to, data.subject, data.body
+    );
+
+    let encoded = URL_SAFE_NO_PAD.encode(raw_email);
+
+    let client = reqwest::Client::new();
+
+    let res = client
+        .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
+        .bearer_auth(access_token)
+        .json(&serde_json::json!({
+            "raw": encoded
+        }))
+        .send()
+        .await;
+
+    match res {
+        Ok(_) => HttpResponse::Ok().body("Email sent"),
+        Err(e) => {
+            println!("Send error: {:?}", e);
+            HttpResponse::InternalServerError().body("Failed")
+        }
+    }
+}
+
+async fn get_access_token(pool: &PgPool) -> String {
+    let row = sqlx::query(
+        "SELECT access_token FROM email_accounts LIMIT 1"
+    )
+    .fetch_one(pool)
+    .await;
+    
+    let token = match row {
+        Ok(r) => r.get::<String, _>("access_token"),
+        Err(e) => {
+            println!("DB error: {:?}", e);
+            return "".to_string();
+        }
+    };
+    token
+}
+
+
+#[get("/accounts")]
+async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
+    let result = sqlx::query(
+        "SELECT id, email FROM email_accounts"
+    )
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(rows) => {
+            let accounts: Vec<_> = rows
+                .into_iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "id": r.get::<i32, _>("id"),
+                        "email": r.get::<String, _>("email"),
+                    })
+                })
+                .collect();
+
+            HttpResponse::Ok().json(accounts) // ✅ IMPORTANT
+        }
+        Err(e) => {
+            println!("DB error: {:?}", e);
+            HttpResponse::InternalServerError().json(
+                serde_json::json!({ "error": "DB failure" })
+            )
+        }
+    }
 }
