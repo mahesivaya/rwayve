@@ -1,17 +1,30 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function SendEmail() {
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
 
-  const [status, setStatus] = useState(""); // success/error message
+  const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // auto-hide status
+  useEffect(() => {
+    if (!status) return;
+    const timer = setTimeout(() => setStatus(""), 3000);
+    return () => clearTimeout(timer);
+  }, [status]);
+
   const sendEmail = async () => {
-    // ✅ simple validation
     if (!to || !subject || !body) {
       setStatus("Please fill all fields ⚠️");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      setStatus("You must login first ❌");
       return;
     }
 
@@ -23,38 +36,38 @@ export default function SendEmail() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // 🔥 IMPORTANT
         },
         body: JSON.stringify({
           to,
           subject,
           body,
+          // 🔥 future: account_id
         }),
       });
 
-      if (!res.ok) throw new Error("Failed");
+      const text = await res.text();
 
-      // ✅ success
+      if (!res.ok) {
+        throw new Error(text || "Failed to send");
+      }
+
       setStatus("Email sent successfully ✅");
 
-      // reset fields
       setTo("");
       setSubject("");
       setBody("");
 
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setStatus("Failed to send email ❌");
+      setStatus(err.message || "Failed to send email ❌");
     }
 
     setLoading(false);
-
-    // auto-hide after 3 sec
-    setTimeout(() => setStatus(""), 3000);
   };
 
   return (
     <div className="send-container">
-
       <h3>Compose Email</h3>
 
       <input
@@ -79,13 +92,11 @@ export default function SendEmail() {
         {loading ? "Sending..." : "Send"}
       </button>
 
-      {/* ✅ status message */}
       {status && (
-        <div className={`status ${status.includes("successfully") ? "success" : "error"}`}>
+        <div className={`status ${status.includes("success") ? "success" : "error"}`}>
           {status}
         </div>
       )}
-
     </div>
   );
 }

@@ -13,6 +13,12 @@ export default function Home() {
         <>
           <p>You are logged in as <b>{user.email}</b></p>
 
+          {/* 🔥 BUTTON TO EMAILS */}
+          <button onClick={() => navigate("/emails")}>
+            Go to Emails
+          </button>
+
+
           {/* ✅ LOGOUT BUTTON */}
           <button
             onClick={() => {

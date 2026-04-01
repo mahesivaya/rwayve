@@ -15,15 +15,24 @@ export async function register(
     const text = await res.text();
 
     if (!res.ok) {
-      throw new Error(`Register failed: ${res.status} ${text}`);
+      let message = "Register failed";
+  
+      try {
+        const json = JSON.parse(text);
+        message = json.message || message;
+      } catch {
+        message = text;
+      }
+  
+      throw new Error(message); // ✅ send clean message
     }
-
-    return text ? JSON.parse(text) : {};
   } catch (err) {
     console.error("register error:", err);
     throw err;
   }
 }
+
+
 
 export async function login(email: string, password: string) {
   try {

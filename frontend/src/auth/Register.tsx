@@ -1,32 +1,36 @@
 import { useState } from "react";
 import { register } from "../api/Auth";
-import { useNavigate } from "react-router-dom";
 
 export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState(""); // ✅ required
+  const [confirm, setConfirm] = useState("");
 
-  const navigate = useNavigate();
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const handleRegister = async () => {
-    if (password !== confirm) {
-      alert("Passwords do not match");
-      return;
-    }
+  const handleRegister = async (e: any) => {
+    e.preventDefault();
 
-    const res = await register(email, password, confirm);
+    setError("");
+    setSuccess("");
 
-    if (res === "User registered") {
-      alert("Success!");
-      navigate("/login");
-    } else {
-      alert(res);
+    try {
+      await register(email, password, confirm);
+
+      setSuccess("Account created successfully ✅");
+
+      setEmail("");
+      setPassword("");
+      setConfirm("");
+
+    } catch (err: any) {
+      setError(err.message); // ✅ shows backend message
     }
   };
 
   return (
-    <div>
+    <form onSubmit={handleRegister}>
       <h2>Register</h2>
 
       <input
@@ -42,7 +46,6 @@ export default function Register() {
         onChange={(e) => setPassword(e.target.value)}
       />
 
-      {/* ✅ CONFIRM PASSWORD FIELD */}
       <input
         type="password"
         placeholder="Confirm Password"
@@ -50,7 +53,21 @@ export default function Register() {
         onChange={(e) => setConfirm(e.target.value)}
       />
 
-      <button onClick={handleRegister}>Register</button>
-    </div>
+      <button type="submit">Register</button>
+
+      {/* ✅ ERROR MESSAGE */}
+      {error && (
+        <p style={{ color: "red" }}>
+          {error}
+        </p>
+      )}
+
+      {/* ✅ SUCCESS MESSAGE */}
+      {success && (
+        <p style={{ color: "green" }}>
+          {success}
+        </p>
+      )}
+    </form>
   );
 }

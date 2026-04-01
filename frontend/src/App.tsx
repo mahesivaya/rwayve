@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
-
+import Register from "./auth/Register";
 import Login from "./auth/Login";
 import Home from "./pages/Home";
 import Emails from "./pages/Emails";
@@ -22,6 +22,7 @@ export default function App() {
       />
       <Route path="/" element={<Home />} />
       <Route element={<Layout />}>
+      <Route path="/register" element={<Register />} />
 
       {/* 🔐 Protected */}
       <Route element={<ProtectedRoute />}>
