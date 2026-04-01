@@ -1,8 +1,9 @@
-// src/pages/Home.tsx
 import { useAuth } from "../auth/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="home">
@@ -11,12 +12,27 @@ export default function Home() {
       {user ? (
         <>
           <p>You are logged in as <b>{user.email}</b></p>
+
+          {/* ✅ LOGOUT BUTTON */}
+          <button
+            onClick={() => {
+              logout();
+              navigate("/login");
+            }}
+          >
+            Logout
+          </button>
+
           <p>Go to Emails, Chat, or Scheduler to start.</p>
         </>
       ) : (
         <>
           <p>Your all-in-one platform for Email, Chat, and Scheduling.</p>
-          <p>Please login to continue.</p>
+
+          {/* ✅ LOGIN BUTTON */}
+          <button onClick={() => navigate("/login")}>
+            Login
+          </button>
         </>
       )}
     </div>

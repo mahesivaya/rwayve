@@ -1,29 +1,41 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-
+import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
+import ProtectedRoute from "./components/ProtectedRoute";
+
+import Login from "./auth/Login";
 import Home from "./pages/Home";
 import Emails from "./pages/Emails";
-import ProtectedRoute from "./components/ProtectedRoute";
-import Login from "./auth/Login";
-import Register from "./auth/Register";
 import Chat from "./chat/Chat";
 import Scheduler from "./scheduler/Scheduler";
 
+import { useAuth } from "./auth/AuthContext";
 
 export default function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
+  const { user } = useAuth();
 
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/" element={<Layout />}>
-        <Route index element={<Home />} />
-        <Route path="emails" element={<ProtectedRoute><Emails /></ProtectedRoute>}/>
-        <Route path="chat" element={<ProtectedRoute><Chat /></ProtectedRoute>}/>
-        <Route path="scheduler" element={<ProtectedRoute><Scheduler /></ProtectedRoute>}/>
+  return (
+    <Routes>
+      {/* 🔓 Public */}
+      <Route
+        path="/login"
+        element={user ? <Navigate to="/emails" /> : <Login />}
+      />
+      <Route path="/" element={<Home />} />
+      <Route element={<Layout />}>
+
+      {/* 🔐 Protected */}
+      <Route element={<ProtectedRoute />}>
+          <Route path="emails" element={<Emails />} />
+          <Route path="chat" element={<Chat />} />
+          <Route path="scheduler" element={<Scheduler />} />
         </Route>
-      </Routes>
-    </BrowserRouter>
+      </Route>
+
+      {/* fallback */}
+      <Route
+        path="*"
+        element={<Navigate to={user ? "/emails" : "/login"} />}
+      />
+    </Routes>
   );
 }

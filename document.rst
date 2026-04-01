@@ -20,6 +20,34 @@ CREATE TABLE email_accounts (
     last_sync BIGINT
 );
 
+
+CREATE TABLE email_accounts (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    email TEXT NOT NULL,
+    provider TEXT DEFAULT 'gmail',
+
+    access_token TEXT,
+    refresh_token TEXT,
+    token_expiry TIMESTAMP,
+
+    last_sync TIMESTAMP,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    UNIQUE(user_id, email)
+);
+
+CREATE TABLE meetings (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+
 CREATE TABLE emails (
     id SERIAL PRIMARY KEY,
     gmail_id TEXT NOT NULL,
@@ -48,6 +76,15 @@ CREATE TABLE messages (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+
+CREATE TABLE meetings (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
 http://localhost:8080/gmail/login
 http://localhost:8080/emails

@@ -15,10 +15,13 @@ export default function Login() {
 
     try {
       const data = await login(email, password);
-      authLogin(data.token);   // ✅ update context
-      navigate("/emails");
-      console.log(data);
       localStorage.setItem("token", data.token);
+      // ✅ Save + update global state
+      authLogin(data.token);
+
+      // ✅ Redirect to user home (emails page)
+      navigate("/emails");
+
     } catch (err) {
       console.error(err);
       alert("Login failed");
