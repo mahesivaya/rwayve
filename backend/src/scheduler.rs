@@ -39,6 +39,7 @@ pub async fn create_meeting(
 
     let start_time = minutes_to_time(data.start);
     let end_time = minutes_to_time(data.end);
+    let date = NaiveDate::parse_from_str(&data.date, "%Y-%m-%d").unwrap();
 
     let result = sqlx::query(
         r#"
@@ -47,7 +48,7 @@ pub async fn create_meeting(
         "#
     )
     .bind(&data.title)
-    .bind(&data.date)
+    .bind(date)
     .bind(start_time)
     .bind(end_time)
     .execute(pool.get_ref())

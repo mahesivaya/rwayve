@@ -14,6 +14,6 @@ struct Meeting {
 struct CreateMeeting {
     title: String,
     date: String,
-    start: i32, // minutes
+    start: i32,
     end: i32,
 }

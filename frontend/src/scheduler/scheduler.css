@@ -132,3 +132,23 @@
     height: 30px;
     border-bottom: 1px solid #eee;
   }
+
+  .event-block {
+    position: absolute;
+    left: 5px;
+    right: 5px;
+    background: #2563eb;
+    color: white;
+    border-radius: 6px;
+    font-size: 12px;
+    padding: 4px;
+  }
+  
+  .event {
+    background: #2563eb;
+    color: white;
+    padding: 2px 4px;
+    margin-top: 4px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
