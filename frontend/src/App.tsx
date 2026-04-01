@@ -3,11 +3,12 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import Emails from "./pages/Emails";
-import Scheduler from "./pages/Scheduler";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./auth/Login";
 import Register from "./auth/Register";
 import Chat from "./chat/Chat";
+import Scheduler from "./scheduler/Scheduler";
+
 
 export default function App() {
   return (

@@ -1,0 +1,134 @@
+.scheduler {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
+  }
+  
+  /* SIDEBAR */
+  .sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: linear-gradient(180deg, #1e1e1e, #121212);
+    color: white;
+    padding: 20px;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+  }
+  
+  .mini-calendar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+    margin-top: 10px;
+  }
+  
+  .mini-day {
+    background: #2c2c2c;
+    padding: 8px;
+    text-align: center;
+    border-radius: 4px;
+  }
+  
+  /* MAIN */
+  .calendar {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #f5f7fb;
+    overflow: hidden;
+  }
+  
+  .calendar-header {
+    display: flex;
+    gap: 10px;
+    padding: 12px;
+    background: white;
+    border-bottom: 1px solid #ddd;
+  }
+  
+  .calendar-header button {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: white;
+    cursor: pointer;
+  }
+  
+  .calendar-header button:hover {
+    background: #eee;
+  }
+  
+  /* MONTH */
+  .month-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+  
+  .day-cell {
+    background: white;
+    border-radius: 10px;
+    padding: 8px;
+    min-height: 120px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    transition: 0.2s;
+  }
+  
+  .day-cell:hover {
+    transform: translateY(-2px);
+  }
+  
+  .day-cell.empty {
+    background: transparent;
+    box-shadow: none;
+  }
+  .date {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 5px;
+  }
+  
+  /* WEEK + DAY */
+  .week-container {
+    flex: 1;
+    display: flex;
+    overflow-y: auto;
+  }
+  
+  /* TIME */
+  .time-column {
+    width: 60px;
+  }
+  
+  .time-cell {
+    height: 30px;
+    font-size: 11px;
+    color: #777;
+    padding-left: 5px;
+  }
+  
+  /* GRID */
+  .week-grid {
+    display: flex;
+    flex: 1;
+  }
+  
+  .week-day-column {
+    flex: 1;
+    border-left: 1px solid #eee;
+  }
+  
+  .week-day-header {
+    text-align: center;
+    padding: 5px;
+    font-weight: bold;
+    border-bottom: 1px solid #ddd;
+  }
+  
+  .day-cells {
+    position: relative;
+  }
+  
+  .day-cell-slot {
+    height: 30px;
+    border-bottom: 1px solid #eee;
+  }

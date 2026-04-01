@@ -11,6 +11,8 @@ use crate::gmail::{gmail_login, oauth_callback, send};
 use crate::chat::chat_ws;
 mod chat;
 mod gmail;
+mod scheduler;
+use crate::scheduler::{create_meeting, get_meetings};
 
 #[derive(FromRow)]
 struct User {
@@ -251,6 +253,8 @@ async fn main() -> std::io::Result<()> {
             .service(register)
             .service(login)
             .service(send)
+            .service(create_meeting)
+            .service(get_meetings)
             .route("/gmail/login", web::get().to(gmail_login))
             .route("/oauth/callback", web::get().to(oauth_callback))
             .route("/emails", web::get().to(get_emails))
