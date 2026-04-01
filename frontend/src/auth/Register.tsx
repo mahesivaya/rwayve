@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { register } from "../api/Auth";
+import { useAuth } from "../auth/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -7,25 +9,29 @@ export default function Register() {
   const [confirm, setConfirm] = useState("");
 
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+
+  const { login } = useAuth(); // 🔥 important
+  const navigate = useNavigate();
 
   const handleRegister = async (e: any) => {
     e.preventDefault();
 
     setError("");
-    setSuccess("");
 
     try {
-      await register(email, password, confirm);
+      const data = await register(email, password, confirm);
 
-      setSuccess("Account created successfully ✅");
+      // 🔥 SAVE TOKEN
+      localStorage.setItem("token", data.token);
 
-      setEmail("");
-      setPassword("");
-      setConfirm("");
+      // 🔥 UPDATE GLOBAL STATE
+      login(data.token);
+
+      // 🔥 REDIRECT
+      navigate("/emails");
 
     } catch (err: any) {
-      setError(err.message); // ✅ shows backend message
+      setError(err.message);
     }
   };
 
@@ -55,19 +61,7 @@ export default function Register() {
 
       <button type="submit">Register</button>
 
-      {/* ✅ ERROR MESSAGE */}
-      {error && (
-        <p style={{ color: "red" }}>
-          {error}
-        </p>
-      )}
-
-      {/* ✅ SUCCESS MESSAGE */}
-      {success && (
-        <p style={{ color: "green" }}>
-          {success}
-        </p>
-      )}
+      {error && <p style={{ color: "red" }}>{error}</p>}
     </form>
   );
 }
