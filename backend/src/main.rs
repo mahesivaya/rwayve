@@ -1,3 +1,4 @@
+mod models;
 use sqlx::Row;
 use actix_cors::Cors;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
@@ -221,6 +222,7 @@ async fn index() -> HttpResponse {
     HttpResponse::Ok().body("Email Import Running")
 }
 
+#[get("/api/emails")]
 async fn get_emails(pool: web::Data<PgPool>) -> impl Responder {
     let result = sqlx::query_as::<_, Email>(
         r#"
@@ -243,6 +245,7 @@ async fn get_emails(pool: web::Data<PgPool>) -> impl Responder {
 }
 
 
+#[get("/api/accounts")]
 async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
     let result = sqlx::query_as::<_, Account>(
         r#"
@@ -308,10 +311,10 @@ async fn main() -> std::io::Result<()> {
             .service(send)
             .service(create_meeting)
             .service(get_meetings)
+            .service(get_emails)
+            .service(get_accounts)
             .route("/gmail/login", web::get().to(gmail_login))
             .route("/oauth/callback", web::get().to(oauth_callback))
-            .route("/emails", web::get().to(get_emails))
-            .route("/accounts", web::get().to(get_accounts))
             .route("/ws/chat", web::get().to(chat_ws))
     })
     .bind(("0.0.0.0", 8080))?

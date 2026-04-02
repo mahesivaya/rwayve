@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import SendEmail from "../emails/send_emails";
 import "./emails.css";
 
 type Email = {
@@ -93,22 +94,17 @@ export default function Emails() {
             </div>
           ))}
 
-        {showCompose && (
-          <div className="compose-modal">
-            <div className="compose-box">
-              <h3>New Message</h3>
+      {showCompose && (
+        <div className="compose-modal">
+          <div className="compose-box">
+            <SendEmail />
 
-              <input placeholder="To" />
-              <input placeholder="Subject" />
-              <textarea placeholder="Message" />
-
-              <div style={{ marginTop: "10px" }}>
-                <button>Send</button>
-                <button onClick={() => setShowCompose(false)}>Close</button>
-              </div>
-            </div>
+            <button onClick={() => setShowCompose(false)}>
+              Close
+            </button>
           </div>
-        )}
+        </div>
+      )}
         </div>
         <h3>Mailbox</h3>
         <button>Inbox</button>

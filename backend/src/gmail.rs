@@ -12,6 +12,9 @@ use actix_web::{get, web, HttpResponse, Responder};
 use serde::Deserialize;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 
+
+#[path = "models/email_request.rs"]
+use crate::models::email_request::SendEmailRequest;
 #[derive(Deserialize)]
 pub struct OAuthQuery {
     code: String,
@@ -47,8 +50,6 @@ pub async fn gmail_login() -> impl Responder {
         redirect_uri,
         scope
     );
-
-    println!("👉 Redirecting to: {}", url);
 
     HttpResponse::Found()
         .append_header(("Location", url))
@@ -97,8 +98,6 @@ pub async fn oauth_callback(
         .await
         .unwrap();
 
-    println!("OAuth response: {:?}", res);
-
     let access_token = res["access_token"].as_str().unwrap_or("");
     let refresh_token = res["refresh_token"].as_str().unwrap_or("");
     let expires_in = res["expires_in"].as_i64().unwrap_or(3600);
@@ -117,7 +116,6 @@ pub async fn oauth_callback(
 
     let email = user_info["email"].as_str().unwrap_or("");
 
-    println!("✅ Logged in: {}", email);
     let frontend = std::env::var("FRONTEND_URL")
     .unwrap_or("http://localhost:5173".to_string());
 
@@ -151,7 +149,7 @@ pub async fn oauth_callback(
     .await
     {
         Ok(_) => println!("✅ Account saved"),
-        Err(e) => println!("❌ DB ERROR: {:?}", e),
+        Err(e) => println!("❌ DB ERROR: {}", e),
     }
 
     HttpResponse::Ok().body(format!("Logged in: {}", email))
@@ -190,8 +188,6 @@ pub async fn sync_all(pool: &PgPool) -> Result<()> {
     .fetch_all(pool)
     .await?;
 
-    println!("Accounts found: {}", rows.len());
-
     let secrets = load_google_secrets();
     let client_id = secrets["web"]["client_id"].as_str().unwrap();
     let client_secret = secrets["web"]["client_secret"].as_str().unwrap();
@@ -219,7 +215,6 @@ pub async fn sync_all(pool: &PgPool) -> Result<()> {
             ).await {
                 Ok(t) => t,
                 Err(e) => {
-                    println!("Refresh failed {}: {:?}", account_id, e);
                     return;
                 }
             };
@@ -235,7 +230,7 @@ pub async fn sync_all(pool: &PgPool) -> Result<()> {
 
             // sync
             if let Err(e) = sync_account(&pool, account_id, &token, last_sync).await {
-                println!("Sync error {}: {:?}", account_id, e);
+                println!("Sync error {}: {}", account_id, e);
             }
         });
 
@@ -303,8 +298,6 @@ async fn fetch_ids(
             break;
         }
     }
-    println!("Using last_sync: {:?}", last_sync);
-    println!("Fetched IDs: {}", ids.len());
     Ok(ids)
 }
 
@@ -510,94 +503,114 @@ async fn refresh_access_token(
 }
 
 
-#[derive(Deserialize)]
-struct SendEmailRequest {
-    to: String,
-    subject: String,
-    body: String,
-}
-
 #[post("/api/send")]
 async fn send(
     data: web::Json<SendEmailRequest>,
     pool: web::Data<PgPool>,
 ) -> HttpResponse {
 
-    // ✅ validate input
-    if data.to.is_empty() || data.subject.is_empty() || data.body.is_empty() {
-        return HttpResponse::BadRequest().body("Missing fields");
+    if data.to.trim().is_empty() || data.subject.trim().is_empty() {
+        return HttpResponse::BadRequest().body("Recipient and Subject are required");
     }
 
-    // ✅ get access token safely
-    let access_token = match get_access_token(&pool).await {
-        Some(token) => token,
-        None => return HttpResponse::Unauthorized().body("No access token"),
+    let account = sqlx::query("SELECT email, access_token FROM email_accounts WHERE id = $1")
+        .bind(data.account_id)
+        .fetch_one(pool.get_ref())
+        .await;
+    
+    let (from_email, access_token) = match account {
+        Ok(row) => {
+            let email: String = row.get("email");
+            let token: String = row.get("access_token");
+            (email, token)
+        },
+        Err(_) => return HttpResponse::Unauthorized().body("Email account not found"),
     };
-
-    println!("Using token: {}", access_token);
-
-    // ✅ build RFC 5322 email (IMPORTANT: include From)
     let raw_email = format!(
-        "From: me\r\nTo: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{}",
-        data.to,
-        data.subject,
+        "From: {}\r\n\
+To: {}\r\n\
+Subject: {}\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: text/plain; charset=utf-8\r\n\
+\r\n\
+{}",
+        from_email.trim(),
+        data.to.trim(),
+        data.subject.trim(),
         data.body
     );
 
-    // ✅ base64url encode
-    let encoded = URL_SAFE_NO_PAD.encode(raw_email);
+    let encoded = URL_SAFE_NO_PAD.encode(raw_email.as_bytes());
 
     let client = reqwest::Client::new();
 
     let res = client
         .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
         .bearer_auth(&access_token)
-        .json(&serde_json::json!({
-            "raw": encoded
-        }))
+        .json(&serde_json::json!({ "raw": encoded }))
         .send()
         .await;
 
     match res {
         Ok(resp) => {
             let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-
-            println!("Gmail response: {}", text);
+            let response_text = resp.text().await.unwrap_or_default();
 
             if status.is_success() {
                 HttpResponse::Ok().body("Email sent ✅")
             } else {
-                HttpResponse::InternalServerError().body(format!(
-                    "Gmail error: {}",
-                    text
-                ))
+                HttpResponse::InternalServerError()
+                    .body(format!("Gmail rejected request: {}", response_text))
             }
         }
-
         Err(e) => {
-            println!("Request error: {:?}", e);
-            HttpResponse::InternalServerError().body("Request failed")
+            HttpResponse::InternalServerError().body("Failed to reach Gmail")
         }
     }
 }
 
 
 async fn get_access_token(pool: &PgPool) -> Option<String> {
-    let row = sqlx::query(
-        "SELECT access_token, token_expiry, refresh_token FROM email_accounts WHERE is_active = true LIMIT 1"
+    let row = sqlx::query("SELECT id, access_token, token_expiry, refresh_token FROM email_accounts WHERE is_active = true LIMIT 1"
     )
     .fetch_one(pool)
-    .await;
+    .await
+    .ok()?;
 
-    match row {
-        Ok(r) => Some(r.get::<String, _>("access_token")),
+    let access_token: String = row.get("access_token");
+    let expiry: Option<chrono::NaiveDateTime> = row.try_get("token_expiry").ok();
+    let refresh_token: String = row.get("refresh_token");
+    let account_id: i32 = row.get("id");
 
-        Err(e) => {
-            println!("DB error: {:?}", e);
-            None
+    // 🔥 CHECK EXPIRY
+    if let Some(exp) = expiry {
+        if exp < chrono::Utc::now().naive_utc() {
+
+            let secrets = load_google_secrets();
+            let client_id = secrets["web"]["client_id"].as_str().unwrap();
+            let client_secret = secrets["web"]["client_secret"].as_str().unwrap();
+
+            match refresh_access_token(client_id, client_secret, &refresh_token).await {
+                Ok(new_token) => {
+                    // save new token
+                    let _ = sqlx::query(
+                        "UPDATE email_accounts SET access_token=$1 WHERE id=$2"
+                    )
+                    .bind(&new_token)
+                    .bind(account_id)
+                    .execute(pool)
+                    .await;
+
+                    return Some(new_token);
+                }
+                Err(e) => {
+                    return None;
+                }
+            }
         }
     }
+
+    Some(access_token)
 }
 
 
@@ -624,7 +637,6 @@ async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
             HttpResponse::Ok().json(accounts) // ✅ IMPORTANT
         }
         Err(e) => {
-            println!("DB error: {:?}", e);
             HttpResponse::InternalServerError().json(
                 serde_json::json!({ "error": "DB failure" })
             )

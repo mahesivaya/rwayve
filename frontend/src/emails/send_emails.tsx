@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 
 export default function SendEmail() {
+  const [accountId, setAccountId] = useState(1);
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -16,6 +17,9 @@ export default function SendEmail() {
   }, [status]);
 
   const sendEmail = async () => {
+    console.log("Sending email to: ", to);
+    console.log("Subject: ", subject);
+    console.log("Body: ", body);
     if (!to || !subject || !body) {
       setStatus("Please fill all fields ⚠️");
       return;
@@ -32,17 +36,17 @@ export default function SendEmail() {
     setStatus("");
 
     try {
-      const res = await fetch("/api/send", {
+      const res = await fetch("http://localhost:8080/api/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`, // 🔥 IMPORTANT
         },
         body: JSON.stringify({
+          account_id: 1,
           to,
           subject,
           body,
-          // 🔥 future: account_id
         }),
       });
 
@@ -88,7 +92,13 @@ export default function SendEmail() {
         onChange={e => setBody(e.target.value)}
       />
 
-      <button onClick={sendEmail} disabled={loading}>
+      <button
+        onClick={() => {
+          console.log("🔥 BUTTON CLICKED");
+          sendEmail();
+        }}
+        disabled={loading}
+      >
         {loading ? "Sending..." : "Send"}
       </button>
 
