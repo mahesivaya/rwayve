@@ -1,3 +1,4 @@
+use sqlx::Row;
 use actix_cors::Cors;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use bcrypt::{hash, verify, DEFAULT_COST};
@@ -13,6 +14,7 @@ mod chat;
 mod gmail;
 mod scheduler;
 use crate::scheduler::{create_meeting, get_meetings};
+
 
 #[derive(FromRow)]
 struct User {
@@ -66,44 +68,70 @@ struct Claims {
     exp: usize,
 }
 
-
 #[post("/api/register")]
 async fn register(
     pool: web::Data<PgPool>,
     data: web::Json<RegisterInput>,
 ) -> HttpResponse {
+
     if data.password != data.confirm_password {
-        return HttpResponse::BadRequest().json(MessageResponse {
-            message: "Passwords do not match".to_string(),
-        });
+        return HttpResponse::BadRequest().json(
+            serde_json::json!({ "message": "Passwords do not match" })
+        );
     }
 
+    // 🔥 HASH PASSWORD
     let hashed = match hash(&data.password, DEFAULT_COST) {
         Ok(h) => h,
-        Err(_) => {
-            return HttpResponse::InternalServerError().json(MessageResponse {
-                message: "Failed to hash password".to_string(),
-            });
+        Err(e) => {
+            println!("Hash error: {:?}", e);
+            return HttpResponse::InternalServerError().json(
+                serde_json::json!({ "message": "Password hashing failed" })
+            );
         }
     };
 
     let result = sqlx::query(
-        "INSERT INTO users (email, password) VALUES ($1, $2)"
+        "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id"
     )
     .bind(&data.email)
-    .bind(&hashed)
-    .execute(pool.get_ref())
+    .bind(&hashed) // ✅ FIXED
+    .fetch_one(pool.get_ref())
     .await;
 
     match result {
-        Ok(_) => HttpResponse::Ok().json(MessageResponse {
-            message: "User created".to_string(),
-        }),
+        Ok(row) => {
+            let user_id: i32 = row.get("id");
+
+            let claims = Claims {
+                sub: user_id,
+                email: data.email.clone(),
+                exp: (Utc::now() + ChronoDuration::hours(24)).timestamp() as usize,
+            };
+
+            let token = encode(
+                &Header::default(),
+                &claims,
+                &EncodingKey::from_secret("secret".as_ref()),
+            ).unwrap();
+
+            HttpResponse::Ok().json(
+                serde_json::json!({ "token": token })
+            )
+        }
+
         Err(e) => {
-            println!("register db error: {:?}", e);
-            HttpResponse::BadRequest().json(MessageResponse {
-                message: "User exists or insert failed".to_string(),
-            })
+            println!("DB ERROR: {:?}", e);
+
+            if e.to_string().contains("duplicate key") {
+                HttpResponse::BadRequest().json(
+                    serde_json::json!({ "message": "User already exists" })
+                )
+            } else {
+                HttpResponse::InternalServerError().json(
+                    serde_json::json!({ "message": "Insert failed" })
+                )
+            }
         }
     }
 }
@@ -114,33 +142,58 @@ async fn login(
     pool: web::Data<PgPool>,
     data: web::Json<LoginInput>,
 ) -> HttpResponse {
-    let user = sqlx::query_as::<_, User>(
+
+    println!("Login attempt: {}", data.email);
+
+    // ✅ HANDLE DB RESULT PROPERLY
+    let user_result = sqlx::query_as::<_, User>(
         "SELECT id, email, password FROM users WHERE email = $1"
     )
     .bind(&data.email)
     .fetch_optional(pool.get_ref())
     .await;
 
-    if let Ok(Some(user)) = user {
-        match verify(&data.password, &user.password) {
-            Ok(true) => {
-                let token = create_jwt(user.id, user.email.clone());
-                return HttpResponse::Ok().json(LoginResponse { token });
-            }
-            Ok(false) => {}
-            Err(e) => {
-                println!("bcrypt verify error: {:?}", e);
-                return HttpResponse::InternalServerError().json(MessageResponse {
-                    message: "Login failed".to_string(),
-                });
-            }
+    let user = match user_result {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            println!("User not found");
+            return HttpResponse::Unauthorized().json(MessageResponse {
+                message: "Invalid credentials".to_string(),
+            });
         }
+        Err(e) => {
+            println!("DB ERROR: {:?}", e);
+            return HttpResponse::InternalServerError().json(MessageResponse {
+                message: "Database error".to_string(),
+            });
+        }
+    };
+
+    // ✅ SAFE bcrypt check
+    let valid = match verify(&data.password, &user.password) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("bcrypt verify error: {:?}", e);
+
+            // 🔥 THIS IS YOUR CURRENT 500 ROOT CAUSE
+            return HttpResponse::InternalServerError().json(MessageResponse {
+                message: "Password verification failed".to_string(),
+            });
+        }
+    };
+
+    if !valid {
+        return HttpResponse::Unauthorized().json(MessageResponse {
+            message: "Invalid credentials".to_string(),
+        });
     }
 
-    HttpResponse::Unauthorized().json(MessageResponse {
-        message: "Invalid credentials".to_string(),
-    })
+    // ✅ CREATE TOKEN
+    let token = create_jwt(user.id, user.email.clone());
+
+    HttpResponse::Ok().json(LoginResponse { token })
 }
+
 
 
 fn create_jwt(user_id: i32, email: String) -> String {

@@ -32,6 +32,8 @@ pub async fn gmail_login() -> impl Responder {
         .as_str()
         .unwrap();
     let scope = "https://www.googleapis.com/auth/userinfo.email \
+                 https://www.googleapis.com/auth/gmail.send \
+                 https://www.googleapis.com/auth/gmail.modify \
                  https://www.googleapis.com/auth/gmail.readonly";
     let url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth\
@@ -99,6 +101,8 @@ pub async fn oauth_callback(
 
     let access_token = res["access_token"].as_str().unwrap_or("");
     let refresh_token = res["refresh_token"].as_str().unwrap_or("");
+    let expires_in = res["expires_in"].as_i64().unwrap_or(3600);
+    let expiry = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
 
     // 🔍 get user email
     let user_info: Value = HTTP_CLIENT
@@ -127,11 +131,12 @@ pub async fn oauth_callback(
     match sqlx::query(
         r#"
         INSERT INTO email_accounts
-        (email, access_token, refresh_token, is_active)
-        VALUES ($1,$2,$3,true)
+        (email, access_token, refresh_token, token_expiry, is_active)
+        VALUES ($1,$2,$3,$4,true)
         ON CONFLICT (email)
         DO UPDATE SET
             access_token = EXCLUDED.access_token,
+            token_expiry = EXCLUDED.token_expiry,
             refresh_token = COALESCE(
                 NULLIF(EXCLUDED.refresh_token, ''),
                 email_accounts.refresh_token
@@ -141,6 +146,7 @@ pub async fn oauth_callback(
     .bind(email)
     .bind(access_token)
     .bind(refresh_token)
+    .bind(expiry)
     .execute(pool.get_ref())
     .await
     {
@@ -380,7 +386,7 @@ where
 
     // ✅ Build dynamic query
     let mut query = String::from(
-        "INSERT INTO emails (gmail_id, sender, receiver, subject, body, account_id) VALUES "
+        "INSERT INTO emails(gmail_id, sender, receiver, subject, body, account_id) VALUES "
     );
 
     for (i, _) in batch.iter().enumerate() {
@@ -517,20 +523,35 @@ async fn send(
     pool: web::Data<PgPool>,
 ) -> HttpResponse {
 
-    let access_token = get_access_token(&pool).await;
+    // ✅ validate input
+    if data.to.is_empty() || data.subject.is_empty() || data.body.is_empty() {
+        return HttpResponse::BadRequest().body("Missing fields");
+    }
 
+    // ✅ get access token safely
+    let access_token = match get_access_token(&pool).await {
+        Some(token) => token,
+        None => return HttpResponse::Unauthorized().body("No access token"),
+    };
+
+    println!("Using token: {}", access_token);
+
+    // ✅ build RFC 5322 email (IMPORTANT: include From)
     let raw_email = format!(
-        "To: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{}",
-        data.to, data.subject, data.body
+        "From: me\r\nTo: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{}",
+        data.to,
+        data.subject,
+        data.body
     );
 
+    // ✅ base64url encode
     let encoded = URL_SAFE_NO_PAD.encode(raw_email);
 
     let client = reqwest::Client::new();
 
     let res = client
         .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
-        .bearer_auth(access_token)
+        .bearer_auth(&access_token)
         .json(&serde_json::json!({
             "raw": encoded
         }))
@@ -538,29 +559,45 @@ async fn send(
         .await;
 
     match res {
-        Ok(_) => HttpResponse::Ok().body("Email sent"),
+        Ok(resp) => {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+
+            println!("Gmail response: {}", text);
+
+            if status.is_success() {
+                HttpResponse::Ok().body("Email sent ✅")
+            } else {
+                HttpResponse::InternalServerError().body(format!(
+                    "Gmail error: {}",
+                    text
+                ))
+            }
+        }
+
         Err(e) => {
-            println!("Send error: {:?}", e);
-            HttpResponse::InternalServerError().body("Failed")
+            println!("Request error: {:?}", e);
+            HttpResponse::InternalServerError().body("Request failed")
         }
     }
 }
 
-async fn get_access_token(pool: &PgPool) -> String {
+
+async fn get_access_token(pool: &PgPool) -> Option<String> {
     let row = sqlx::query(
-        "SELECT access_token FROM email_accounts LIMIT 1"
+        "SELECT access_token, token_expiry, refresh_token FROM email_accounts WHERE is_active = true LIMIT 1"
     )
     .fetch_one(pool)
     .await;
-    
-    let token = match row {
-        Ok(r) => r.get::<String, _>("access_token"),
+
+    match row {
+        Ok(r) => Some(r.get::<String, _>("access_token")),
+
         Err(e) => {
             println!("DB error: {:?}", e);
-            return "".to_string();
+            None
         }
-    };
-    token
+    }
 }
 
 
