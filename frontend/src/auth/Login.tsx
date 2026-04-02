@@ -15,7 +15,10 @@ export default function Login() {
 
     try {
       const data = await login(email, password);
-      localStorage.setItem("token", data.token);
+      console.log("Login attempt: {}", data);
+      if (!data || !data.token) {
+        throw new Error("No token returned from server");
+      }localStorage.setItem("token", data.token);
       // ✅ Save + update global state
       authLogin(data.token);
 

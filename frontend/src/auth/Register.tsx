@@ -20,9 +20,12 @@ export default function Register() {
 
     try {
       const data = await register(email, password, confirm);
+      console.log("REGISTER RESPONSE:", data);
 
       // 🔥 SAVE TOKEN
-      localStorage.setItem("token", data.token);
+      if (!data || !data.token) {
+        throw new Error("No token returned from server");
+      }
 
       // 🔥 UPDATE GLOBAL STATE
       login(data.token);

@@ -1,42 +1,33 @@
-const API_BASE = "http://localhost:8080";
 
-export async function register(
-  email: string,
-  password: string,
-  confirm_password: string
-) {
-  try {
-    const res = await fetch(`${API_BASE}/api/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, confirm_password }),
-    });
+export async function register(email: string, password: string, confirm: string) {
+  const res = await fetch("http://localhost:8080/api/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      password,
+      confirm_password: confirm,
+    }),
+  });
 
-    const text = await res.text();
+  // 🔥 IMPORTANT: read response
+  const data = await res.json();
 
-    if (!res.ok) {
-      let message = "Register failed";
-  
-      try {
-        const json = JSON.parse(text);
-        message = json.message || message;
-      } catch {
-        message = text;
-      }
-  
-      throw new Error(message); // ✅ send clean message
-    }
-  } catch (err) {
-    console.error("register error:", err);
-    throw err;
+  // 🔥 handle backend errors
+  if (!res.ok) {
+    throw new Error(data.message || "Register failed");
   }
+
+  return data; // ✅ THIS FIXES YOUR BUG
 }
 
 
 
 export async function login(email: string, password: string) {
   try {
-    const res = await fetch(`${API_BASE}/api/login`, {
+    const res = await fetch("http://localhost:8080/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
