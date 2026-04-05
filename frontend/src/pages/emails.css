@@ -3,7 +3,7 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  font-family: Arial, sans-serif;
+  font-family: monospace;
   overflow: hidden; /* 🔥 prevent full page scroll */
 }
 
@@ -81,7 +81,6 @@
 }
 
 .email-item {
-  padding: 10px;
   border-bottom: 1px solid #eee;
   cursor: pointer;
 }
@@ -183,6 +182,6 @@
 .email-list::-webkit-scrollbar-thumb,
 .email-detail::-webkit-scrollbar-thumb,
 .sidebar::-webkit-scrollbar-thumb {
-  background: #ccc;
+  background: #c4c5cf;
   border-radius: 4px;
 }

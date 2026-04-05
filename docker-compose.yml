@@ -31,7 +31,7 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: react_frontend
+    container_name: frontend
     depends_on:
       - actix_api
     ports:
