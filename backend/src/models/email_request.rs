@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use crate::prelude::*;
 
 #[derive(Debug, Deserialize)]
 pub struct SendEmailRequest {

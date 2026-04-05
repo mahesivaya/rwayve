@@ -1,3 +1,5 @@
+use crate::prelude::*;
+
 mod models;
 use sqlx::Row;
 use actix_cors::Cors;
@@ -5,7 +7,6 @@ use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::{Duration as ChronoDuration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
-use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 use std::env;
 use tokio::time::{sleep, Duration};

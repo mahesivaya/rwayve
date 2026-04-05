@@ -1,4 +1,5 @@
-use serde::{Serialize, Deserialize};
+use crate::prelude::*;
+
 use sqlx::FromRow;
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]

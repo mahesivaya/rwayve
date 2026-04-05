@@ -156,21 +156,21 @@ export default function Emails() {
 
         {/* ✅ Pagination button */}
         <div className="load-more-container">
-  <button
-    className="load-more-btn"
-    onClick={loadMore}
-    disabled={loadingMore}
-  >
-    {loadingMore ? (
-      <>
-        <span className="spinner"></span>
-        Loading...
-      </>
-    ) : (
-      "Load More Emails"
-    )}
-  </button>
-</div>
+        <button
+          className="load-more-btn"
+          onClick={loadMore}
+          disabled={loadingMore}
+        >
+          {loadingMore ? (
+            <>
+              <span className="spinner"></span>
+              Loading...
+            </>
+          ) : (
+            "Load More Emails"
+          )}
+        </button>
+      </div>
       </div>
 
       {/* EMAIL DETAIL */}
@@ -182,20 +182,19 @@ export default function Emails() {
             <hr />
 
             <div className="email-body">
-              {selected.body ? (
-                selected.body.includes("<") ? (
-                  <div
-                    dangerouslySetInnerHTML={{ __html: selected.body }}
-                  />
-                ) : (
-                  <pre style={{ whiteSpace: "pre-wrap" }}>
-                    {selected.body}
-                  </pre>
-                )
-              ) : (
-                <p>No content available</p>
-              )}
-            </div>
+        {selected?.body ? (
+          selected.body.includes("<") ? (
+            <div
+              className="email-html"
+              dangerouslySetInnerHTML={{ __html: selected.body }}
+            />
+          ) : (
+            <pre className="email-text">{selected.body}</pre>
+          )
+        ) : (
+          <p className="empty">No content available</p>
+        )}
+      </div>
           </>
         ) : (
           <p>Select an email</p>
