@@ -3,17 +3,22 @@ services:
 
   postgres_db:
     image: postgres:15
+    container_name: postgres_db
     environment:
       POSTGRES_DB: wayve_db
       POSTGRES_USER: wayve_user
       POSTGRES_PASSWORD: wayve_password
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 
   actix_api:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: backend
     depends_on:
       - postgres_db
     environment:

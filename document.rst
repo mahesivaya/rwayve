@@ -91,3 +91,38 @@ http://localhost:8080/emails
 
 
 http://localhost:8080/gmail/login
+
+
+.. Keeps the data in tables 
+docker-compose down
+docker-compose up --build
+
+
+⚡ BONUS: Use cargo watch (🔥 game changer)
+
+Install:
+
+cargo install cargo-watch
+
+Run:
+
+cargo watch -x run
+
+👉 auto rebuild on file change
+👉 no docker rebuild needed
+
+
+src/
+├── main.rs
+├── prelude.rs
+
+├── config/          # env, constants
+├── models/          # DB structs
+├── dto/             # request/response shapes (NEW)
+
+├── handlers/        # HTTP layer ONLY
+├── services/        # business logic (IMPORTANT)
+├── repositories/    # DB queries (NEW, CLEAN)
+
+├── auth/            # oauth + jwt
+├── utils/
