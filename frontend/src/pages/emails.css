@@ -1,12 +1,13 @@
-/* Full app */
+/* ================= FULL APP ================= */
 .app {
   height: 100vh;
   display: flex;
   flex-direction: column;
   font-family: Arial, sans-serif;
+  overflow: hidden; /* 🔥 prevent full page scroll */
 }
 
-/* HEADER */
+/* ================= HEADER ================= */
 .header {
   height: 60px;
   background: #1e2a38;
@@ -15,6 +16,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
+  flex-shrink: 0; /* 🔥 prevents shrinking */
 }
 
 .logo {
@@ -45,18 +47,21 @@
   color: white;
 }
 
-/* MAIN LAYOUT */
+/* ================= MAIN LAYOUT ================= */
 .main {
   display: flex;
-  height: calc(100vh - 60px);
+  flex: 1;
+  overflow: hidden; /* 🔥 key for inner scroll */
 }
 
-/* SIDEBAR */
+/* ================= SIDEBAR ================= */
 .sidebar {
   width: 240px;
   background: #ffffff;
   padding: 16px;
   border-right: 1px solid #ddd;
+  overflow-y: auto; /* optional scroll */
+  flex-shrink: 0;
 }
 
 .sidebar button {
@@ -65,12 +70,14 @@
   padding: 8px;
 }
 
-/* EMAIL LIST */
+/* ================= EMAIL LIST ================= */
 .email-list {
   width: 300px;
   border-left: 1px solid #ccc;
   border-right: 1px solid #ccc;
-  overflow-y: auto;
+  overflow-y: auto; /* 🔥 scroll here */
+  height: 100%;
+  flex-shrink: 0;
 }
 
 .email-item {
@@ -87,30 +94,15 @@
   background: #e8f0fe;
 }
 
-/* EMAIL DETAIL */
+/* ================= EMAIL DETAIL ================= */
 .email-detail {
   flex: 1;
   padding: 20px;
-}
-
-.main {
-  display: flex;
+  overflow-y: auto; /* 🔥 scroll here */
   height: 100%;
 }
 
-.main {
-  display: flex;
-  flex: 1;
-}
-
-.sidebar {
-  width: 220px;
-  padding: 16px;
-  background: #f5f5f5;
-  height: 100vh;
-}
-
-/* Add Email button */
+/* ================= ADD EMAIL BUTTON ================= */
 .add-email-btn {
   width: 100%;
   background: #000;
@@ -126,13 +118,16 @@
   transition: 0.2s;
 }
 
-/* Mailbox title */
+.add-email-btn:hover {
+  background: #333;
+}
+
+/* ================= MAILBOX ================= */
 .mailbox-title {
   margin-bottom: 12px;
   color: #555;
 }
 
-/* Mail buttons */
 .mail-btn {
   width: 100%;
   padding: 10px;
@@ -147,14 +142,11 @@
   background: #eee;
 }
 
-
 /* ================= ACCOUNT LIST ================= */
-
 .account-list {
   margin-bottom: 20px;
 }
 
-/* Each email account */
 .account-item {
   padding: 8px 10px;
   font-size: 13px;
@@ -169,16 +161,28 @@
   background: #f1f3f4;
 }
 
-/* Selected account */
 .account-item.active {
   background: #e8f0fe;
   color: #1a73e8;
   font-weight: 500;
 }
 
-/* No accounts text */
 .no-accounts {
   font-size: 12px;
   color: #888;
   margin-bottom: 10px;
+}
+
+/* ================= SCROLLBAR (OPTIONAL) ================= */
+.email-list::-webkit-scrollbar,
+.email-detail::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.email-list::-webkit-scrollbar-thumb,
+.email-detail::-webkit-scrollbar-thumb,
+.sidebar::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 4px;
 }
