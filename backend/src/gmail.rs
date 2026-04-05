@@ -555,6 +555,7 @@ async fn refresh_access_token(
 }
 
 
+
 #[post("/api/send")]
 async fn send(
     data: web::Json<SendEmailRequest>,

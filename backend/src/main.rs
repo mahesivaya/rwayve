@@ -222,16 +222,32 @@ async fn index() -> HttpResponse {
     HttpResponse::Ok().body("Email Import Running")
 }
 
+
+#[derive(Deserialize)]
+pub struct EmailQuery {
+    pub account_id: i32,
+    pub before: Option<i64>, // timestamp cursor
+}
+
+
 #[get("/api/emails")]
-async fn get_emails(pool: web::Data<PgPool>) -> impl Responder {
+async fn get_emails(
+    pool: web::Data<PgPool>,
+    query: web::Query<EmailQuery>,
+) -> impl Responder {
+
     let result = sqlx::query_as::<_, Email>(
         r#"
         SELECT id, sender, subject, body, created_at
         FROM emails
+        WHERE account_id = $1
+          AND ($2::BIGINT IS NULL OR created_at < to_timestamp($2))
         ORDER BY created_at DESC
         LIMIT 50
         "#
     )
+    .bind(query.account_id)
+    .bind(query.before)
     .fetch_all(pool.get_ref())
     .await;
 
@@ -239,7 +255,7 @@ async fn get_emails(pool: web::Data<PgPool>) -> impl Responder {
         Ok(rows) => HttpResponse::Ok().json(rows),
         Err(e) => {
             println!("DB error: {:?}", e);
-            HttpResponse::InternalServerError().body("error")
+            HttpResponse::InternalServerError().finish()
         }
     }
 }

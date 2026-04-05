@@ -8,6 +8,7 @@ pub struct Email {
     pub sender: String,
     pub receiver: String,
     pub subject: String,
-    pub body: String,
+    pub body: Option<String>,
     pub account_id: i32,
+    pub created_at: NaiveDateTime,
 }

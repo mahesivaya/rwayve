@@ -7,6 +7,7 @@ type Email = {
   sender: string;
   subject: string;
   body: string;
+  created_at: string;
 };
 
 type Account = {
@@ -14,74 +15,101 @@ type Account = {
   email: string;
 };
 
-
 export default function Emails() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [selected, setSelected] = useState<Email | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeAccount, setActiveAccount] = useState<number | null>(null);
   const [showCompose, setShowCompose] = useState(false);
-  const [sentMessage, setSentMessage] = useState("");
+
+  // ✅ FIXED: declare globally
+  const [lastTimestamp, setLastTimestamp] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const connectGmail = () => {
     window.location.href = "http://localhost:8080/gmail/login";
   };
 
+  // ================= ACCOUNTS =================
   useEffect(() => {
     fetch("/api/accounts")
-    .then(res => {
-      if (!res.ok) throw new Error("API failed");
-      return res.json();
-    })
-    .then(data => setAccounts(data))
-    .catch(err => {
-      console.error("Accounts error:", err);
-      setAccounts([]);
-    });
-  },[]);
-
-  useEffect(() => {
-    fetch("/api/emails")
       .then(res => res.json())
-      .then((data: Email[]) => {
-        setEmails(data);
-        if (data.length > 0) setSelected(data[0]);
+      .then((data: Account[]) => {
+        setAccounts(data);
+  
+        // ✅ AUTO SELECT FIRST ACCOUNT
+        if (data.length > 0) {
+          setActiveAccount(data[0].id);
+        }
       })
-      .catch(err => console.error(err));
+      .catch(() => setAccounts([]));
   }, []);
 
+  // ================= INITIAL LOAD =================
   useEffect(() => {
     if (!activeAccount) return;
-
-    fetch(`/api/emails?account=${activeAccount}`)
+  
+    fetch(`/api/emails?account_id=${activeAccount}`)
       .then(res => res.json())
       .then((data: Email[]) => {
         setEmails(data);
-        setSelected(data.length > 0 ? data[0] : null);
+  
+        if (data.length > 0) {
+          setSelected(data[0]);
+  
+          const last = data[data.length - 1];
+          setLastTimestamp(
+            Math.floor(new Date(last.created_at).getTime() / 1000)
+          );
+        }
       })
-      .catch(err => console.error(err));
+      .catch(console.error);
   }, [activeAccount]);
 
+  // ================= LOAD MORE =================
+  const loadMore = async () => {
+    if (!activeAccount || !lastTimestamp || loadingMore) return;
 
+    setLoadingMore(true);
+
+    try {
+      const res = await fetch(
+        `/api/emails?account_id=${activeAccount}&before=${lastTimestamp}`
+      );
+
+      const data: Email[] = await res.json();
+
+      if (data.length === 0) return;
+
+      setEmails(prev => [...prev, ...data]);
+
+      const last = data[data.length - 1];
+      setLastTimestamp(
+        Math.floor(new Date(last.created_at).getTime() / 1000)
+      );
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // ================= UI =================
   return (
     <div className="main">
 
-      
       {/* SIDEBAR */}
-      
       <div className="sidebar">
 
-      <button onClick={() => setShowCompose(true)}>
-        + Compose
-      </button>
+        <button onClick={() => setShowCompose(true)}>
+          + Compose
+        </button>
 
-      <button onClick={connectGmail} className="add-email-btn">
-        ➕ Add Email
-      </button>
-      <div className="account-list">
-          {accounts.length === 0 && (
-            <div className="no-accounts">No accounts added</div>
-          )}
+        <button onClick={connectGmail} className="add-email-btn">
+          ➕ Add Email
+        </button>
 
+        <div className="account-list">
           {accounts.map(acc => (
             <div
               key={acc.id}
@@ -93,19 +121,19 @@ export default function Emails() {
               📧 {acc.email}
             </div>
           ))}
+        </div>
 
-      {showCompose && (
-        <div className="compose-modal">
-          <div className="compose-box">
-            <SendEmail />
-
-            <button onClick={() => setShowCompose(false)}>
-              Close
-            </button>
+        {showCompose && (
+          <div className="compose-modal">
+            <div className="compose-box">
+              <SendEmail />
+              <button onClick={() => setShowCompose(false)}>
+                Close
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-        </div>
+        )}
+
         <h3>Mailbox</h3>
         <button>Inbox</button>
         <button>Sent</button>
@@ -122,10 +150,27 @@ export default function Emails() {
             }`}
             onClick={() => setSelected(email)}
           >
-            <h4>{email.subject}</h4>
-            <p>{email.sender}</p>
+            <h3>{email.subject}</h3>
           </div>
         ))}
+
+        {/* ✅ Pagination button */}
+        <div className="load-more-container">
+  <button
+    className="load-more-btn"
+    onClick={loadMore}
+    disabled={loadingMore}
+  >
+    {loadingMore ? (
+      <>
+        <span className="spinner"></span>
+        Loading...
+      </>
+    ) : (
+      "Load More Emails"
+    )}
+  </button>
+</div>
       </div>
 
       {/* EMAIL DETAIL */}
@@ -135,19 +180,27 @@ export default function Emails() {
             <h2>{selected.subject}</h2>
             <p><b>From:</b> {selected.sender}</p>
             <hr />
+
             <div className="email-body">
-        {selected.body ? (
-          <div dangerouslySetInnerHTML={{ __html: selected.body }} />
-        ) : (
-          <p>No content available</p>
-        )}
-      </div>
+              {selected.body ? (
+                selected.body.includes("<") ? (
+                  <div
+                    dangerouslySetInnerHTML={{ __html: selected.body }}
+                  />
+                ) : (
+                  <pre style={{ whiteSpace: "pre-wrap" }}>
+                    {selected.body}
+                  </pre>
+                )
+              ) : (
+                <p>No content available</p>
+              )}
+            </div>
           </>
         ) : (
           <p>Select an email</p>
         )}
       </div>
-
     </div>
   );
 }

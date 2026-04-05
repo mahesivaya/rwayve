@@ -65,6 +65,7 @@
 }
 
 .sidebar button {
+  font-family: monospace;
   width: 100%;
   margin-bottom: 10px;
   padding: 8px;
@@ -91,6 +92,15 @@
 
 .email-item.active {
   background: #e8f0fe;
+}
+
+.email-item h3 {
+  font-size: 14px;        /* 🔥 smaller */
+  font-weight: 300;       /* 🔥 less bold */
+  margin: 0;
+  color: #222;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 10px;
 }
 
 /* ================= EMAIL DETAIL ================= */
@@ -184,4 +194,50 @@
 .sidebar::-webkit-scrollbar-thumb {
   background: #c4c5cf;
   border-radius: 4px;
+}
+
+/* ================= LOAD MORE ================= */
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+}
+
+.load-more-btn {
+  background: #1a73e8;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.load-more-btn:hover {
+  background: #1669c1;
+}
+
+.load-more-btn:disabled {
+  background: #aaa;
+  cursor: not-allowed;
+}
+
+/* 🔄 Spinner */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid white;
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
