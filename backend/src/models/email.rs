@@ -1,7 +1,5 @@
 use crate::prelude::*;
 
-use sqlx::FromRow;
-
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Email {
     pub id: Option<i32>,

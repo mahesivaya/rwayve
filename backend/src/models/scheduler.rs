@@ -1,6 +1,5 @@
 use crate::prelude::*;
 
-use sqlx::FromRow;
 
 #[derive(Serialize, FromRow)]
 struct Meeting {

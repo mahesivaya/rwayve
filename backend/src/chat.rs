@@ -1,10 +1,5 @@
 use crate::prelude::*;
 
-use actix::{Actor, StreamHandler, ActorContext, AsyncContext};
-use actix_web::{web, HttpRequest, HttpResponse, Error};
-use actix_web_actors::ws;
-use sqlx::PgPool;
-
 #[derive(Deserialize, Debug)]
 struct ChatMessage {
     sender_id: i32,

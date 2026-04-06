@@ -1,4 +1,5 @@
 use crate::prelude::*;
+mod prelude;
 
 mod models;
 use sqlx::Row;

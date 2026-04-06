@@ -1,18 +1,5 @@
 use crate::prelude::*;
 
-use reqwest::Client;
-use serde_json::Value;
-use sqlx::{PgPool, Row};
-use std::fs;
-use futures::stream::{FuturesUnordered, StreamExt};
-use once_cell::sync::Lazy;
-use anyhow::Result;
-use actix_web::post;
-const MAX_EMAIL_CONCURRENCY: usize = 20;
-const BATCH_SIZE: usize = 50;
-use actix_web::{get, web, HttpResponse, Responder};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-
 
 #[path = "models/email_request.rs"]
 use crate::models::email_request::SendEmailRequest;

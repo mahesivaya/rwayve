@@ -1,9 +1,5 @@
 use crate::prelude::*;
 
-use actix_web::{get, post, web, HttpResponse};
-use sqlx::PgPool;
-use chrono::{NaiveDate, NaiveTime};
-use sqlx::FromRow;
 
 // 🔥 MODEL
 #[derive(Serialize, FromRow)]
