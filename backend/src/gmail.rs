@@ -154,7 +154,15 @@ pub async fn oauth_callback(
         Err(e) => println!("❌ DB ERROR: {}", e),
     }
 
-    HttpResponse::Ok().body(format!("Logged in: {}", email))
+    println!("🚀 Redirecting to frontend...");
+    let frontend = std::env::var("FRONTEND_URL")
+        .unwrap_or("http://localhost".to_string());
+
+    let redirect = format!("{}/emails", frontend);
+
+    return HttpResponse::Found()
+        .append_header(("Location", redirect))
+        .finish();
 }
 
 
