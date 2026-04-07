@@ -1,9 +1,10 @@
 use crate::prelude::*;
 
+
 #[derive(Deserialize, Debug)]
 struct ChatMessage {
-    sender_id: i32,
-    receiver_id: i32,
+    sender_id: i64,
+    receiver_id: i64,
     content: String,
 }
 
@@ -71,6 +72,57 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
             Ok(ws::Message::Close(_)) => ctx.stop(),
 
             _ => {}
+        }
+    }
+}
+
+
+#[derive(Deserialize)]
+pub struct QueryParams {
+    pub user1: i64,
+    pub user2: i64,
+}
+
+
+#[derive(Serialize, FromRow)]
+pub struct Message {
+    pub sender_id: i64,
+    pub receiver_id: i64,
+    pub content: String,
+}
+
+
+#[get("/api/messages")]
+pub async fn get_messages(
+    pool: web::Data<PgPool>,
+    query: web::Query<QueryParams>,
+) -> impl Responder {
+
+    let result = sqlx::query_as::<_, Message>(
+        r#"
+        SELECT sender_id, receiver_id, content
+        FROM messages
+        WHERE 
+            (sender_id = $1 AND receiver_id = $2)
+            OR
+            (sender_id = $2 AND receiver_id = $1)
+        ORDER BY id ASC
+        "#
+    )
+    .bind(query.user1)
+    .bind(query.user2)
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(messages) => HttpResponse::Ok().json(messages),
+
+        Err(e) => {
+            println!("❌ DB error: {:?}", e);
+            HttpResponse::InternalServerError().json(
+                serde_json::json!({ "error": "Failed to fetch messages" })
+            )
+
         }
     }
 }

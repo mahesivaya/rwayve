@@ -13,6 +13,7 @@ use std::env;
 use tokio::time::{sleep, Duration};
 use crate::gmail::{gmail_login, oauth_callback, send};
 use crate::chat::chat_ws;
+use crate::chat::get_messages;
 mod chat;
 mod gmail;
 mod scheduler;
@@ -283,6 +284,31 @@ async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
     }
 }
 
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct UserResponse {
+    id: i32,
+    email: String,
+}
+
+
+#[get("/api/users")]
+async fn get_users(pool: web::Data<PgPool>) -> impl Responder {
+    let result = sqlx::query_as::<_, UserResponse>(
+        r#"
+        SELECT id, email FROM users
+        "#
+    )
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(rows) => HttpResponse::Ok().json(rows),
+        Err(e) => {
+            println!("DB error: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -331,6 +357,8 @@ async fn main() -> std::io::Result<()> {
             .service(get_meetings)
             .service(get_emails)
             .service(get_accounts)
+            .service(get_messages)
+            .service(get_users)
             .route("/gmail/login", web::get().to(gmail_login))
             .route("/oauth/callback", web::get().to(oauth_callback))
             .route("/ws/chat", web::get().to(chat_ws))

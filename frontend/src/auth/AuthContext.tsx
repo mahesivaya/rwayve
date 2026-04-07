@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 type UserType = {
   email: string;
-  sub: number;
+  id: number;
 };
 
 type AuthType = {
@@ -34,9 +34,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const decoded = parseJwt(token);
 
       if (decoded) {
+        const decoded = parseJwt(token);
         setUser({
           email: decoded.email,
-          sub: decoded.sub,
+          id: decoded.sub,
         });
       } else {
         localStorage.removeItem("token");
@@ -55,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (decoded) {
       setUser({
         email: decoded.email,
-        sub: decoded.sub,
+        id: decoded.sub,
       });
     }
   };

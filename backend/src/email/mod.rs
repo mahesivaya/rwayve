@@ -16,7 +16,7 @@ const BATCH_SIZE: usize = 50;
 
 #[derive(Deserialize)]
 struct EmailQuery {
-    account_id: i64,
+    account_id: i32,
     last_seen: Option<String>,
 }
 

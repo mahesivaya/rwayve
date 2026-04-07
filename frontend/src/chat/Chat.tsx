@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
 
 type User = {
   id: number;
@@ -18,50 +19,65 @@ export default function Chat() {
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
-  const currentUserId = 1; // 🔥 replace later with logged-in user
+  // const currentUserId = 1;
+  const { user } = useAuth();
+  const currentUserId = user?.id;
+
+  const endRef = useRef<HTMLDivElement | null>(null);
 
   // ✅ Load users
   useEffect(() => {
-    fetch("/api/accounts")
+    fetch("/api/users")
       .then(res => res.json())
-      .then(data => setUsers(data))
+      .then(setUsers)
       .catch(err => console.error("Users error:", err));
   }, []);
 
   // ✅ WebSocket connect
   useEffect(() => {
-    const ws = new WebSocket(`ws://${window.location.host}/ws/chat`);
+    if (!currentUserId) return;
+    const ws = new WebSocket(
+      `ws://${window.location.host}/ws/chat?user_id=${currentUserId}`
+    );
 
     ws.onopen = () => console.log("✅ WS connected");
 
     ws.onmessage = (event) => {
+      console.log("📩 WS RAW:", event.data);
       try {
         const msg = JSON.parse(event.data);
+        console.log("✅ Parsed:", msg);
         setMessages(prev => [...prev, msg]);
       } catch {
-        console.log("Non-JSON message:", event.data);
+        console.log("Non-JSON:", event.data);
       }
     };
 
     ws.onerror = (err) => console.error("WS error", err);
 
     setSocket(ws);
-
     return () => ws.close();
-  }, []);
+  }, [currentUserId]);
+
+  // ✅ Load chat history when user selected
+  useEffect(() => {
+    if (!selectedUser) return;
+
+    fetch(`/api/messages?user1=${currentUserId}&user2=${selectedUser.id}`)
+      .then(res => res.json())
+      .then(setMessages)
+      .catch(console.error);
+  }, [selectedUser]);
+
+  // ✅ Auto scroll
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   // ✅ Send message
   const sendMessage = () => {
-    if (!socket) {
-      console.log("❌ No socket");
-      return;
-    }
-
-    if (!selectedUser) {
-      alert("Select a user first");
-      return;
-    }
-
+    if (!socket) return;
+    if (!selectedUser) return alert("Select a user first");
     if (!input.trim()) return;
 
     const msg = {
@@ -70,16 +86,22 @@ export default function Chat() {
       content: input,
     };
 
-    console.log("Sending:", msg);
-
-    // ✅ send to backend
     socket.send(JSON.stringify(msg));
 
-    // ✅ show instantly in UI (IMPORTANT)
-    setMessages(prev => [...prev, msg]);
-
+    // instant UI
+    // setMessages(prev => [...prev, msg]);
     setInput("");
   };
+
+  // ✅ Filter messages for current chat
+  const chatMessages = messages.filter(
+    m =>
+      selectedUser &&
+      (
+        (m.sender_id === currentUserId && m.receiver_id === selectedUser.id) ||
+        (m.sender_id === selectedUser.id && m.receiver_id === currentUserId)
+      )
+  );
 
   return (
     <div style={{ display: "flex", height: "100vh" }}>
@@ -104,29 +126,58 @@ export default function Chat() {
       </div>
 
       {/* 💬 CHAT AREA */}
-      <div style={{ flex: 1, padding: "20px" }}>
+      <div style={{ flex: 1, padding: "20px", display: "flex", flexDirection: "column" }}>
         <h3>
           Chat {selectedUser ? `with ${selectedUser.email}` : ""}
         </h3>
 
-        <div style={{ height: 300, overflowY: "auto", border: "1px solid #ccc", marginBottom: "10px" }}>
-          {messages.map((msg, i) => (
-            <div key={i}>
-              <b>{msg.sender_id === currentUserId ? "You" : "Them"}:</b> {msg.content}
+        {/* messages */}
+        <div style={{
+          flex: 1,
+          overflowY: "auto",
+          border: "1px solid #ccc",
+          marginBottom: "10px",
+          padding: "10px"
+        }}>
+          {chatMessages.map((msg, i) => (
+            <div key={i} style={{
+              textAlign: msg.sender_id === currentUserId ? "right" : "left",
+              marginBottom: "8px"
+            }}>
+              <span style={{
+                background: msg.sender_id === currentUserId ? "#d1e7ff" : "#eee",
+                padding: "6px 10px",
+                borderRadius: "10px",
+                display: "inline-block"
+              }}>
+                {msg.content}
+              </span>
             </div>
           ))}
+
+          <div ref={endRef} />
         </div>
 
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="Type message..."
-          style={{ marginRight: "10px" }}
-        />
+        {/* input */}
+        <div style={{ display: "flex" }}>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Type message..."
+            style={{ flex: 1, marginRight: "10px", height: "60px" }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+          />
 
-        <button onClick={sendMessage}>Send</button>
+          <button onClick={sendMessage} disabled={!selectedUser}>
+            Send
+          </button>
+        </div>
       </div>
-
     </div>
   );
 }
