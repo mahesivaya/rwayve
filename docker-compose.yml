@@ -21,8 +21,8 @@ services:
     container_name: backend
     depends_on:
       - postgres_db
-    environment:
-      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_db
+    env_file:
+      - .env
     volumes:
     - ./client_secret.json:/app/client_secret.json
     ports:

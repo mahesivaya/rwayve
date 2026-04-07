@@ -35,3 +35,5 @@ anyhow = "1"
 bcrypt = "0.15"
 jsonwebtoken = "9"
 base64 = "0.21"
+aes-gcm = "0.10.3"
+rand = { version = "0.8", features = ["std"] }

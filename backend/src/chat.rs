@@ -3,8 +3,8 @@ use crate::prelude::*;
 
 #[derive(Deserialize, Debug)]
 struct ChatMessage {
-    sender_id: i64,
-    receiver_id: i64,
+    sender_id: i32,
+    receiver_id: i32,
     content: String,
 }
 
@@ -79,15 +79,15 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
 
 #[derive(Deserialize)]
 pub struct QueryParams {
-    pub user1: i64,
-    pub user2: i64,
+    pub user1: i32,
+    pub user2: i32,
 }
 
 
 #[derive(Serialize, FromRow)]
 pub struct Message {
-    pub sender_id: i64,
-    pub receiver_id: i64,
+    pub sender_id: i32,
+    pub receiver_id: i32,
     pub content: String,
 }
 

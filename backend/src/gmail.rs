@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use crate::security::encryption::encrypt;
 
 
 #[path = "models/email_request.rs"]
@@ -43,6 +44,19 @@ pub async fn gmail_login() -> impl Responder {
         .append_header(("Location", url))
         .finish()
 }
+
+
+//////////////////////////////////////////////////
+// LOAD GOOGLE SECRETS
+//////////////////////////////////////////////////
+
+fn load_google_secrets() -> serde_json::Value {
+    let data = fs::read_to_string("client_secret.json")
+        .expect("Failed to read client_secret.json");
+
+    serde_json::from_str(&data).unwrap()
+}
+
 
 // CALLBACK
 pub async fn oauth_callback(
@@ -153,16 +167,7 @@ pub static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
         .unwrap()
 });
 
-//////////////////////////////////////////////////
-// LOAD GOOGLE SECRETS
-//////////////////////////////////////////////////
 
-fn load_google_secrets() -> serde_json::Value {
-    let data = fs::read_to_string("client_secret.json")
-        .expect("Failed to read client_secret.json");
-
-    serde_json::from_str(&data).unwrap()
-}
 
 //////////////////////////////////////////////////
 // SYNC ALL ACCOUNTS (PARALLEL)
@@ -367,15 +372,15 @@ where
 
     // ✅ Build dynamic query
     let mut query = String::from(
-        "INSERT INTO emails(gmail_id, sender, receiver, subject, body, account_id) VALUES "
+        "INSERT INTO emails(gmail_id, sender, receiver, subject, body_encrypted, body_iv, account_id) VALUES "
     );
 
     for (i, _) in batch.iter().enumerate() {
-        let idx = i * 6;
+        let idx = i * 7;
 
         query.push_str(&format!(
-            "(${}, ${}, ${}, ${}, ${}, ${}),",
-            idx + 1, idx + 2, idx + 3, idx + 4, idx + 5, idx + 6
+            "(${}, ${}, ${}, ${}, ${}, ${}, ${}),",
+            idx + 1, idx + 2, idx + 3, idx + 4, idx + 5, idx + 6, idx + 7
         ));
     }
 
@@ -385,14 +390,19 @@ where
     // ✅ Bind values safely (correct types)
     let mut q = sqlx::query(&query);
 
+
     for (gmail_id, sender, receiver, subject, body) in batch.iter() {
+
+        let (iv, encrypted_body) = encrypt(body)?;
+
         q = q
-            .bind(gmail_id)     // TEXT
-            .bind(sender)       // TEXT
-            .bind(receiver)     // TEXT
-            .bind(subject)      // TEXT
-            .bind(body)         // TEXT
-            .bind(account_id);  // ✅ INTEGER (FIXED)
+            .bind(gmail_id)
+            .bind(sender)
+            .bind(receiver)
+            .bind(subject)
+            .bind(encrypted_body) // 🔒 encrypted
+            .bind(iv)             // 🔑 IV
+            .bind(account_id);
     }
 
     // ✅ Execute ONCE

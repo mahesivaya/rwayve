@@ -26,8 +26,9 @@ CREATE TABLE IF NOT EXISTS emails (
     subject TEXT,
     sender TEXT,
     receiver TEXT,
-    body TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
+    body_encrypted TEXT NOT NULL,
+    body_iv TEXT NOT NULL,
     UNIQUE(account_id, gmail_id)
 );
 
@@ -48,5 +49,5 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 
-ALTER TABLE email_accounts
-ADD COLUMN token_expiry TIMESTAMP;
+ALTER TABLE emails ADD COLUMN body_encrypted TEXT;
+ALTER TABLE emails ADD COLUMN body_iv TEXT;

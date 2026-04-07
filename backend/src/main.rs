@@ -11,6 +11,8 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use sqlx::{FromRow, PgPool};
 use std::env;
 use tokio::time::{sleep, Duration};
+pub mod security;
+use crate::security::encryption::decrypt;
 use crate::gmail::{gmail_login, oauth_callback, send};
 use crate::chat::chat_ws;
 use crate::chat::get_messages;
@@ -18,6 +20,17 @@ mod chat;
 mod gmail;
 mod scheduler;
 use crate::scheduler::{create_meeting, get_meetings};
+use anyhow::Result;
+use aes_gcm::{
+    Aes256Gcm,
+    Key,
+    Nonce,
+    aead::{Aead, KeyInit}
+};
+use rand::{RngCore, thread_rng};
+use base64::engine::general_purpose;
+use base64::Engine;
+
 
 
 #[derive(FromRow)]
@@ -239,30 +252,53 @@ async fn get_emails(
     query: web::Query<EmailQuery>,
 ) -> impl Responder {
 
-    let result = sqlx::query_as::<_, Email>(
+    let result = sqlx::query(
         r#"
-        SELECT id, sender, subject, body, created_at
+        SELECT id, sender, subject, body_encrypted, body_iv, created_at
         FROM emails
         WHERE account_id = $1
-          AND ($2::BIGINT IS NULL OR created_at < to_timestamp($2))
         ORDER BY created_at DESC
         LIMIT 50
         "#
     )
     .bind(query.account_id)
-    .bind(query.before)
     .fetch_all(pool.get_ref())
     .await;
 
     match result {
-        Ok(rows) => HttpResponse::Ok().json(rows),
+        Ok(rows) => {
+            let emails: Vec<_> = rows.into_iter().map(|row| {
+                let id: i32 = row.try_get("id").unwrap();
+                let sender: String = row.try_get("sender").unwrap();
+                let subject: String = row.try_get("subject").unwrap();
+                let created_at: chrono::NaiveDateTime = row.try_get("created_at").unwrap();
+
+                let iv: Option<String> = row.try_get("body_iv").ok();
+                let enc: Option<String> = row.try_get("body_encrypted").ok();
+
+                let body = if let (Some(iv), Some(enc)) = (iv, enc) {
+                    decrypt(&iv, &enc)
+                } else {
+                    "".to_string()
+                };
+
+                serde_json::json!({
+                    "id": id,
+                    "sender": sender,
+                    "subject": subject,
+                    "body": body,
+                    "created_at": created_at
+                })
+            }).collect();
+
+            HttpResponse::Ok().json(emails)
+        }
         Err(e) => {
             println!("DB error: {:?}", e);
             HttpResponse::InternalServerError().finish()
         }
     }
 }
-
 
 #[get("/api/accounts")]
 async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
