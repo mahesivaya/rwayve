@@ -49,9 +49,14 @@ export default function Emails() {
   useEffect(() => {
     if (!activeAccount) return;
   
+    // 🔥 RESET EVERYTHING (VERY IMPORTANT)
+    setEmails([]);
+    setSelected(null);
+    setLastTimestamp(null);
     fetch(`/api/emails?account_id=${activeAccount}`)
       .then(res => res.json())
       .then((data: Email[]) => {
+        console.log("Initial emails:", data); // 🔍 DEBUG
         setEmails(data);
   
         if (data.length > 0) {
@@ -66,11 +71,34 @@ export default function Emails() {
       .catch(console.error);
   }, [activeAccount]);
 
+  useEffect(() => {
+    if (!activeAccount) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/emails?account_id=${activeAccount}`);
+        const data: Email[] = await res.json();
+        if (data.length === 0) return;
+        setEmails(prev => {
+          const existingIds = new Set(prev.map(e => e.id));
+          // 🆕 only new emails
+          const newEmails = data.filter(e => !existingIds.has(e.id));
+          if (newEmails.length === 0) return prev;
+          return [...newEmails, ...prev]; // 🔥 prepend
+        });
+      } catch (err) {
+        console.error("Auto refresh error:", err);
+      }
+    }, 5000); // ⏱️ 5 sec
+    return () => clearInterval(interval);
+  }, [activeAccount]);
+
+
   // ================= LOAD MORE =================
   const loadMore = async () => {
     if (!activeAccount || !lastTimestamp || loadingMore) return;
 
     setLoadingMore(true);
+    const last = emails[emails.length - 1];
 
     try {
       const res = await fetch(
@@ -81,7 +109,13 @@ export default function Emails() {
 
       if (data.length === 0) return;
 
-      setEmails(prev => [...prev, ...data]);
+      setEmails(prev => {
+        const map = new Map(prev.map(e => [e.id, e]));
+        data.forEach(e => {
+          map.set(e.id, e); // overwrite duplicates safely
+        });
+        return Array.from(map.values());
+      });
 
       const last = data[data.length - 1];
       setLastTimestamp(

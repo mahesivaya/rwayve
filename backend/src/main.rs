@@ -242,7 +242,8 @@ async fn index() -> HttpResponse {
 #[derive(Deserialize)]
 pub struct EmailQuery {
     pub account_id: i32,
-    pub before: Option<i64>, // timestamp cursor
+    pub before: Option<i64>,      // timestamp
+    pub before_id: Option<i32>,   // 👈 ADD THIS
 }
 
 
@@ -252,18 +253,43 @@ async fn get_emails(
     query: web::Query<EmailQuery>,
 ) -> impl Responder {
 
-    let result = sqlx::query(
-        r#"
-        SELECT id, sender, subject, body_encrypted, body_iv, created_at
-        FROM emails
-        WHERE account_id = $1
-        ORDER BY created_at DESC
-        LIMIT 50
-        "#
-    )
-    .bind(query.account_id)
-    .fetch_all(pool.get_ref())
-    .await;
+    let result = if let Some(before) = query.before {
+    let before_time = before;
+    let before_id = query.before_id.unwrap_or(i32::MAX);
+        // 🔥 LOAD MORE (older emails)
+        sqlx::query(
+            r#"
+            SELECT id, sender, subject, body_encrypted, body_iv, created_at
+            FROM emails
+            WHERE account_id = $1
+            AND (
+                created_at < to_timestamp($2)
+                OR (created_at = to_timestamp($2) AND id < $3)
+            )
+            ORDER BY created_at DESC, id DESC
+            LIMIT 50
+            "#
+        )
+        .bind(query.account_id)
+        .bind(before_time)
+        .bind(before_id)
+        .fetch_all(pool.get_ref())
+        .await
+    } else {
+        // 🔥 INITIAL LOAD
+        sqlx::query(
+            r#"
+            SELECT id, sender, subject, body_encrypted, body_iv, created_at
+            FROM emails
+            WHERE account_id = $1
+            ORDER BY created_at DESC
+            LIMIT 50
+            "#
+        )
+        .bind(query.account_id)
+        .fetch_all(pool.get_ref())
+        .await
+    };
 
     match result {
         Ok(rows) => {

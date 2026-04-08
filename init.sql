@@ -8,31 +8,6 @@ CREATE TABLE IF NOT EXISTS email_accounts (
     last_sync BIGINT
 );
 
-
-CREATE TABLE IF NOT EXISTS meetings (
-  id SERIAL PRIMARY KEY,
-  title TEXT NOT NULL,
-  date DATE NOT NULL,
-  start_time TIME NOT NULL,
-  end_time TIME NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-
-CREATE TABLE IF NOT EXISTS emails (
-    id SERIAL PRIMARY KEY,
-    gmail_id TEXT NOT NULL,
-    account_id INTEGER,
-    subject TEXT,
-    sender TEXT,
-    receiver TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    body_encrypted TEXT NOT NULL,
-    body_iv TEXT NOT NULL,
-    UNIQUE(account_id, gmail_id)
-);
-
-
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
@@ -40,14 +15,64 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS messages (
+CREATE TABLE IF NOT EXISTS meetings (
     id SERIAL PRIMARY KEY,
-    sender_id INT,
-    receiver_id INT,
-    content_encrypted TEXT, 
-    content_iv TEXT,
+    title TEXT NOT NULL,
+    date DATE NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-ALTER TABLE emails ADD COLUMN body_encrypted TEXT;
-ALTER TABLE emails ADD COLUMN body_iv TEXT;
+CREATE TABLE IF NOT EXISTS emails (
+    id SERIAL PRIMARY KEY,
+    gmail_id TEXT NOT NULL,
+    account_id INTEGER REFERENCES email_accounts(id) ON DELETE CASCADE,
+
+    subject TEXT,
+    sender TEXT,
+    receiver TEXT,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    body_encrypted TEXT NOT NULL,
+    body_iv TEXT NOT NULL,
+
+    UNIQUE(account_id, gmail_id)
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id SERIAL PRIMARY KEY,
+    sender_id INT REFERENCES users(id) ON DELETE CASCADE,
+    receiver_id INT REFERENCES users(id) ON DELETE CASCADE,
+
+    content_encrypted TEXT,
+    content_iv TEXT,
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 🔥 INDEXES
+CREATE INDEX IF NOT EXISTS idx_emails_account_created
+ON emails (account_id, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_users
+ON messages (sender_id, receiver_id);
+
+CREATE INDEX IF NOT EXISTS idx_messages_id
+ON messages (id ASC);
+
+CREATE INDEX IF NOT EXISTS idx_meetings_date
+ON meetings (date);
+
+-- Emails pagination
+CREATE INDEX IF NOT EXISTS idx_emails_account_created
+ON emails (account_id, created_at DESC, id DESC);
+
+-- Chat queries
+CREATE INDEX IF NOT EXISTS idx_messages_users
+ON messages (sender_id, receiver_id);
+
+-- Meetings
+CREATE INDEX IF NOT EXISTS idx_meetings_date
+ON meetings (date);
