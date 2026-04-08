@@ -415,6 +415,17 @@ where
 
     // ✅ Execute ONCE
     q.execute(pool).await?;
+    let email_json = serde_json::json!({
+        "id": new_id,
+        "sender": sender,
+        "subject": subject,
+        "created_at": chrono::Utc::now()
+    });
+    
+    // 🔥 BROADCAST TO WS
+    if let Some(addr) = EMAIL_SESSIONS.lock().unwrap().get(&user_id) {
+        addr.do_send(NewEmail(email_json.to_string()));
+    }
 
     Ok(())
 }
@@ -701,4 +712,21 @@ async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
             )
         }
     }
+}
+
+
+use crate::email_ws::{EMAIL_SESSIONS, NewEmail};
+
+let email_json = serde_json::json!({
+    "id": 0, // optional (or skip)
+    "sender": sender,
+    "subject": subject,
+    "body": body,
+    "created_at": chrono::Utc::now()
+}).to_string();
+
+// 🔥 BROADCAST TO ALL CONNECTED CLIENTS
+let sessions = EMAIL_SESSIONS.lock().unwrap();
+for addr in sessions.iter() {
+    addr.do_send(NewEmail(email_json.clone()));
 }

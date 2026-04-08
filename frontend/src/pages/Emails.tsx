@@ -22,8 +22,8 @@ export default function Emails() {
   const [activeAccount, setActiveAccount] = useState<number | null>(null);
   const [showCompose, setShowCompose] = useState(false);
 
-  // ✅ FIXED: declare globally
-  const [lastTimestamp, setLastTimestamp] = useState<number | null>(null);
+  const [lastTimestamp, setLastTimestamp] = useState<string | null>(null);
+  const [lastId, setLastId] = useState<number | null>(null); // 🔥 FIXED
   const [loadingMore, setLoadingMore] = useState(false);
 
   const connectGmail = () => {
@@ -34,95 +34,95 @@ export default function Emails() {
   useEffect(() => {
     fetch("/api/accounts")
       .then(res => res.json())
-      .then((data: Account[]) => {
-        setAccounts(data);
-  
-        // ✅ AUTO SELECT FIRST ACCOUNT
-        if (data.length > 0) {
-          setActiveAccount(data[0].id);
-        }
-      })
+      .then(setAccounts)
       .catch(() => setAccounts([]));
   }, []);
 
   // ================= INITIAL LOAD =================
   useEffect(() => {
-    if (!activeAccount) return;
+    if (activeAccount === undefined) return;
   
-    // 🔥 RESET EVERYTHING (VERY IMPORTANT)
     setEmails([]);
     setSelected(null);
     setLastTimestamp(null);
-    fetch(`/api/emails?account_id=${activeAccount}`)
-      .then(res => res.json())
-      .then((data: Email[]) => {
-        console.log("Initial emails:", data); // 🔍 DEBUG
-        setEmails(data);
+    setLastId(null);
   
-        if (data.length > 0) {
-          setSelected(data[0]);
+    const url =
+      activeAccount !== null
+        ? `/api/emails?account_id=${activeAccount}`
+        : `/api/emails`;
   
-          const last = data[data.length - 1];
-          setLastTimestamp(
-            Math.floor(new Date(last.created_at).getTime() / 1000)
-          );
+    console.log("Initial Fetch:", url);
+  
+    fetch(url)
+      .then(async (res) => {
+        if (!res.ok) {
+          console.error(await res.text());
+          return [];
         }
+        return res.json();
+      })
+      .then((data: Email[]) => {
+        if (!data.length) return;
+  
+        setEmails(data);
+        setSelected(data[0]);
+  
+        const last = data[data.length - 1];
+  
+        // 🔥 FIX: USE FULL TIMESTAMP STRING
+        setLastTimestamp(last.created_at);
+        setLastId(last.id);
       })
       .catch(console.error);
+  
   }, [activeAccount]);
-
-  useEffect(() => {
-    if (!activeAccount) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/emails?account_id=${activeAccount}`);
-        const data: Email[] = await res.json();
-        if (data.length === 0) return;
-        setEmails(prev => {
-          const existingIds = new Set(prev.map(e => e.id));
-          // 🆕 only new emails
-          const newEmails = data.filter(e => !existingIds.has(e.id));
-          if (newEmails.length === 0) return prev;
-          return [...newEmails, ...prev]; // 🔥 prepend
-        });
-      } catch (err) {
-        console.error("Auto refresh error:", err);
-      }
-    }, 5000); // ⏱️ 5 sec
-    return () => clearInterval(interval);
-  }, [activeAccount]);
-
 
   // ================= LOAD MORE =================
   const loadMore = async () => {
-    if (!activeAccount || !lastTimestamp || loadingMore) return;
-
+    if (
+      lastTimestamp === null ||
+      lastId === null ||
+      emails.length === 0 ||
+      loadingMore
+    ) return;
+  
     setLoadingMore(true);
-    const last = emails[emails.length - 1];
-
+  
+    const url =
+      activeAccount !== null
+        ? `/api/emails?account_id=${activeAccount}&before=${encodeURIComponent(lastTimestamp)}&before_id=${lastId}`
+        : `/api/emails?before=${encodeURIComponent(lastTimestamp)}&before_id=${lastId}`;
+  
+    console.log("LoadMore URL:", url);
+  
     try {
-      const res = await fetch(
-        `/api/emails?account_id=${activeAccount}&before=${lastTimestamp}`
-      );
-
+      const res = await fetch(url);
+  
+      if (!res.ok) {
+        console.error(await res.text());
+        return;
+      }
+  
       const data: Email[] = await res.json();
-
-      if (data.length === 0) return;
-
-      setEmails(prev => {
-        const map = new Map(prev.map(e => [e.id, e]));
-        data.forEach(e => {
-          map.set(e.id, e); // overwrite duplicates safely
-        });
+  
+      if (!data.length) return;
+  
+      // 🔥 DEDUPE + MERGE
+      setEmails((prev) => {
+        const map = new Map(prev.map((e) => [e.id, e]));
+        data.forEach((e) => map.set(e.id, e));
         return Array.from(map.values());
       });
-
-      const last = data[data.length - 1];
-      setLastTimestamp(
-        Math.floor(new Date(last.created_at).getTime() / 1000)
-      );
+  
+      const newLast = data[data.length - 1];
+  
+      // 🔥 FIX: KEEP STRING TIMESTAMP
+      setLastTimestamp(newLast.created_at);
+      setLastId(newLast.id);
+  
     } catch (err) {
-      console.error(err);
+      console.error("LoadMore error:", err);
     } finally {
       setLoadingMore(false);
     }
@@ -134,14 +134,18 @@ export default function Emails() {
 
       {/* SIDEBAR */}
       <div className="sidebar">
-
-        <button onClick={() => setShowCompose(true)}>
-          + Compose
-        </button>
+        <button onClick={() => setShowCompose(true)}>+ Compose</button>
 
         <button onClick={connectGmail} className="add-email-btn">
           ➕ Add Email
         </button>
+
+        <div
+          className={`account-item ${activeAccount === null ? "active" : ""}`}
+          onClick={() => setActiveAccount(null)}
+        >
+          📥 ALL
+        </div>
 
         <div className="account-list">
           {accounts.map(acc => (
@@ -161,17 +165,10 @@ export default function Emails() {
           <div className="compose-modal">
             <div className="compose-box">
               <SendEmail />
-              <button onClick={() => setShowCompose(false)}>
-                Close
-              </button>
+              <button onClick={() => setShowCompose(false)}>Close</button>
             </div>
           </div>
         )}
-
-        <h3>Mailbox</h3>
-        <button>Inbox</button>
-        <button>Sent</button>
-        <button>Drafts</button>
       </div>
 
       {/* EMAIL LIST */}
@@ -188,23 +185,11 @@ export default function Emails() {
           </div>
         ))}
 
-        {/* ✅ Pagination button */}
         <div className="load-more-container">
-        <button
-          className="load-more-btn"
-          onClick={loadMore}
-          disabled={loadingMore}
-        >
-          {loadingMore ? (
-            <>
-              <span className="spinner"></span>
-              Loading...
-            </>
-          ) : (
-            "Load More Emails"
-          )}
-        </button>
-      </div>
+          <button onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "Loading..." : "Load More Emails"}
+          </button>
+        </div>
       </div>
 
       {/* EMAIL DETAIL */}
@@ -216,19 +201,16 @@ export default function Emails() {
             <hr />
 
             <div className="email-body">
-        {selected?.body ? (
-          selected.body.includes("<") ? (
-            <div
-              className="email-html"
-              dangerouslySetInnerHTML={{ __html: selected.body }}
-            />
-          ) : (
-            <pre className="email-text">{selected.body}</pre>
-          )
-        ) : (
-          <p className="empty">No content available</p>
-        )}
-      </div>
+              {selected.body ? (
+                selected.body.includes("<") ? (
+                  <div dangerouslySetInnerHTML={{ __html: selected.body }} />
+                ) : (
+                  <pre>{selected.body}</pre>
+                )
+              ) : (
+                <p>No content available</p>
+              )}
+            </div>
           </>
         ) : (
           <p>Select an email</p>

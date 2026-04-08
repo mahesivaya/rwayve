@@ -33,6 +33,7 @@ use base64::Engine;
 
 
 
+
 #[derive(FromRow)]
 struct User {
     id: i32,
@@ -239,11 +240,16 @@ async fn index() -> HttpResponse {
 }
 
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize, Default)]
 pub struct EmailQuery {
-    pub account_id: i32,
-    pub before: Option<i64>,      // timestamp
-    pub before_id: Option<i32>,   // 👈 ADD THIS
+    #[serde(default)]
+    pub account_id: Option<i32>,
+
+    #[serde(default)]
+    pub before: Option<NaiveDateTime>, // 🔥 MUST BE STRING
+
+    #[serde(default)]
+    pub before_id: Option<i32>,
 }
 
 
@@ -253,42 +259,80 @@ async fn get_emails(
     query: web::Query<EmailQuery>,
 ) -> impl Responder {
 
-    let result = if let Some(before) = query.before {
-    let before_time = before;
-    let before_id = query.before_id.unwrap_or(i32::MAX);
-        // 🔥 LOAD MORE (older emails)
-        sqlx::query(
-            r#"
-            SELECT id, sender, subject, body_encrypted, body_iv, created_at
-            FROM emails
-            WHERE account_id = $1
-            AND (
-                created_at < to_timestamp($2)
-                OR (created_at = to_timestamp($2) AND id < $3)
+    let query = query.into_inner();
+
+    let result = if let Some(before_time) = query.before {
+        let before_id = query.before_id.unwrap_or(i32::MAX);
+
+        if let Some(account_id) = query.account_id {
+            // ✅ PAGINATION (SPECIFIC ACCOUNT)
+            sqlx::query(
+                r#"
+                SELECT id, sender, subject, body_encrypted, body_iv, created_at
+                FROM emails
+                WHERE account_id = $1
+                AND (
+                    created_at < $2::timestamp
+                    OR (created_at = $2::timestamp AND id < $3)
+                )
+                ORDER BY created_at DESC, id DESC
+                LIMIT 50
+                "#
             )
-            ORDER BY created_at DESC, id DESC
-            LIMIT 50
-            "#
-        )
-        .bind(query.account_id)
-        .bind(before_time)
-        .bind(before_id)
-        .fetch_all(pool.get_ref())
-        .await
+            .bind(account_id)
+            .bind(before_time)
+            .bind(before_id)
+            .fetch_all(pool.get_ref())
+            .await
+
+        } else {
+            // ✅ PAGINATION (ALL EMAILS)
+            sqlx::query(
+                r#"
+                SELECT id, sender, subject, body_encrypted, body_iv, created_at
+                FROM emails
+                WHERE (
+                    created_at < $1::timestamp
+                    OR (created_at = $1::timestamp AND id < $2)
+                )
+                ORDER BY created_at DESC, id DESC
+                LIMIT 50
+                "#
+            )
+            .bind(before_time)
+            .bind(before_id)
+            .fetch_all(pool.get_ref())
+            .await
+        }
+
     } else {
-        // 🔥 INITIAL LOAD
-        sqlx::query(
-            r#"
-            SELECT id, sender, subject, body_encrypted, body_iv, created_at
-            FROM emails
-            WHERE account_id = $1
-            ORDER BY created_at DESC
-            LIMIT 50
-            "#
-        )
-        .bind(query.account_id)
-        .fetch_all(pool.get_ref())
-        .await
+        if let Some(account_id) = query.account_id {
+            // ✅ INITIAL LOAD (SPECIFIC ACCOUNT)
+            sqlx::query(
+                r#"
+                SELECT id, sender, subject, body_encrypted, body_iv, created_at
+                FROM emails
+                WHERE account_id = $1
+                ORDER BY created_at DESC, id DESC
+                LIMIT 50
+                "#
+            )
+            .bind(account_id)
+            .fetch_all(pool.get_ref())
+            .await
+        } else {
+            // ✅ INITIAL LOAD (ALL EMAILS)
+            sqlx::query(
+                r#"
+                SELECT id, sender, subject, body_encrypted, body_iv, created_at
+                FROM emails
+                ORDER BY created_at DESC, id DESC
+                LIMIT 50
+                "#
+            )
+            .fetch_all(pool.get_ref())
+            .await
+        }
     };
 
     match result {
@@ -297,7 +341,8 @@ async fn get_emails(
                 let id: i32 = row.try_get("id").unwrap();
                 let sender: String = row.try_get("sender").unwrap();
                 let subject: String = row.try_get("subject").unwrap();
-                let created_at: chrono::NaiveDateTime = row.try_get("created_at").unwrap();
+                let created_at: chrono::NaiveDateTime =
+                    row.try_get("created_at").unwrap();
 
                 let iv: Option<String> = row.try_get("body_iv").ok();
                 let enc: Option<String> = row.try_get("body_encrypted").ok();
@@ -319,12 +364,15 @@ async fn get_emails(
 
             HttpResponse::Ok().json(emails)
         }
+
         Err(e) => {
-            println!("DB error: {:?}", e);
+            println!("❌ DB error: {:?}", e);
             HttpResponse::InternalServerError().finish()
         }
     }
 }
+
+
 
 #[get("/api/accounts")]
 async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
