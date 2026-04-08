@@ -3,3 +3,4 @@ pub mod email;
 pub mod auth;
 pub mod email_request;
 pub mod scheduler;
+pub mod message;

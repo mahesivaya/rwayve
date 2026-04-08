@@ -44,10 +44,10 @@ CREATE TABLE IF NOT EXISTS messages (
     id SERIAL PRIMARY KEY,
     sender_id INT,
     receiver_id INT,
-    content TEXT,
+    content_encrypted TEXT, 
+    content_iv TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
-
 
 ALTER TABLE emails ADD COLUMN body_encrypted TEXT;
 ALTER TABLE emails ADD COLUMN body_iv TEXT;

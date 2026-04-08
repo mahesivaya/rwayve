@@ -1,12 +1,7 @@
 use crate::prelude::*;
+use crate::security::encryption::{encrypt, decrypt};
+use crate::models::message::{Message, MessageRow, ChatMessage};
 
-
-#[derive(Deserialize, Debug)]
-struct ChatMessage {
-    sender_id: i32,
-    receiver_id: i32,
-    content: String,
-}
 
 pub struct ChatSession {
     pub pool: PgPool,
@@ -45,17 +40,31 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                 if let Ok(data) = parsed {
                     let pool = self.pool.clone();
 
+                    // 🔐 ENCRYPT MESSAGE
+                    let (iv, encrypted) = match encrypt(&data.content) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            println!("❌ Encryption error: {:?}", e);
+                            return;
+                        }
+                    };
+
+                    let sender_id = data.sender_id;
+                    let receiver_id = data.receiver_id;
+
                     let fut = async move {
                         match sqlx::query(
-                            "INSERT INTO messages (sender_id, receiver_id, content) VALUES ($1, $2, $3)"
+                            "INSERT INTO messages (sender_id, receiver_id, content_encrypted, content_iv)
+                             VALUES ($1, $2, $3, $4)"
                         )
-                        .bind(data.sender_id)
-                        .bind(data.receiver_id)
-                        .bind(data.content)
+                        .bind(sender_id)
+                        .bind(receiver_id)
+                        .bind(encrypted)
+                        .bind(iv)
                         .execute(&pool)
                         .await
                         {
-                            Ok(_) => println!("✅ Message saved to DB"),
+                            Ok(_) => println!("🔐✅ Encrypted message saved"),
                             Err(e) => println!("❌ DB INSERT ERROR: {:?}", e),
                         }
                     };
@@ -63,7 +72,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                     ctx.spawn(actix::fut::wrap_future(fut));
                 }
 
-                // echo back to UI
+                // ✅ Keep UI working (send plaintext back)
                 ctx.text(text);
             }
 
@@ -84,23 +93,15 @@ pub struct QueryParams {
 }
 
 
-#[derive(Serialize, FromRow)]
-pub struct Message {
-    pub sender_id: i32,
-    pub receiver_id: i32,
-    pub content: String,
-}
-
-
 #[get("/api/messages")]
 pub async fn get_messages(
     pool: web::Data<PgPool>,
     query: web::Query<QueryParams>,
 ) -> impl Responder {
 
-    let result = sqlx::query_as::<_, Message>(
+    let result = sqlx::query(
         r#"
-        SELECT sender_id, receiver_id, content
+        SELECT sender_id, receiver_id, content_encrypted, content_iv
         FROM messages
         WHERE 
             (sender_id = $1 AND receiver_id = $2)
@@ -115,14 +116,29 @@ pub async fn get_messages(
     .await;
 
     match result {
-        Ok(messages) => HttpResponse::Ok().json(messages),
+        Ok(rows) => {
+            let messages: Vec<Message> = rows.into_iter().map(|row| {
+                let encrypted: String = row.get("content_encrypted");
+                let iv: String = row.get("content_iv");
+
+                // 🔓 DECRYPT HERE
+                let content = decrypt(&iv, &encrypted);
+
+                Message {
+                    sender_id: row.get("sender_id"),
+                    receiver_id: row.get("receiver_id"),
+                    content,
+                }
+            }).collect();
+
+            HttpResponse::Ok().json(messages)
+        }
 
         Err(e) => {
             println!("❌ DB error: {:?}", e);
             HttpResponse::InternalServerError().json(
                 serde_json::json!({ "error": "Failed to fetch messages" })
             )
-
         }
     }
 }
