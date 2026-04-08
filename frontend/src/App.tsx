@@ -7,6 +7,7 @@ import Home from "./pages/Home";
 import Emails from "./pages/Emails";
 import Chat from "./chat/Chat";
 import Scheduler from "./scheduler/Scheduler";
+import Drive from "./drive/DriveBox"; 
 
 import { useAuth } from "./auth/AuthContext";
 
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="emails" element={<Emails />} />
           <Route path="chat" element={<Chat />} />
           <Route path="scheduler" element={<Scheduler />} />
+          <Route path="drive" element={<Drive />} />
         </Route>
       </Route>
 

@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS files (
+    id BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    size BIGINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);

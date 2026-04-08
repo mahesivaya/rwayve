@@ -17,6 +17,7 @@ export default function Layout() {
           <Link to="/emails">Emails</Link>
           <Link to="/chat">Chat</Link>
           <Link to="/scheduler">Scheduler</Link>
+          <Link to="/drive">Files</Link>
         </div>
 
         <div className="actions">

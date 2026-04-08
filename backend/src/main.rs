@@ -19,6 +19,8 @@ use crate::chat::get_messages;
 mod chat;
 mod gmail;
 mod scheduler;
+mod files;
+use files::{upload_file, get_files};
 use crate::scheduler::{create_meeting, get_meetings};
 use anyhow::Result;
 use aes_gcm::{
@@ -469,6 +471,8 @@ async fn main() -> std::io::Result<()> {
             .service(get_accounts)
             .service(get_messages)
             .service(get_users)
+            .service(upload_file)
+            .service(get_files)
             .route("/gmail/login", web::get().to(gmail_login))
             .route("/oauth/callback", web::get().to(oauth_callback))
             .route("/ws/chat", web::get().to(chat_ws))

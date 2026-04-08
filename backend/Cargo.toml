@@ -37,3 +37,6 @@ jsonwebtoken = "9"
 base64 = "0.21"
 aes-gcm = "0.10.3"
 rand = { version = "0.8", features = ["std"] }
+actix-multipart = "0.6"
+futures-util = "0.3"
+uuid = { version = "1", features = ["v4"] }
