@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import "./chat.css";
 
 type User = {
   id: number;
@@ -19,7 +20,6 @@ export default function Chat() {
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
-  // const currentUserId = 1;
   const { user } = useAuth();
   const currentUserId = user?.id;
 
@@ -29,13 +29,17 @@ export default function Chat() {
   useEffect(() => {
     fetch("/api/users")
       .then(res => res.json())
-      .then(setUsers)
+      .then(data => {
+        console.log("USERS API:", data); // 👈 ADD THIS
+        setUsers(data);
+      })
       .catch(err => console.error("Users error:", err));
   }, []);
 
   // ✅ WebSocket connect
   useEffect(() => {
     if (!currentUserId) return;
+
     const ws = new WebSocket(
       `ws://${window.location.host}/ws/chat?user_id=${currentUserId}`
     );
@@ -43,10 +47,8 @@ export default function Chat() {
     ws.onopen = () => console.log("✅ WS connected");
 
     ws.onmessage = (event) => {
-      console.log("📩 WS RAW:", event.data);
       try {
         const msg = JSON.parse(event.data);
-        console.log("✅ Parsed:", msg);
         setMessages(prev => [...prev, msg]);
       } catch {
         console.log("Non-JSON:", event.data);
@@ -59,15 +61,15 @@ export default function Chat() {
     return () => ws.close();
   }, [currentUserId]);
 
-  // ✅ Load chat history when user selected
+  // ✅ Load chat history
   useEffect(() => {
-    if (!selectedUser) return;
+    if (!selectedUser || !currentUserId) return;
 
     fetch(`/api/messages?user1=${currentUserId}&user2=${selectedUser.id}`)
       .then(res => res.json())
       .then(setMessages)
       .catch(console.error);
-  }, [selectedUser]);
+  }, [selectedUser, currentUserId]);
 
   // ✅ Auto scroll
   useEffect(() => {
@@ -87,13 +89,10 @@ export default function Chat() {
     };
 
     socket.send(JSON.stringify(msg));
-
-    // instant UI
-    // setMessages(prev => [...prev, msg]);
     setInput("");
   };
 
-  // ✅ Filter messages for current chat
+  // ✅ Filter messages
   const chatMessages = messages.filter(
     m =>
       selectedUser &&
@@ -104,67 +103,58 @@ export default function Chat() {
   );
 
   return (
-    <div style={{ display: "flex", height: "100vh" }}>
+    <div className="chat-container">
 
       {/* 🧑 USER LIST */}
-      <div style={{ width: "250px", borderRight: "1px solid #ccc" }}>
+      <div className="user-list">
         <h3>Users</h3>
 
-        {users.map(user => (
-          <div
-            key={user.id}
-            onClick={() => setSelectedUser(user)}
-            style={{
-              padding: "10px",
-              cursor: "pointer",
-              background: selectedUser?.id === user.id ? "#eee" : "white"
-            }}
-          >
-            📧 {user.email}
-          </div>
-        ))}
+        {users
+          .filter(u => u.id !== currentUserId)
+          .map(u => (
+            <div
+              key={u.id}
+              onClick={() => setSelectedUser(u)}
+              className={`user-item ${
+                selectedUser?.id === u.id ? "active" : ""
+              }`}
+            >
+              📧 {u.email}
+            </div>
+          ))}
       </div>
 
       {/* 💬 CHAT AREA */}
-      <div style={{ flex: 1, padding: "20px", display: "flex", flexDirection: "column" }}>
-        <h3>
-          Chat {selectedUser ? `with ${selectedUser.email}` : ""}
+      <div className="chat-area">
+        <h3 className="chat-header">
+          {selectedUser ? `Chat with ${selectedUser.email}` : "Select a user"}
         </h3>
 
-        {/* messages */}
-        <div style={{
-          flex: 1,
-          overflowY: "auto",
-          border: "1px solid #ccc",
-          marginBottom: "10px",
-          padding: "10px"
-        }}>
+        <div className="messages">
           {chatMessages.map((msg, i) => (
-            <div key={i} style={{
-              textAlign: msg.sender_id === currentUserId ? "right" : "left",
-              marginBottom: "8px"
-            }}>
-              <span style={{
-                background: msg.sender_id === currentUserId ? "#d1e7ff" : "#eee",
-                padding: "6px 10px",
-                borderRadius: "10px",
-                display: "inline-block"
-              }}>
+            <div
+              key={i}
+              className={`message ${
+                msg.sender_id === currentUserId ? "me" : ""
+              }`}
+            >
+              <span
+                className={`bubble ${
+                  msg.sender_id === currentUserId ? "me" : "other"
+                }`}
+              >
                 {msg.content}
               </span>
             </div>
           ))}
-
           <div ref={endRef} />
         </div>
 
-        {/* input */}
-        <div style={{ display: "flex" }}>
+        <div className="chat-input">
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
             placeholder="Type message..."
-            style={{ flex: 1, marginRight: "10px", height: "60px" }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
