@@ -1,13 +1,41 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./drive.css";
+import { useAuth } from "../auth/AuthContext";
+
+type UploadedFile = {
+  id: number;
+  name: string;
+  file_type: string;
+  size: number;
+  drive_url?: string;
+  created_at: string;
+};
 
 export default function Drive() {
+  const { user } = useAuth();
+
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+
+  const fetchFiles = async () => {
+    if (!user) return;
+
+    try {
+      const res = await fetch(`/api/files?user_id=${user.id}`);
+      const data = await res.json();
+      setUploadedFiles(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchFiles();
+  }, [user]);
 
   const handleFiles = (selected: FileList | null) => {
     if (!selected) return;
-    const arr = Array.from(selected);
-    setFiles(prev => [...prev, ...arr]);
+    setFiles((prev) => [...prev, ...Array.from(selected)]);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -19,69 +47,100 @@ export default function Drive() {
     if (!files.length) return alert("No files selected");
 
     const formData = new FormData();
-    files.forEach(f => formData.append("files", f));
+    files.forEach((f) => formData.append("files", f));
 
     try {
-      const res = await fetch("/api/files/upload", {
+      await fetch("/api/files/upload", {
         method: "POST",
         body: formData,
       });
 
-      if (!res.ok) throw new Error("Upload failed");
-
-      alert("Upload successful 🚀");
       setFiles([]);
-    } catch (err) {
-      console.error(err);
-      alert("Upload error");
+      fetchFiles();
+    } catch {
+      alert("Upload failed");
     }
   };
 
   return (
     <div className="drive-container">
 
-      {/* HEADER */}
-      <div className="drive-header">
-        <h2>📁 My Drive</h2>
-        <button className="upload-btn" onClick={uploadFiles}>
-          Upload
-        </button>
-      </div>
+      {/* 🔹 Upload Section */}
+      <div className="upload-section">
+        <div className="drive-header">
+          <h2>📁 My Drive</h2>
+          <button className="upload-btn" onClick={uploadFiles}>
+            Upload
+          </button>
+        </div>
 
-      {/* DROP ZONE */}
-      <div
-        className="drop-zone"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleDrop}
-      >
-        <p>Drag & Drop files here</p>
-        <span>or</span>
-        <label className="browse-btn">
-          Browse Files
-          <input
-            type="file"
-            multiple
-            onChange={(e) => handleFiles(e.target.files)}
-            hidden
-          />
-        </label>
-      </div>
+        <div
+          className="drop-zone"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDrop}
+        >
+          <p>Drag & Drop files here</p>
+          <span>or</span>
 
-      {/* FILE LIST */}
-      <div className="file-list">
-        {files.map((file, i) => (
-          <div key={i} className="file-item">
-            <div className="file-info">
-              <span className="file-icon">📄</span>
-              <div>
-                <p className="file-name">{file.name}</p>
-                <p className="file-size">
-                  {(file.size / 1024).toFixed(2)} KB
-                </p>
-              </div>
-            </div>
+          <label className="browse-btn">
+            Browse Files
+            <input
+              type="file"
+              multiple
+              onChange={(e) => handleFiles(e.target.files)}
+              hidden
+            />
+          </label>
+        </div>
+
+        {files.length > 0 && (
+          <div className="selected-files">
+            <h4>📤 Selected Files</h4>
+            <ul>
+              {files.map((f, i) => (
+                <li key={i}>
+                  {f.name} ({(f.size / 1024).toFixed(2)} KB)
+                </li>
+              ))}
+            </ul>
           </div>
-        ))}
+        )}
+      </div>
+
+      {/* 🔹 Files Section */}
+      <div className="files-section">
+        <h3>📁 Uploaded Files</h3>
+
+        {uploadedFiles.length === 0 ? (
+          <p>No files uploaded yet</p>
+        ) : (
+          <div className="file-list">
+            {uploadedFiles.map((file) => (
+              <div key={file.id} className="file-row">
+
+                <div className="file-left">
+                  <span className="file-icon">📄</span>
+
+                  <div className="file-main">
+                    <div className="file-name">{file.name}</div>
+                    <div className="file-meta">
+                      {file.file_type} • {(file.size / 1024).toFixed(1)} KB
+                    </div>
+                  </div>
+                </div>
+
+                <div className="file-right">
+                  {file.drive_url && (
+                    <a href={file.drive_url} target="_blank" rel="noreferrer">
+                      Open
+                    </a>
+                  )}
+                </div>
+
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
     </div>

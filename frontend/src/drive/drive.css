@@ -1,10 +1,20 @@
-/* Container */
+/* 🔥 FULL PAGE FIX */
 .drive-container {
     padding: 20px;
-    height: 100vh;
     background: #f8f9fa;
-    display: flex;
-    flex-direction: column;
+  
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  
+  /* Upload Section */
+  .upload-section {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    width: 100%;
   }
   
   /* Header */
@@ -12,15 +22,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 15px;
   }
   
-  .drive-header h2 {
-    font-size: 22px;
-    font-weight: 600;
-  }
-  
-  /* Upload Button */
   .upload-btn {
     background: #1a73e8;
     color: white;
@@ -37,12 +41,9 @@
   /* Drop Zone */
   .drop-zone {
     border: 2px dashed #ccc;
-    background: white;
     border-radius: 10px;
-    padding: 40px;
+    padding: 30px;
     text-align: center;
-    margin-bottom: 20px;
-    transition: 0.2s;
   }
   
   .drop-zone:hover {
@@ -50,17 +51,7 @@
     background: #f1f6ff;
   }
   
-  .drop-zone p {
-    font-size: 16px;
-    margin-bottom: 5px;
-  }
-  
-  .drop-zone span {
-    font-size: 12px;
-    color: gray;
-  }
-  
-  /* Browse Button */
+  /* Browse */
   .browse-btn {
     display: inline-block;
     margin-top: 10px;
@@ -69,47 +60,68 @@
     color: #1a73e8;
     border-radius: 6px;
     cursor: pointer;
-    font-weight: 500;
   }
   
-  .browse-btn:hover {
-    background: #d2e3fc;
+  /* Selected Files */
+  .selected-files {
+    margin-top: 15px;
+  }
+  
+  /* 🔥 FULL WIDTH FILE SECTION */
+  .files-section {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+  
+    width: 100%;
   }
   
   /* File List */
   .file-list {
-    flex: 1;
-    overflow-y: auto;
+    width: 100%;
   }
   
-  /* File Item */
-  .file-item {
-    background: white;
-    padding: 10px 15px;
-    border-radius: 8px;
-    margin-bottom: 10px;
+  /* File Row */
+  .file-row {
     display: flex;
-    align-items: center;
     justify-content: space-between;
+    align-items: center;
+  
+    padding: 12px;
+    border-bottom: 1px solid #eee;
   }
   
-  /* File Info */
-  .file-info {
+  .file-row:hover {
+    background: #f5f7fa;
+  }
+  
+  /* Left */
+  .file-left {
     display: flex;
     align-items: center;
+    gap: 10px;
   }
   
   .file-icon {
-    font-size: 22px;
-    margin-right: 10px;
+    font-size: 18px;
+  }
+  
+  .file-main {
+    display: flex;
+    flex-direction: column;
   }
   
   .file-name {
-    font-size: 14px;
     font-weight: 500;
   }
   
-  .file-size {
+  .file-meta {
     font-size: 12px;
     color: gray;
+  }
+  
+  /* Right */
+  .file-right a {
+    text-decoration: none;
+    color: #007bff;
   }

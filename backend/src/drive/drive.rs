@@ -6,6 +6,17 @@ use std::fs;
 use std::io::Write;
 use uuid::Uuid;
 
+
+type FileItem = {
+    id: number;
+    name: string;
+    file_type: string;
+    size: number;
+    drive_url?: string;
+    created_at: string;
+  };
+
+  
 #[derive(serde::Serialize, FromRow)]
 pub struct FileRecord {
     pub id: i64,
@@ -67,14 +78,16 @@ pub async fn upload_file(
 }
 
 #[get("/api/files")]
-pub async fn get_files(pool: web::Data<PgPool>) -> impl Responder {
-    let result = sqlx::query_as::<_, FileRecord>(
+async fn get_files(pool: web::Data<PgPool>, user_id: i32) -> impl Responder {
+    let result = sqlx::query_as::<_, File>(
         r#"
-        SELECT id, name, file_path, size, created_at
+        SELECT id, name, file_type, size, drive_url, created_at
         FROM files
+        WHERE user_id = $1 AND is_deleted = false
         ORDER BY created_at DESC
         "#
     )
+    .bind(user_id)
     .fetch_all(pool.get_ref())
     .await;
 

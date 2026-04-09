@@ -14,41 +14,43 @@ export default function App() {
   const { user } = useAuth();
 
   return (
-    <Routes>
+<Routes>
 
-      {/* 🔓 PUBLIC ROOT */}
-      <Route
-        path="/"
-        element={
-          user ? <Navigate to="/emails" /> : <Navigate to="/login" />
-        }
-      />
+{/* ROOT */}
+<Route
+  path="/"
+  element={<Navigate to={user ? "/home" : "/login"} />}
+/>
 
-      {/* 🔓 Public pages */}
-      <Route
-        path="/login"
-        element={user ? <Navigate to="/emails" /> : <Login />}
-      />
-      <Route
-        path="/register"
-        element={user ? <Navigate to="/emails" /> : <Register />}
-      />
+{/* PUBLIC */}
+<Route
+  path="/login"
+  element={user ? <Navigate to="/home" /> : <Login />}
+/>
+<Route
+  path="/register"
+  element={user ? <Navigate to="/home" /> : <Register />}
+/>
 
-      {/* 🔐 Protected */}
-      <Route element={<ProtectedRoute />}>
-        <Route element={<Layout />}>
-          <Route path="/emails" element={<Emails />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/scheduler" element={<Scheduler />} />
-          <Route path="/drive" element={<Drive />} />
-        </Route>
-      </Route>
+{/* PROTECTED */}
+<Route element={<ProtectedRoute />}>
+  <Route element={<Layout />}>
 
-      {/* fallback */}
-      <Route
-        path="*"
-        element={<Navigate to={user ? "/emails" : "/login"} />}
-      />
-    </Routes>
+    <Route path="/home" element={<Home />} /> ✅
+    <Route path="/emails" element={<Emails />} />
+    <Route path="/chat" element={<Chat />} />
+    <Route path="/scheduler" element={<Scheduler />} />
+    <Route path="/drive" element={<Drive />} />
+
+  </Route>
+</Route>
+
+{/* FALLBACK */}
+<Route
+  path="*"
+  element={<Navigate to={user ? "/home" : "/login"} />}
+/>
+
+</Routes>
   );
 }

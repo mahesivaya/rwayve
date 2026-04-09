@@ -25,15 +25,6 @@ export default function Home() {
       {/* HEADER */}
       <div className="dashboard-header">
         <h2>Welcome, {user.email} 👋</h2>
-        <button
-          className="logout-btn"
-          onClick={() => {
-            logout();
-            navigate("/login");
-          }}
-        >
-          Logout
-        </button>
       </div>
 
       {/* GRID */}
