@@ -50,15 +50,15 @@ pub async fn upload_file(
         }
 
         // ✅ Save to DB
-        let _ = sqlx::query!(
+        let _ = sqlx::query(
             r#"
             INSERT INTO files (name, file_path, size)
             VALUES ($1, $2, $3)
-            "#,
-            filename,
-            filepath,
-            size
+            "#
         )
+        .bind(&filename)
+        .bind(&filepath)
+        .bind(size)
         .execute(pool.get_ref())
         .await;
     }

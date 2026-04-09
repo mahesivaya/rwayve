@@ -13,31 +13,48 @@ export default function Home() {
         <>
           <p>You are logged in as <b>{user.email}</b></p>
 
-          {/* 🔥 BUTTON TO EMAILS */}
+          {/* 🔥 EMAILS */}
           <button onClick={() => navigate("/emails")}>
             Go to Emails
           </button>
 
+          {/* 🔥 CHAT */}
+          <button onClick={() => navigate("/chat")}>
+            Go to Chat
+          </button>
 
-          {/* ✅ LOGOUT BUTTON */}
+          {/* 🔥 SCHEDULER */}
+          <button onClick={() => navigate("/scheduler")}>
+            Go to Scheduler
+          </button>
+
+          {/* 🔥 DRIVE */}
+          <button onClick={() => navigate("/drive")}>
+            Go to Drive
+          </button>
+
+          {/* ✅ LOGOUT */}
           <button
             onClick={() => {
               logout();
-              navigate("/login");
+              navigate("/");
             }}
           >
             Logout
           </button>
-
-          <p>Go to Emails, Chat, or Scheduler to start.</p>
         </>
       ) : (
         <>
           <p>Your all-in-one platform for Email, Chat, and Scheduling.</p>
 
-          {/* ✅ LOGIN BUTTON */}
+          {/* ✅ LOGIN */}
           <button onClick={() => navigate("/login")}>
             Login
+          </button>
+
+          {/* ✅ REGISTER (NEW) */}
+          <button onClick={() => navigate("/register")}>
+            Register
           </button>
         </>
       )}

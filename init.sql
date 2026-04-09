@@ -52,6 +52,14 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS files (
+    id BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    size BIGINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
 -- 🔥 INDEXES
 CREATE INDEX IF NOT EXISTS idx_emails_account_created
 ON emails (account_id, created_at DESC, id DESC);

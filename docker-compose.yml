@@ -25,6 +25,7 @@ services:
       - .env
     volumes:
     - ./client_secret.json:/app/client_secret.json
+    - ./uploads:/app/uploads 
     ports:
       - "8080:8080"
 

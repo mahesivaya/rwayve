@@ -19,8 +19,8 @@ use crate::chat::get_messages;
 mod chat;
 mod gmail;
 mod scheduler;
-mod files;
-use files::{upload_file, get_files};
+mod drive;
+use crate::drive::drive::{upload_file, get_files};
 use crate::scheduler::{create_meeting, get_meetings};
 use anyhow::Result;
 use aes_gcm::{
