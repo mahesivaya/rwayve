@@ -1,57 +1,17 @@
-/* ================= FULL APP ================= */
-.app {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  font-family: monospace;
-  overflow: hidden; /* 🔥 prevent full page scroll */
+/* ================= ROOT ================= */
+body {
+  background: #ffffff;
+  color: #111827;
+  margin: 0;
+  font-family: Inter, Arial, sans-serif;
 }
 
-/* ================= HEADER ================= */
-.header {
-  height: 60px;
-  background: #1e2a38;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
-  flex-shrink: 0; /* 🔥 prevents shrinking */
-}
-
-.logo {
-  font-weight: bold;
-  font-size: 20px;
-}
-
-.nav span {
-  margin: 0 10px;
-  cursor: pointer;
-}
-
-.nav .active {
-  font-weight: bold;
-  border-bottom: 2px solid white;
-}
-
-.actions button {
-  margin-left: 10px;
-  padding: 6px 12px;
-  border: none;
-  cursor: pointer;
-}
-
-.login {
-  background: transparent;
-  border: 1px solid white;
-  color: white;
-}
-
-/* ================= MAIN LAYOUT ================= */
+/* ================= MAIN ================= */
 .main {
   display: flex;
   flex: 1;
-  overflow: hidden; /* 🔥 key for inner scroll */
+  height: 100%;
+  overflow: hidden;
 }
 
 /* ================= SIDEBAR ================= */
@@ -59,186 +19,148 @@
   width: 240px;
   background: #ffffff;
   padding: 16px;
-  border-right: 1px solid #ddd;
-  overflow-y: auto; /* optional scroll */
-  flex-shrink: 0;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
 }
 
-.sidebar button {
-  font-family: monospace;
-  width: 100%;
-  margin-bottom: 10px;
-  padding: 8px;
-}
-
-/* ================= EMAIL LIST ================= */
-.email-list {
-  width: 300px;
-  border-left: 1px solid #ccc;
-  border-right: 1px solid #ccc;
-  overflow-y: auto; /* 🔥 scroll here */
-  height: 100%;
-  flex-shrink: 0;
-}
-
-.email-item {
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
-}
-
-.email-item:hover {
-  background: #f5f5f5;
-}
-
-.email-item.active {
-  background: #e8f0fe;
-}
-
-.email-item h3 {
-  font-size: 14px;        /* 🔥 smaller */
-  font-weight: 300;       /* 🔥 less bold */
-  margin: 0;
-  color: #222;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  padding: 10px;
-}
-
-/* ================= EMAIL DETAIL ================= */
-.email-detail {
-  flex: 1;
-  padding: 20px;
-  overflow-y: auto; /* 🔥 scroll here */
-  height: 100%;
-}
-
-/* ================= ADD EMAIL BUTTON ================= */
-.add-email-btn {
-  width: 100%;
-  background: #000;
-  color: #fff;
+/* ================= BUTTONS ================= */
+.compose-btn {
+  background: #1a73e8;
+  color: white;
+  padding: 12px;
+  border-radius: 20px;
   border: none;
-  padding: 12px 14px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
   cursor: pointer;
-  text-align: left;
-  margin-bottom: 20px;
-  transition: 0.2s;
-}
-
-.add-email-btn:hover {
-  background: #333;
-}
-
-/* ================= MAILBOX ================= */
-.mailbox-title {
   margin-bottom: 12px;
-  color: #555;
 }
 
-.mail-btn {
-  width: 100%;
+.compose-btn:hover {
+  background: #1669c1;
+}
+
+.add-account-btn {
   padding: 10px;
-  margin-bottom: 10px;
-  border: 1px solid #ccc;
-  background: white;
-  border-radius: 6px;
+  border-radius: 8px;
+  background: #f9fafb;
+  color: #111827;
+  border: 1px solid #e5e7eb;
+  margin-bottom: 16px;
   cursor: pointer;
 }
 
-.mail-btn:hover {
-  background: #eee;
+.add-account-btn:hover {
+  background: #f3f4f6;
 }
 
-/* ================= ACCOUNT LIST ================= */
-.account-list {
-  margin-bottom: 20px;
+/* ================= MAIL LIST ================= */
+.mail-list {
+  margin-top: 10px;
 }
 
-.account-item {
-  padding: 8px 10px;
-  font-size: 13px;
-  color: #333;
+.mail-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin: 12px 0 6px;
+}
+
+.mail-item {
+  padding: 10px 12px;
+  border-radius: 8px;
   cursor: pointer;
-  border-radius: 6px;
-  margin-bottom: 6px;
-  transition: 0.2s;
+  margin-bottom: 4px;
+  font-size: 14px;
+  color: #374151;
 }
 
-.account-item:hover {
-  background: #f1f3f4;
+.mail-item:hover {
+  background: #f3f4f6;
 }
 
-.account-item.active {
+.mail-item.active {
   background: #e8f0fe;
   color: #1a73e8;
   font-weight: 500;
 }
 
-.no-accounts {
-  font-size: 12px;
-  color: #888;
-  margin-bottom: 10px;
+/* ================= EMAIL LIST ================= */
+.email-list {
+  width: 340px;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  overflow-y: auto;
 }
 
-/* ================= SCROLLBAR (OPTIONAL) ================= */
+/* EMAIL ITEM */
+/* EMAIL ITEM (compact) */
+.email-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  cursor: pointer;
+}
+
+/* Hover */
+.email-item:hover {
+  background: #f9fafb;
+}
+
+/* Active */
+.email-item.active {
+  background: #e8f0fe;
+  border-left: 4px solid #1a73e8;
+}
+
+/* Top row */
+.email-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Sender */
+.email-sender {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Time */
+.email-time {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* Subject */
+.email-subject {
+  font-size: 14px;
+  margin-top: 2px;
+  color: #111827;
+}
+
+/* ================= EMAIL DETAIL ================= */
+.email-detail {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  background: #ffffff;
+}
+
+/* BODY */
+.email-body {
+  margin-top: 16px;
+  line-height: 1.6;
+  color: #111827;
+}
+
+/* ================= SCROLLBAR ================= */
 .email-list::-webkit-scrollbar,
-.email-detail::-webkit-scrollbar,
-.sidebar::-webkit-scrollbar {
+.email-detail::-webkit-scrollbar {
   width: 6px;
 }
 
 .email-list::-webkit-scrollbar-thumb,
-.email-detail::-webkit-scrollbar-thumb,
-.sidebar::-webkit-scrollbar-thumb {
-  background: #c4c5cf;
-  border-radius: 4px;
+.email-detail::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 6px;
 }
-
-/* ================= LOAD MORE ================= */
-.load-more-container {
-  display: flex;
-  justify-content: center;
-  padding: 16px;
-}
-
-.load-more-btn {
-  background: #1a73e8;
-  color: white;
-  border: none;
-  padding: 10px 18px;
-  border-radius: 20px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.load-more-btn:hover {
-  background: #1669c1;
-}
-
-.load-more-btn:disabled {
-  background: #aaa;
-  cursor: not-allowed;
-}
-
-/* 🔄 Spinner */
-.spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid white;
-  border-top: 2px solid transparent;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-

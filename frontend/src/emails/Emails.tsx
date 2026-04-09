@@ -23,7 +23,7 @@ export default function Emails() {
   const [showCompose, setShowCompose] = useState(false);
 
   const [lastTimestamp, setLastTimestamp] = useState<string | null>(null);
-  const [lastId, setLastId] = useState<number | null>(null); // 🔥 FIXED
+  const [lastId, setLastId] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const connectGmail = () => {
@@ -38,128 +38,81 @@ export default function Emails() {
       .catch(() => setAccounts([]));
   }, []);
 
-  // ================= INITIAL LOAD =================
+  // ================= LOAD =================
   useEffect(() => {
-    if (activeAccount === undefined) return;
-  
-    setEmails([]);
-    setSelected(null);
-    setLastTimestamp(null);
-    setLastId(null);
-  
     const url =
       activeAccount !== null
         ? `/api/emails?account_id=${activeAccount}`
         : `/api/emails`;
-  
-    console.log("Initial Fetch:", url);
-  
+
     fetch(url)
-      .then(async (res) => {
-        if (!res.ok) {
-          console.error(await res.text());
-          return [];
-        }
-        return res.json();
-      })
+      .then(res => res.json())
       .then((data: Email[]) => {
-        if (!data.length) return;
-  
         setEmails(data);
         setSelected(data[0]);
-  
-        const last = data[data.length - 1];
-  
-        // 🔥 FIX: USE FULL TIMESTAMP STRING
-        setLastTimestamp(last.created_at);
-        setLastId(last.id);
-      })
-      .catch(console.error);
-  
+
+        if (data.length) {
+          const last = data[data.length - 1];
+          setLastTimestamp(last.created_at);
+          setLastId(last.id);
+        }
+      });
   }, [activeAccount]);
 
   // ================= LOAD MORE =================
   const loadMore = async () => {
-    if (
-      lastTimestamp === null ||
-      lastId === null ||
-      emails.length === 0 ||
-      loadingMore
-    ) return;
-  
+    if (!lastTimestamp || !lastId || loadingMore) return;
+
     setLoadingMore(true);
-  
+
     const url =
       activeAccount !== null
-        ? `/api/emails?account_id=${activeAccount}&before=${encodeURIComponent(lastTimestamp)}&before_id=${lastId}`
-        : `/api/emails?before=${encodeURIComponent(lastTimestamp)}&before_id=${lastId}`;
-  
-    console.log("LoadMore URL:", url);
-  
-    try {
-      const res = await fetch(url);
-  
-      if (!res.ok) {
-        console.error(await res.text());
-        return;
-      }
-  
-      const data: Email[] = await res.json();
-  
-      if (!data.length) return;
-  
-      // 🔥 DEDUPE + MERGE
-      setEmails((prev) => {
-        const map = new Map(prev.map((e) => [e.id, e]));
-        data.forEach((e) => map.set(e.id, e));
-        return Array.from(map.values());
-      });
-  
-      const newLast = data[data.length - 1];
-  
-      // 🔥 FIX: KEEP STRING TIMESTAMP
-      setLastTimestamp(newLast.created_at);
-      setLastId(newLast.id);
-  
-    } catch (err) {
-      console.error("LoadMore error:", err);
-    } finally {
-      setLoadingMore(false);
+        ? `/api/emails?account_id=${activeAccount}&before=${lastTimestamp}&before_id=${lastId}`
+        : `/api/emails?before=${lastTimestamp}&before_id=${lastId}`;
+
+    const res = await fetch(url);
+    const data: Email[] = await res.json();
+
+    setEmails(prev => [...prev, ...data]);
+
+    if (data.length) {
+      const last = data[data.length - 1];
+      setLastTimestamp(last.created_at);
+      setLastId(last.id);
     }
+
+    setLoadingMore(false);
   };
 
-  // ================= UI =================
   return (
     <div className="main">
 
       {/* SIDEBAR */}
       <div className="sidebar">
-        <button onClick={() => setShowCompose(true)}>+ Compose</button>
+        <button className="compose-btn" onClick={() => setShowCompose(true)}>
+          + Compose
+        </button>
 
         <button onClick={connectGmail} className="add-email-btn">
-          ➕ Add Email
+          ➕ Add Account
         </button>
 
         <div
           className={`account-item ${activeAccount === null ? "active" : ""}`}
           onClick={() => setActiveAccount(null)}
         >
-          📥 ALL
+          Inbox (All)
         </div>
 
-        <div className="account-list">
-          {accounts.map(acc => (
-            <div
-              key={acc.id}
-              className={`account-item ${
-                activeAccount === acc.id ? "active" : ""
-              }`}
-              onClick={() => setActiveAccount(acc.id)}
-            >
-              📧 {acc.email}
-            </div>
-          ))}
-        </div>
+        {accounts.map(acc => (
+          <div
+            key={acc.id}
+            className={`account-item ${activeAccount === acc.id ? "active" : ""}`}
+            onClick={() => setActiveAccount(acc.id)}
+          >
+            {acc.email}
+          </div>
+        ))}
 
         {showCompose && (
           <div className="compose-modal">
@@ -172,25 +125,37 @@ export default function Emails() {
       </div>
 
       {/* EMAIL LIST */}
-      <div className="email-list">
-        {emails.map(email => (
-          <div
-            key={email.id}
-            className={`email-item ${
-              selected?.id === email.id ? "active" : ""
-            }`}
-            onClick={() => setSelected(email)}
-          >
-            <h3>{email.subject}</h3>
-          </div>
-        ))}
+      {/* EMAIL LIST */}
+<div className="email-list">
+  {emails.map(email => (
+    <div
+      key={email.id}
+      className={`email-item ${
+        selected?.id === email.id ? "active" : ""
+      }`}
+      onClick={() => setSelected(email)}
+    >
+      <div className="email-top">
+        <span className="email-sender">{email.sender}</span>
 
-        <div className="load-more-container">
-          <button onClick={loadMore} disabled={loadingMore}>
-            {loadingMore ? "Loading..." : "Load More Emails"}
-          </button>
-        </div>
+        <span className="email-time">
+          {new Date(email.created_at).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </span>
       </div>
+
+      <div className="email-subject">{email.subject}</div>
+    </div>
+  ))}
+
+  <div className="load-more-container">
+    <button onClick={loadMore} disabled={loadingMore}>
+      {loadingMore ? "Loading..." : "Load More"}
+    </button>
+  </div>
+</div>
 
       {/* EMAIL DETAIL */}
       <div className="email-detail">
@@ -208,7 +173,7 @@ export default function Emails() {
                   <pre>{selected.body}</pre>
                 )
               ) : (
-                <p>No content available</p>
+                <p>No content</p>
               )}
             </div>
           </>
