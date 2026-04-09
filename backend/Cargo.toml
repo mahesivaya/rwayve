@@ -39,3 +39,4 @@ rand = { version = "0.8", features = ["std"] }
 actix-multipart = "0.6"
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
+lazy_static = "1.4"

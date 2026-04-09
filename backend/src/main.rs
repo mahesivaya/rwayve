@@ -8,6 +8,8 @@ mod gmail;
 mod scheduler;
 mod drive;
 pub mod security;
+mod call;
+
 
 
 // ==============================
@@ -18,6 +20,7 @@ use crate::chat::{chat_ws, get_messages};
 use crate::gmail::{gmail_login, oauth_callback, send};
 use crate::drive::{upload_file, get_files};
 use crate::scheduler::{create_meeting, get_meetings};
+use crate::call::call::call_ws;
 use crate::security::encryption::decrypt;
 
 
@@ -487,6 +490,7 @@ async fn main() -> std::io::Result<()> {
             .route("/gmail/login", web::get().to(gmail_login))
             .route("/oauth/callback", web::get().to(oauth_callback))
             .route("/ws/chat", web::get().to(chat_ws))
+            .route("/ws/call", web::get().to(call_ws))
     })
     .bind(("0.0.0.0", 8080))?
     .run()

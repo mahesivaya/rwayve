@@ -2128,6 +2128,7 @@ dependencies = [
  "futures",
  "futures-util",
  "jsonwebtoken",
+ "lazy_static",
  "once_cell",
  "rand 0.8.5",
  "reqwest",

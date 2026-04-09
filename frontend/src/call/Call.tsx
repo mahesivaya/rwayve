@@ -35,8 +35,16 @@ export default function Call() {
   useEffect(() => {
     if (!currentUserId) return;
 
-    const ws = new WebSocket(`ws://${window.location.host}/ws/call?user_id=${currentUserId}`);
+    const ws = new WebSocket(`ws://localhost:8080/ws/call?user_id=${currentUserId}`);
     socketRef.current = ws;
+
+    ws.onopen = () => {
+      console.log("✅ WebSocket connected");
+    };
+
+    ws.onclose = () => {
+      console.log("❌ WebSocket closed");
+    };
 
     ws.onmessage = async (event) => {
       const data = JSON.parse(event.data);
@@ -48,7 +56,7 @@ export default function Call() {
       }
 
       if (data.type === "call_accept") {
-        await startWebRTC(true, data.from);
+        await startWebRTC(true, data.from, data.callType || "video");
         setInCall(true);
         return;
       }
@@ -58,8 +66,13 @@ export default function Call() {
         return;
       }
 
-      const pc = pcRef.current;
-      if (!pc) return;
+      let pc = pcRef.current;
+
+        if (!pc) {
+          console.log("⚠️ PC not ready, creating...");
+          await startWebRTC(false, data.from, data.callType || "video");
+          pc = pcRef.current;
+        }
 
       // 📥 OFFER
       if (data.type === "Offer") {
@@ -76,6 +89,7 @@ export default function Call() {
       }
 
       // 📥 ANSWER
+      
       if (data.type === "Answer") {
         await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
       }
@@ -88,11 +102,19 @@ export default function Call() {
       }
     };
 
-    return () => ws.close();
+    return () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
   }, [currentUserId]);
 
-  // 🚀 WebRTC setup (caller + receiver)
-  const startWebRTC = async (isCaller: boolean, targetId: number) => {
+  // 🚀 WebRTC setup
+  const startWebRTC = async (
+    isCaller: boolean,
+    targetId: number,
+    callType: "audio" | "video"
+  ) => {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
@@ -100,9 +122,10 @@ export default function Call() {
     pcRef.current = pc;
 
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
+      video: callType === "video",
       audio: true,
-    });
+    }
+  );
 
     if (localVideo.current) {
       localVideo.current.srcObject = stream;
@@ -110,14 +133,12 @@ export default function Call() {
 
     stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-    // 🎬 Remote stream
     pc.ontrack = (event) => {
       if (remoteVideo.current) {
         remoteVideo.current.srcObject = event.streams[0];
       }
     };
 
-    // ❄️ ICE
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socketRef.current?.send(JSON.stringify({
@@ -128,7 +149,6 @@ export default function Call() {
       }
     };
 
-    // 📤 Only caller sends offer
     if (isCaller) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -141,42 +161,56 @@ export default function Call() {
     }
   };
 
-  // 📞 Start call (STEP 1 → send request)
-  const startCall = () => {
+  // 📞 Start call (SAFE)
+  const startCall = (callType: "audio" | "video") => {
     if (!selectedUser) return;
-
-    socketRef.current?.send(JSON.stringify({
-      type: "call_request",
+  
+    const ws = socketRef.current;
+  
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.warn("⚠️ WebSocket not ready");
+      return;
+    }
+  
+    console.log(`📞 Calling ${selectedUser.email} [ID: ${selectedUser.id}] (${callType})`);
+  
+    ws.send(JSON.stringify({
+      type: "call_request",     // ✅ always string
       to: selectedUser.id,
+      from: currentUserId,      // 🔥 ADD THIS (important)
+      callType: callType,       // ✅ no conflict
     }));
   };
 
-  // ✅ Accept call
+  // ✅ Accept
   const acceptCall = async () => {
     if (!incomingCall) return;
 
     socketRef.current?.send(JSON.stringify({
       type: "call_accept",
       to: incomingCall.from,
+      from: currentUserId, 
+      callType: incomingCall.callType || "video",
     }));
 
-    await startWebRTC(false, incomingCall.from);
+    await startWebRTC(false, incomingCall.from, incomingCall.callType || "video");
 
     setIncomingCall(null);
     setInCall(true);
   };
 
-  // ❌ Reject call
+  // ❌ Reject
   const rejectCall = () => {
     socketRef.current?.send(JSON.stringify({
       type: "call_reject",
       to: incomingCall.from,
+      from: currentUserId, 
     }));
 
     setIncomingCall(null);
   };
 
-  // 🛑 End call
+  // 🛑 End
   const endCall = () => {
     pcRef.current?.close();
     pcRef.current = null;
@@ -190,7 +224,6 @@ export default function Call() {
   return (
     <div className="call-container">
 
-      {/* 📞 Incoming Call Popup */}
       {incomingCall && (
         <div className="incoming-call">
           <h3>📞 Incoming Call</h3>
@@ -203,7 +236,6 @@ export default function Call() {
         </div>
       )}
 
-      {/* LEFT: USERS */}
       <div className="call-users">
         <h3>Users</h3>
         {users.map(u => (
@@ -217,41 +249,23 @@ export default function Call() {
         ))}
       </div>
 
-      {/* RIGHT: CALL AREA */}
       <div className="call-area">
-  <div className="videos">
-    <video ref={remoteVideo} autoPlay playsInline className="remote-video" />
-    <video ref={localVideo} autoPlay playsInline muted className="local-video" />
-  </div>
+        <div className="videos">
+          <video ref={remoteVideo} autoPlay playsInline className="remote-video" />
+          <video ref={localVideo} autoPlay playsInline muted className="local-video" />
+        </div>
 
-  <div className="controls">
-    {!inCall ? (
-      <div className="call-buttons">
-        {/* 📞 Audio Call */}
-        <button
-          className="audio-btn"
-          onClick={() => startCall("audio")}
-          disabled={!selectedUser}
-        >
-          📞
-        </button>
-
-        {/* 🎥 Video Call */}
-        <button
-          className="video-btn"
-          onClick={() => startCall("video")}
-          disabled={!selectedUser}
-        >
-          🎥
-        </button>
+        <div className="controls">
+          {!inCall ? (
+            <div className="call-buttons">
+              <button className="audio-btn" onClick={() => startCall("audio")} disabled={!selectedUser}>📞</button>
+              <button className="video-btn" onClick={() => startCall("video")} disabled={!selectedUser}>🎥</button>
+            </div>
+          ) : (
+            <button className="end" onClick={endCall}>❌ End Call</button>
+          )}
+        </div>
       </div>
-    ) : (
-      <button className="end" onClick={endCall}>
-        ❌ End Call
-      </button>
-    )}
-  </div>
-</div>
     </div>
   );
 }

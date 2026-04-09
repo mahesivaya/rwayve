@@ -42,7 +42,7 @@ export default function App() {
     <Route path="/chat" element={<Chat />} />
     <Route path="/chat" element={<Chat />} />
     <Route path="/call" element={<Call />} />
-    <Route path="/Scheduler" element={<Scheduler />} />
+    <Route path="/scheduler" element={<Scheduler />} />
     <Route path="/drive" element={<Drive />} />
 
   </Route>

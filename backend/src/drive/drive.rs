@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use actix_multipart::Multipart;
 use actix_web::{get, post, web, HttpResponse, Responder};
 use futures_util::StreamExt;
@@ -5,18 +6,25 @@ use sqlx::{PgPool, FromRow};
 use std::fs;
 use std::io::Write;
 use uuid::Uuid;
+use chrono::NaiveDateTime;
 
 
-type FileItem = {
-    id: number;
-    name: string;
-    file_type: string;
-    size: number;
-    drive_url?: string;
-    created_at: string;
-  };
+#[derive(Deserialize)]
+pub struct FileQuery {
+    pub user_id: i32,
+}
 
-  
+#[derive(Serialize, Deserialize, FromRow)]
+pub struct FileItem {
+    pub id: i32,
+    pub name: String,
+    pub file_type: String,
+    pub size: i64,
+    pub drive_url: Option<String>, // optional
+    pub created_at: NaiveDateTime,
+}
+
+
 #[derive(serde::Serialize, FromRow)]
 pub struct FileRecord {
     pub id: i64,
@@ -77,9 +85,14 @@ pub async fn upload_file(
     HttpResponse::Ok().body("Upload successful")
 }
 
+
 #[get("/api/files")]
-async fn get_files(pool: web::Data<PgPool>, user_id: i32) -> impl Responder {
-    let result = sqlx::query_as::<_, File>(
+async fn get_files(
+    pool: web::Data<PgPool>,
+    query: web::Query<FileQuery>,
+) -> impl Responder {
+
+    let result = sqlx::query_as::<_, FileItem>(
         r#"
         SELECT id, name, file_type, size, drive_url, created_at
         FROM files
@@ -87,7 +100,7 @@ async fn get_files(pool: web::Data<PgPool>, user_id: i32) -> impl Responder {
         ORDER BY created_at DESC
         "#
     )
-    .bind(user_id)
+    .bind(query.user_id)
     .fetch_all(pool.get_ref())
     .await;
 
