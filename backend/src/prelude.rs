@@ -1,3 +1,17 @@
+pub use std::env;
+
+
+pub use log::{info, error, warn, debug};
+
+// 📦 Logger functions (your custom ones)
+pub use crate::logging::logger::{
+    log_auth,
+    log_email,
+    log_error,
+    log_app,
+    init_logger,
+};
+
 // 🌐 Actix Web
 pub use actix_web::{web, HttpResponse, HttpRequest, Responder, Error, get, post};
 

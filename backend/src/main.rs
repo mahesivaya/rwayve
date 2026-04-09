@@ -9,6 +9,7 @@ mod scheduler;
 mod drive;
 pub mod security;
 mod call;
+mod logging;
 
 
 
@@ -16,6 +17,7 @@ mod call;
 // 🔹 USE INTERNAL MODULES
 // ==============================
 use crate::prelude::*;
+use crate::logging::logger::init_logger;
 use crate::chat::{chat_ws, get_messages};
 use crate::gmail::{gmail_login, oauth_callback, send};
 use crate::drive::{upload_file, get_files};
@@ -107,12 +109,15 @@ async fn register(
     pool: web::Data<PgPool>,
     data: web::Json<RegisterInput>,
 ) -> HttpResponse {
-
+    log_auth("simple message");
+    log_auth(format!("User registered: {}", data.email));
     if data.password != data.confirm_password {
+        log_auth(&format!("Register failed (password mismatch): {}", data.email));
         return HttpResponse::BadRequest().json(
             serde_json::json!({ "message": "Passwords do not match" })
         );
     }
+    log_auth(&format!("User registered successfully: {}", data.email));
 
     // 🔥 HASH PASSWORD
     let hashed = match hash(&data.password, DEFAULT_COST) {
@@ -438,6 +443,7 @@ async fn get_users(pool: web::Data<PgPool>) -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    init_logger();
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL missing");
 
     let pool = PgPool::connect(&db_url)
