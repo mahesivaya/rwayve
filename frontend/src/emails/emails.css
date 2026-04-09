@@ -39,7 +39,8 @@ body {
   background: #1669c1;
 }
 
-.add-account-btn {
+
+.add-email-btn {
   padding: 10px;
   border-radius: 8px;
   background: #f9fafb;
@@ -49,7 +50,7 @@ body {
   cursor: pointer;
 }
 
-.add-account-btn:hover {
+.add-email-btn:hover {
   background: #f3f4f6;
 }
 
@@ -163,4 +164,40 @@ body {
 .email-detail::-webkit-scrollbar-thumb {
   background: #d1d5db;
   border-radius: 6px;
+}
+
+
+/* ================= FILTER BUTTONS ================= */
+.mail-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+/* BUTTON */
+.filter-btn {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+  transition: 0.2s;
+}
+
+/* Hover */
+.filter-btn:hover {
+  background: #f3f4f6;
+}
+
+/* ✅ ACTIVE */
+.filter-btn.active {
+  background: #e8f0fe;
+  color: #1a73e8;
+  border-color: #1a73e8;
+  font-weight: 600;
 }
