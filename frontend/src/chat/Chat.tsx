@@ -119,7 +119,7 @@ export default function Chat() {
                 selectedUser?.id === u.id ? "active" : ""
               }`}
             >
-              📧 {u.email}
+              💬 {u.email}
             </div>
           ))}
       </div>

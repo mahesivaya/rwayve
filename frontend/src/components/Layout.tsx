@@ -43,6 +43,13 @@ export default function Layout() {
           </Link>
 
           <Link
+            to="/call"
+            className={location.pathname === "/call" ? "active" : ""}
+          >
+            Call
+          </Link>
+
+          <Link
             to="/scheduler"
             className={location.pathname === "/scheduler" ? "active" : ""}
           >

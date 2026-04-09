@@ -39,6 +39,11 @@ export default function Home() {
           <p>Real-time messaging</p>
         </div>
 
+        <div className="card" onClick={() => navigate("/call")}>
+          <h3> 📞  🎥 Call</h3>
+          <p>Real-time calling</p>
+        </div>
+
         <div className="card" onClick={() => navigate("/scheduler")}>
           <h3>📅 Scheduler</h3>
           <p>Manage your meetings</p>

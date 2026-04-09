@@ -6,6 +6,7 @@ import Login from "./auth/Login";
 import Home from "./home/Home";
 import Emails from "./emails/Emails";
 import Chat from "./chat/Chat";
+import Call from "./call/Call";
 import Scheduler from "./scheduler/Scheduler";
 import Drive from "./drive/DriveBox";
 import { useAuth } from "./auth/AuthContext";
@@ -36,10 +37,12 @@ export default function App() {
 <Route element={<ProtectedRoute />}>
   <Route element={<Layout />}>
 
-    <Route path="/home" element={<Home />} /> ✅
+    <Route path="/home" element={<Home />} />
     <Route path="/emails" element={<Emails />} />
     <Route path="/chat" element={<Chat />} />
-    <Route path="/scheduler" element={<Scheduler />} />
+    <Route path="/chat" element={<Chat />} />
+    <Route path="/call" element={<Call />} />
+    <Route path="/Scheduler" element={<Scheduler />} />
     <Route path="/drive" element={<Drive />} />
 
   </Route>
