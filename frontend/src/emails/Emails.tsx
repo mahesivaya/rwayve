@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import SendEmail from "../emails/send_emails";
 import "./emails.css";
+import SendEmail from "./send_email";
 
 type Email = {
   id: number;

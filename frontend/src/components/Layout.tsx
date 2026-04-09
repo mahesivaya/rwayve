@@ -1,43 +1,79 @@
-import { Link, Outlet, useNavigate } from "react-router-dom";
+import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import "./layout.css";
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // 🚨 Extra safety (should already be protected by ProtectedRoute)
+  if (!user) return null;
 
   return (
     <div className="app">
       {/* HEADER */}
       <div className="header">
-        <div className="logo">Wayve</div>
-
-        <div className="nav">
-          <Link to="/">Home</Link>
-          <Link to="/emails">Emails</Link>
-          <Link to="/chat">Chat</Link>
-          <Link to="/scheduler">Scheduler</Link>
-          <Link to="/drive">Files</Link>
+        {/* ✅ Logo clickable */}
+        <div className="logo" onClick={() => navigate("/")}>
+          Wayve 🚀
         </div>
 
+        {/* NAVIGATION */}
+        <div className="nav">
+          <Link
+            to="/"
+            className={location.pathname === "/" ? "active" : ""}
+          >
+            Home
+          </Link>
+
+          <Link
+            to="/emails"
+            className={location.pathname === "/emails" ? "active" : ""}
+          >
+            Emails
+          </Link>
+
+          <Link
+            to="/chat"
+            className={location.pathname === "/chat" ? "active" : ""}
+          >
+            Chat
+          </Link>
+
+          <Link
+            to="/scheduler"
+            className={location.pathname === "/scheduler" ? "active" : ""}
+          >
+            Scheduler
+          </Link>
+
+          <Link
+            to="/drive"
+            className={location.pathname === "/drive" ? "active" : ""}
+          >
+            Files
+          </Link>
+        </div>
+
+        {/* USER ACTIONS */}
         <div className="actions">
-          {user && (
-            <>
-              <span>{user.email}</span>
-              <button
-                onClick={() => {
-                  logout();
-                  navigate("/login");
-                }}
-              >
-                Logout
-              </button>
-            </>
-          )}
+          <span className="user-email">{user.email}</span>
+
+          <button
+            className="logout-btn"
+            onClick={() => {
+              logout();
+              navigate("/login");
+            }}
+          >
+            Logout
+          </button>
         </div>
       </div>
 
-      {/* ✅ IMPORTANT WRAPPER */}
+      {/* MAIN CONTENT */}
       <div className="content">
         <Outlet />
       </div>

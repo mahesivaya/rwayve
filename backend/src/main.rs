@@ -1,27 +1,36 @@
-use crate::prelude::*;
+// ==============================
+// 🔹 INTERNAL MODULES (declare first)
+// ==============================
 mod prelude;
-
 mod models;
-use sqlx::Row;
-use actix_cors::Cors;
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
-use bcrypt::{hash, verify, DEFAULT_COST};
-use chrono::{Duration as ChronoDuration, Utc};
-use jsonwebtoken::{encode, EncodingKey, Header};
-use sqlx::{FromRow, PgPool};
-use std::env;
-use tokio::time::{sleep, Duration};
-pub mod security;
-use crate::security::encryption::decrypt;
-use crate::gmail::{gmail_login, oauth_callback, send};
-use crate::chat::chat_ws;
-use crate::chat::get_messages;
 mod chat;
 mod gmail;
 mod scheduler;
 mod drive;
-use crate::drive::drive::{upload_file, get_files};
+pub mod security;
+
+
+// ==============================
+// 🔹 USE INTERNAL MODULES
+// ==============================
+use crate::prelude::*;
+use crate::chat::{chat_ws, get_messages};
+use crate::gmail::{gmail_login, oauth_callback, send};
+use crate::drive::{upload_file, get_files};
 use crate::scheduler::{create_meeting, get_meetings};
+use crate::security::encryption::decrypt;
+
+
+// ==============================
+// 🔹 EXTERNAL CRATES
+// ==============================
+use actix_cors::Cors;
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use sqlx::{PgPool, FromRow, Row};
+use tokio::time::{sleep, Duration};
+use chrono::{Utc, Duration as ChronoDuration};
+use bcrypt::{hash, verify, DEFAULT_COST};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use anyhow::Result;
 use aes_gcm::{
     Aes256Gcm,
@@ -32,6 +41,8 @@ use aes_gcm::{
 use rand::{RngCore, thread_rng};
 use base64::engine::general_purpose;
 use base64::Engine;
+
+use std::env;
 
 
 

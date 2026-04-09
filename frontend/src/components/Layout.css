@@ -1,71 +1,35 @@
-/* src/components/layout.css */
+/* ACTIVE NAV LINK */
+.nav a {
+  margin: 0 10px;
+  text-decoration: none;
+  color: white;
+  opacity: 0.8;
+}
 
-.app {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
-  
-  /* HEADER */
-  .header {
-    height: 60px;
-    background: #1e2a38;
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 20px;
-  }
-  
-  .logo {
-    font-weight: bold;
-    font-size: 20px;
-  }
-  
-  .nav a {
-    margin: 0 10px;
-    color: white;
-    text-decoration: none;
-  }
-  
-  .nav a:hover {
-    text-decoration: underline;
-  }
-  
-  .actions button {
-    margin-left: 10px;
-    padding: 6px 12px;
-    border: none;
-    cursor: pointer;
-  }
-  
-  .login {
-    background: transparent;
-    border: 1px solid white;
-    color: white;
-  }
-  
-  /* CONTENT */
-  .content {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-    min-height: 0;   /* 🔥 THIS FIXES SCROLL */
-  }
+.nav a.active {
+  opacity: 1;
+  font-weight: bold;
+  border-bottom: 2px solid white;
+}
 
-  .content {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-  }
+/* LOGO */
+.logo {
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 18px;
+}
 
+/* USER */
+.user-email {
+  margin-right: 10px;
+}
 
-  .nav a {
-    color: white;
-    text-decoration: none;
-    margin: 0 10px;
-  }
-  
-  .nav a:hover {
-    color: #ccc;
-  }
+/* LOGOUT BUTTON */
+.logout-btn {
+  padding: 6px 12px;
+  border: none;
+  background: #ff4d4f;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}

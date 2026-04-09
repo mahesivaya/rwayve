@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { login } from "../api/Auth";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import "./login.css";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -15,16 +16,15 @@ export default function Login() {
 
     try {
       const data = await login(email, password);
-      console.log("Login attempt: {}", data);
+
       if (!data || !data.token) {
-        throw new Error("No token returned from server");
-      }localStorage.setItem("token", data.token);
-      // ✅ Save + update global state
+        throw new Error("No token returned");
+      }
+
+      localStorage.setItem("token", data.token);
       authLogin(data.token);
 
-      // ✅ Redirect to user home (emails page)
       navigate("/emails");
-
     } catch (err) {
       console.error(err);
       alert("Login failed");
@@ -32,21 +32,36 @@ export default function Login() {
   };
 
   return (
-    <form onSubmit={handleLogin}>
-      <input
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Email"
-      />
+    <div className="login-page">
+      <form className="login-card" onSubmit={handleLogin}>
+        <h2>Welcome back 👋</h2>
+        <p className="subtitle">Login to your Wayve account</p>
 
-      <input
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder="Password"
-      />
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+          required
+        />
 
-      <button type="submit">Login</button>
-    </form>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          required
+        />
+
+        <button type="submit">Login</button>
+
+        <p className="switch-auth">
+          Don’t have an account?{" "}
+          <span onClick={() => navigate("/register")}>
+            Register
+          </span>
+        </p>
+      </form>
+    </div>
   );
 }
