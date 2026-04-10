@@ -47,11 +47,13 @@ export default function Chat() {
     ws.onopen = () => console.log("✅ WS connected");
 
     ws.onmessage = (event) => {
+      console.log("📥 RAW WS:", event.data);
+    
       try {
         const msg = JSON.parse(event.data);
         setMessages(prev => [...prev, msg]);
-      } catch {
-        console.log("Non-JSON:", event.data);
+      } catch (e) {
+        console.error("❌ Parse error:", e);
       }
     };
 
@@ -81,13 +83,16 @@ export default function Chat() {
     if (!socket) return;
     if (!selectedUser) return alert("Select a user first");
     if (!input.trim()) return;
-
+    if (!currentUserId) return; // 🔥 ADD THIS
+  
     const msg = {
       sender_id: currentUserId,
       receiver_id: selectedUser.id,
       content: input,
     };
-
+  
+    console.log("📤 Sending:", msg); // DEBUG
+  
     socket.send(JSON.stringify(msg));
     setInput("");
   };
