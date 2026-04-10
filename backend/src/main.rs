@@ -30,6 +30,7 @@ use crate::security::encryption::decrypt;
 // 🔹 EXTERNAL CRATES
 // ==============================
 use actix_cors::Cors;
+use actix_files::Files;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use sqlx::{PgPool, FromRow, Row};
 use tokio::time::{sleep, Duration};
@@ -493,6 +494,8 @@ async fn main() -> std::io::Result<()> {
             .service(get_users)
             .service(upload_file)
             .service(get_files)
+            .service(upload_file)
+            .service(Files::new("/uploads", "./uploads").show_files_listing())
             .route("/gmail/login", web::get().to(gmail_login))
             .route("/oauth/callback", web::get().to(oauth_callback))
             .route("/ws/chat", web::get().to(chat_ws))

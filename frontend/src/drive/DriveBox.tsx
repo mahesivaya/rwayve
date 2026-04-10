@@ -16,49 +16,106 @@ export default function Drive() {
 
   const [files, setFiles] = useState<File[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
+  //
+  // ✅ FETCH FILES
+  //
   const fetchFiles = async () => {
     if (!user) return;
 
+    setLoading(true);
+
     try {
       const res = await fetch(`/api/files?user_id=${user.id}`);
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch files");
+      }
+
       const data = await res.json();
-      setUploadedFiles(data);
+
+      console.log("🔥 API DATA:", data);
+      console.log("👤 USER ID:", user.id);
+
+      setUploadedFiles(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error(err);
+      console.error("❌ Fetch error:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchFiles();
+    if (user?.id) {
+      fetchFiles();
+    }
   }, [user]);
 
+  //
+  // ✅ HANDLE FILE SELECT
+  //
   const handleFiles = (selected: FileList | null) => {
     if (!selected) return;
     setFiles((prev) => [...prev, ...Array.from(selected)]);
   };
 
+  //
+  // ✅ DRAG DROP
+  //
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     handleFiles(e.dataTransfer.files);
   };
 
+  //
+  // ❌ REMOVE FILE FROM SELECTION (UX IMPROVEMENT)
+  //
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  //
+  // ✅ UPLOAD FILES
+  //
   const uploadFiles = async () => {
-    if (!files.length) return alert("No files selected");
+    if (!files.length) {
+      alert("No files selected");
+      return;
+    }
+
+    if (!user) {
+      alert("User not logged in");
+      return;
+    }
+
+    setUploading(true);
 
     const formData = new FormData();
+
+    // 🔥 IMPORTANT: user_id FIRST (backend reads it)
+    formData.append("user_id", user.id.toString());
+
     files.forEach((f) => formData.append("files", f));
 
     try {
-      await fetch("/api/files/upload", {
+      const res = await fetch("/api/files/upload", {
         method: "POST",
         body: formData,
       });
 
+      if (!res.ok) throw new Error("Upload failed");
+
+      console.log("✅ Upload success");
+
       setFiles([]);
-      fetchFiles();
-    } catch {
+      fetchFiles(); // refresh list
+    } catch (err) {
+      console.error("❌ Upload error:", err);
       alert("Upload failed");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -69,8 +126,13 @@ export default function Drive() {
       <div className="upload-section">
         <div className="drive-header">
           <h2>📁 My Drive</h2>
-          <button className="upload-btn" onClick={uploadFiles}>
-            Upload
+
+          <button
+            className="upload-btn"
+            onClick={uploadFiles}
+            disabled={uploading}
+          >
+            {uploading ? "Uploading..." : "Upload"}
           </button>
         </div>
 
@@ -100,6 +162,7 @@ export default function Drive() {
               {files.map((f, i) => (
                 <li key={i}>
                   {f.name} ({(f.size / 1024).toFixed(2)} KB)
+                  <button onClick={() => removeFile(i)}>❌</button>
                 </li>
               ))}
             </ul>
@@ -111,7 +174,9 @@ export default function Drive() {
       <div className="files-section">
         <h3>📁 Uploaded Files</h3>
 
-        {uploadedFiles.length === 0 ? (
+        {loading ? (
+          <p>Loading...</p>
+        ) : !uploadedFiles || uploadedFiles.length === 0 ? (
           <p>No files uploaded yet</p>
         ) : (
           <div className="file-list">
@@ -119,7 +184,15 @@ export default function Drive() {
               <div key={file.id} className="file-row">
 
                 <div className="file-left">
-                  <span className="file-icon">📄</span>
+                  <span className="file-icon">
+                    {file.file_type === "png" || file.file_type === "jpg"
+                      ? "🖼️"
+                      : file.file_type === "pdf"
+                      ? "📕"
+                      : file.file_type === "zip"
+                      ? "🗜️"
+                      : "📄"}
+                  </span>
 
                   <div className="file-main">
                     <div className="file-name">{file.name}</div>

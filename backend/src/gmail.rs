@@ -1,9 +1,8 @@
 use crate::prelude::*;
 use crate::security::encryption::encrypt;
-
-
-#[path = "models/email_request.rs"]
 use crate::models::email_request::SendEmailRequest;
+
+
 #[derive(Deserialize)]
 pub struct OAuthQuery {
     code: String,
