@@ -1,7 +1,6 @@
 use fern::Dispatch;
 use log::LevelFilter;
 use chrono::Local;
-use log::{info, error, warn};
 
 
 pub fn init_logger() {
@@ -63,16 +62,4 @@ pub fn init_logger() {
 
 pub fn log_auth(msg: impl AsRef<str>) {
     log::info!(target: "auth", "{}", msg.as_ref());
-}
-
-pub fn log_email(msg: &str) {
-    info!(target: "email", "{}", msg);
-}
-
-pub fn log_error(msg: &str) {
-    error!(target: "error", "{}", msg);
-}
-
-pub fn log_app(msg: &str) {
-    info!(target: "app", "{}", msg);
 }

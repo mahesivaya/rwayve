@@ -1,6 +1,5 @@
 use crate::prelude::*;
 use actix::*;
-use actix_web::{web, HttpRequest, HttpResponse, Error};
 use actix_web_actors::ws;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -74,7 +73,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for CallSession {
                 }
             }
 
-            Ok(ws::Message::Ping(msg)) => {
+            Ok(ws::Message::Ping(_msg)) => {
                 println!("🏓 Ping");
             }
 

@@ -14,7 +14,7 @@ pub struct SignalMessage {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IceCandidate {
     pub candidate: String,
-    pub sdpMid: Option<String>,
-    pub sdpMLineIndex: Option<u16>,
-    pub usernameFragment: Option<String>,
+    pub sdp_mid: Option<String>,
+    pub sdp_m_line_index: Option<u16>,
+    pub username_fragment: Option<String>,
 }

@@ -1,15 +1,6 @@
-pub use std::env;
-
-
-pub use log::{info, error, warn, debug};
-
 // 📦 Logger functions (your custom ones)
 pub use crate::logging::logger::{
-    log_auth,
-    log_email,
-    log_error,
-    log_app,
-    init_logger,
+    log_auth
 };
 
 // 🌐 Actix Web
@@ -17,17 +8,16 @@ pub use actix_web::{web, HttpResponse, HttpRequest, Responder, Error, get, post}
 
 // 🔌 WebSocket (Actix actors)
 pub use actix::{Actor, StreamHandler, ActorContext, AsyncContext};
-pub use actix_web_actors::ws;
 
 // 🗄️ Database (SQLx)
-pub use sqlx::{PgPool, FromRow, Row};
+pub use sqlx::{PgPool, FromRow, Row};       
 
 // 📦 Serialization
 pub use serde::{Serialize, Deserialize};
 pub use serde_json::Value;
 
 // ⏱️ Date & Time
-pub use chrono::{NaiveDateTime, Utc, NaiveDate, NaiveTime};
+pub use chrono::{NaiveDateTime, NaiveDate, NaiveTime};
 
 // 🌍 HTTP client (Gmail API etc.)
 pub use reqwest::Client;
@@ -42,7 +32,7 @@ pub use once_cell::sync::Lazy;
 pub use std::fs;
 
 // 🔐 Encoding
-pub use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+pub use base64::{engine::general_purpose::URL_SAFE_NO_PAD};
 
 // ❗ Error handling
 pub use anyhow::Result;

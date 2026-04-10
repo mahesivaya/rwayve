@@ -1,12 +1,8 @@
 use crate::prelude::*;
 use crate::security::encryption::encrypt;
 use crate::models::email_request::SendEmailRequest;
-
-
-#[derive(Deserialize)]
-pub struct OAuthQuery {
-    code: String,
-}
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {
@@ -150,7 +146,7 @@ pub async fn oauth_callback(
     .await
     {
         Ok(_) => println!("✅ Account saved"),
-        Err(e) => println!("❌ DB ERROR: {}", e),
+        Err(_e) => println!("❌ DB ERROR: {}", _e),
     }
 
     println!("🚀 Redirecting to frontend...");
@@ -214,7 +210,7 @@ pub async fn sync_all(pool: &PgPool) -> Result<()> {
                 &refresh_token,
             ).await {
                 Ok(t) => t,
-                Err(e) => {
+                Err(_e) => {
                     return;
                 }
             };
@@ -229,8 +225,8 @@ pub async fn sync_all(pool: &PgPool) -> Result<()> {
             .await;
 
             // sync
-            if let Err(e) = sync_account(&pool, account_id, &token, last_sync).await {
-                println!("Sync error {}: {}", account_id, e);
+            if let Err(_e) = sync_account(&pool, account_id, &token, last_sync).await {
+                println!("Sync error {}: {}", account_id, _e);
             }
         });
 
@@ -461,7 +457,7 @@ async fn fetch_email_detail(
         }
     }
 
-    let snippet = res["snippet"]
+    let _snippet = res["snippet"]
         .as_str()
         .unwrap_or("")
         .to_string();
@@ -521,7 +517,7 @@ fn extract_body(payload: &Value) -> Option<String> {
 fn decode_base64(data: &str) -> String {
     let fixed = data.replace("-", "+").replace("_", "/");
 
-    let decoded = base64::decode(fixed).unwrap_or_default();
+    let decoded = STANDARD.decode(fixed).unwrap_or_default();
 
     String::from_utf8_lossy(&decoded).to_string()
 }
@@ -621,54 +617,10 @@ Content-Type: text/plain; charset=utf-8\r\n\
                     .body(format!("Gmail rejected request: {}", response_text))
             }
         }
-        Err(e) => {
+        Err(_e) => {
             HttpResponse::InternalServerError().body("Failed to reach Gmail")
         }
     }
-}
-
-
-async fn get_access_token(pool: &PgPool) -> Option<String> {
-    let row = sqlx::query("SELECT id, access_token, token_expiry, refresh_token FROM email_accounts WHERE is_active = true LIMIT 1"
-    )
-    .fetch_one(pool)
-    .await
-    .ok()?;
-
-    let access_token: String = row.get("access_token");
-    let expiry: Option<chrono::NaiveDateTime> = row.try_get("token_expiry").ok();
-    let refresh_token: String = row.get("refresh_token");
-    let account_id: i32 = row.get("id");
-
-    // 🔥 CHECK EXPIRY
-    if let Some(exp) = expiry {
-        if exp < chrono::Utc::now().naive_utc() {
-
-            let secrets = load_google_secrets();
-            let client_id = secrets["web"]["client_id"].as_str().unwrap();
-            let client_secret = secrets["web"]["client_secret"].as_str().unwrap();
-
-            match refresh_access_token(client_id, client_secret, &refresh_token).await {
-                Ok(new_token) => {
-                    // save new token
-                    let _ = sqlx::query(
-                        "UPDATE email_accounts SET access_token=$1 WHERE id=$2"
-                    )
-                    .bind(&new_token)
-                    .bind(account_id)
-                    .execute(pool)
-                    .await;
-
-                    return Some(new_token);
-                }
-                Err(e) => {
-                    return None;
-                }
-            }
-        }
-    }
-
-    Some(access_token)
 }
 
 
@@ -694,7 +646,7 @@ async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
 
             HttpResponse::Ok().json(accounts) // ✅ IMPORTANT
         }
-        Err(e) => {
+        Err(_e) => {
             HttpResponse::InternalServerError().json(
                 serde_json::json!({ "error": "DB failure" })
             )

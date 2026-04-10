@@ -37,16 +37,6 @@ use tokio::time::{sleep, Duration};
 use chrono::{Utc, Duration as ChronoDuration};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use jsonwebtoken::{encode, EncodingKey, Header};
-use anyhow::Result;
-use aes_gcm::{
-    Aes256Gcm,
-    Key,
-    Nonce,
-    aead::{Aead, KeyInit}
-};
-use rand::{RngCore, thread_rng};
-use base64::engine::general_purpose;
-use base64::Engine;
 
 use std::env;
 
@@ -72,14 +62,6 @@ struct MessageResponse {
     message: String,
 }
 
-#[derive(Serialize, FromRow)]
-struct Email {
-    id: i32,
-    sender: String,
-    subject: String,
-    body: String,
-    created_at: chrono::NaiveDateTime,
-}
 
 #[derive(serde::Serialize, FromRow)]
 struct Account {

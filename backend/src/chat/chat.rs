@@ -6,9 +6,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
 use actix::{Actor, StreamHandler, Handler, Addr, Message as ActixMessage};
-use actix_web::{web, HttpRequest, HttpResponse, Error, get};
 use actix_web_actors::ws;
-use futures_util::StreamExt;
 use sqlx::{PgPool, Row};
 
 //
