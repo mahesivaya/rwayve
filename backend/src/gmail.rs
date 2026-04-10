@@ -1,9 +1,10 @@
 use crate::prelude::*;
 use crate::security::encryption::encrypt;
-
+use crate::services::gmail_service;
+use crate::Responder;
+use actix_web::HttpResponse;
 
 #[path = "models/email_request.rs"]
-use crate::models::email_request::SendEmailRequest;
 #[derive(Deserialize)]
 pub struct OAuthQuery {
     code: String,
@@ -561,74 +562,6 @@ async fn refresh_access_token(
 }
 
 
-
-#[post("/api/send")]
-async fn send(
-    data: web::Json<SendEmailRequest>,
-    pool: web::Data<PgPool>,
-) -> HttpResponse {
-
-    if data.to.trim().is_empty() || data.subject.trim().is_empty() {
-        return HttpResponse::BadRequest().body("Recipient and Subject are required");
-    }
-
-    let account = sqlx::query("SELECT email, access_token FROM email_accounts WHERE id = $1")
-        .bind(data.account_id)
-        .fetch_one(pool.get_ref())
-        .await;
-    
-    let (from_email, access_token) = match account {
-        Ok(row) => {
-            let email: String = row.get("email");
-            let token: String = row.get("access_token");
-            (email, token)
-        },
-        Err(_) => return HttpResponse::Unauthorized().body("Email account not found"),
-    };
-    let raw_email = format!(
-        "From: {}\r\n\
-To: {}\r\n\
-Subject: {}\r\n\
-MIME-Version: 1.0\r\n\
-Content-Type: text/plain; charset=utf-8\r\n\
-\r\n\
-{}",
-        from_email.trim(),
-        data.to.trim(),
-        data.subject.trim(),
-        data.body
-    );
-
-    let encoded = URL_SAFE_NO_PAD.encode(raw_email.as_bytes());
-
-    let client = reqwest::Client::new();
-
-    let res = client
-        .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
-        .bearer_auth(&access_token)
-        .json(&serde_json::json!({ "raw": encoded }))
-        .send()
-        .await;
-
-    match res {
-        Ok(resp) => {
-            let status = resp.status();
-            let response_text = resp.text().await.unwrap_or_default();
-
-            if status.is_success() {
-                HttpResponse::Ok().body("Email sent ✅")
-            } else {
-                HttpResponse::InternalServerError()
-                    .body(format!("Gmail rejected request: {}", response_text))
-            }
-        }
-        Err(e) => {
-            HttpResponse::InternalServerError().body("Failed to reach Gmail")
-        }
-    }
-}
-
-
 async fn get_access_token(pool: &PgPool) -> Option<String> {
     let row = sqlx::query("SELECT id, access_token, token_expiry, refresh_token FROM email_accounts WHERE is_active = true LIMIT 1"
     )
@@ -670,35 +603,4 @@ async fn get_access_token(pool: &PgPool) -> Option<String> {
     }
 
     Some(access_token)
-}
-
-
-#[get("/accounts")]
-async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
-    let result = sqlx::query(
-        "SELECT id, email FROM email_accounts"
-    )
-    .fetch_all(pool.get_ref())
-    .await;
-
-    match result {
-        Ok(rows) => {
-            let accounts: Vec<_> = rows
-                .into_iter()
-                .map(|r| {
-                    serde_json::json!({
-                        "id": r.get::<i32, _>("id"),
-                        "email": r.get::<String, _>("email"),
-                    })
-                })
-                .collect();
-
-            HttpResponse::Ok().json(accounts) // ✅ IMPORTANT
-        }
-        Err(e) => {
-            HttpResponse::InternalServerError().json(
-                serde_json::json!({ "error": "DB failure" })
-            )
-        }
-    }
 }

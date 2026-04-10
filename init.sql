@@ -54,10 +54,15 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE TABLE IF NOT EXISTS files (
     id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
     name TEXT NOT NULL,
-    file_path TEXT NOT NULL,
+    file_type TEXT,
+    file_path TEXT,
+    drive_url TEXT,
     size BIGINT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE
 );
 
 -- 🔥 INDEXES

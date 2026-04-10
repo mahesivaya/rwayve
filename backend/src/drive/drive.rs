@@ -18,9 +18,9 @@ pub struct FileQuery {
 pub struct FileItem {
     pub id: i32,
     pub name: String,
-    pub file_type: String,
+    pub file_type: Option<String>,
+    pub drive_url: Option<String>,
     pub size: i64,
-    pub drive_url: Option<String>, // optional
     pub created_at: NaiveDateTime,
 }
 
@@ -71,10 +71,11 @@ pub async fn upload_file(
         // ✅ Save to DB
         let _ = sqlx::query(
             r#"
-            INSERT INTO files (name, file_path, size)
-            VALUES ($1, $2, $3)
+            INSERT INTO files (user_id, name, file_path, size)
+            VALUES ($1, $2, $3, $4)
             "#
         )
+        .bind(&user_id)
         .bind(&filename)
         .bind(&filepath)
         .bind(size)
