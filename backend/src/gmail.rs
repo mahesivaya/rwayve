@@ -653,3 +653,66 @@ async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
         }
     }
 }
+
+
+#[get("/api/me")]
+async fn get_me(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+) -> impl Responder {
+
+    // 🔥 1. Extract Authorization header
+    let auth_header = match req.headers().get("Authorization") {
+        Some(h) => h.to_str().unwrap_or(""),
+        None => {
+            return HttpResponse::Unauthorized().json(
+                serde_json::json!({ "error": "Missing token" })
+            )
+        }
+    };
+
+    // 🔥 2. Extract token
+    let token = auth_header.replace("Bearer ", "");
+
+    // 🔥 3. Decode JWT
+    let decoded = match crate::models::auth::decode_jwt(&token) {
+        Some(d) => d,
+        None => {
+            return HttpResponse::Unauthorized().json(
+                serde_json::json!({ "error": "Invalid token" })
+            )
+        }
+    };
+
+    let user_id = decoded.sub;
+
+    // 🔥 4. Check DB (THIS is the key fix)
+    let result = sqlx::query("SELECT id, email FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool.get_ref())
+        .await;
+
+    match result {
+        Ok(Some(row)) => {
+            let id: i32 = row.get("id");
+            let email: String = row.get("email");
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "id": id,
+                "email": email
+            }))
+        }
+
+        // 🔥 USER DELETED → FORCE LOGOUT
+        Ok(None) => {
+            HttpResponse::Unauthorized().json(
+                serde_json::json!({ "error": "User not found" })
+            )
+        }
+
+        Err(e) => {
+            println!("❌ DB ERROR: {}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}

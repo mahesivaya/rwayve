@@ -27,24 +27,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // 🔥 Restore user on refresh
+  // Inside AuthProvider
   useEffect(() => {
-    const token = localStorage.getItem("token");
-
-    if (token) {
-      const decoded = parseJwt(token);
-
-      if (decoded) {
-        const decoded = parseJwt(token);
-        setUser({
-          email: decoded.email,
-          id: decoded.sub,
-        });
-      } else {
-        localStorage.removeItem("token");
+    const checkAuth = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setLoading(false);
+        return;
       }
-    }
-
+      try {
+        const res = await fetch("/api/me", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (res.status === 401) {
+          // 🔥 ONLY logout if backend says invalid
+          logout();
+          return;
+        }
+        if (!res.ok) {
+          // ❌ don't logout on server errors
+          console.warn("Server error, keeping user logged in");
+          setLoading(false);
+          return;
+        }
+        const data = await res.json();
+        setUser({
+          email: data.email,
+          id: data.id,
+        });
+      } catch (err) {
+        console.warn("Network error, keeping session");
+      }
     setLoading(false);
+    };
+    checkAuth();
   }, []);
 
   // 🔥 Login

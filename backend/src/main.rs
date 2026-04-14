@@ -19,7 +19,7 @@ mod logging;
 use crate::prelude::*;
 use crate::logging::logger::init_logger;
 use crate::chat::{chat_ws, get_messages};
-use crate::gmail::{gmail_login, oauth_callback, send};
+use crate::gmail::{gmail_login, oauth_callback, send, get_me};
 use crate::drive::{upload_file, get_files};
 use crate::scheduler::{create_meeting, get_meetings};
 use crate::call::call::call_ws;
@@ -477,6 +477,7 @@ async fn main() -> std::io::Result<()> {
             .service(upload_file)
             .service(get_files)
             .service(upload_file)
+            .service(get_me)
             .service(Files::new("/uploads", "./uploads").show_files_listing())
             .route("/gmail/login", web::get().to(gmail_login))
             .route("/oauth/callback", web::get().to(oauth_callback))
