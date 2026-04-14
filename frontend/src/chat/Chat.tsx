@@ -8,9 +8,12 @@ type User = {
 };
 
 type Message = {
+  message_id?: number;
   sender_id: number;
   receiver_id: number;
   content: string;
+  status?: "sent" | "delivered" | "read";
+  type?: string; // for WS events
 };
 
 export default function Chat() {
@@ -30,7 +33,7 @@ export default function Chat() {
     fetch("/api/users")
       .then(res => res.json())
       .then(data => {
-        console.log("USERS API:", data); // 👈 ADD THIS
+        console.log("USERS API:", data);
         setUsers(data);
       })
       .catch(err => console.error("Users error:", err));
@@ -48,10 +51,33 @@ export default function Chat() {
 
     ws.onmessage = (event) => {
       console.log("📥 RAW WS:", event.data);
-    
+
       try {
-        const msg = JSON.parse(event.data);
-        setMessages(prev => [...prev, msg]);
+        const msg: Message = JSON.parse(event.data);
+
+        // 🔥 HANDLE STATUS UPDATE
+        if (msg.type === "status_update") {
+          setMessages(prev =>
+            prev.map(m =>
+              m.message_id === msg.message_id
+                ? { ...m, status: msg.status }
+                : m
+            )
+          );
+          return;
+        }
+
+        // 🔥 PREVENT DUPLICATES
+        setMessages(prev => {
+          if (
+            msg.message_id &&
+            prev.some(m => m.message_id === msg.message_id)
+          ) {
+            return prev;
+          }
+          return [...prev, msg];
+        });
+
       } catch (e) {
         console.error("❌ Parse error:", e);
       }
@@ -63,19 +89,40 @@ export default function Chat() {
     return () => ws.close();
   }, [currentUserId]);
 
-  // ✅ Load chat history
+  // ✅ Clear chat when switching users
+  useEffect(() => {
+    setMessages([]);
+  }, [selectedUser]);
+
+  // ✅ Load chat history + mark as read
   useEffect(() => {
     if (!selectedUser || !currentUserId) return;
 
     fetch(`/api/messages?user1=${currentUserId}&user2=${selectedUser.id}`)
       .then(res => res.json())
-      .then(setMessages)
+      .then(data => {
+        setMessages(data);
+
+        // 🔥 SEND READ EVENT
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({
+            sender_id: currentUserId,
+            receiver_id: selectedUser.id,
+            content: "",
+            status: "read"
+          }));
+        } else {
+          console.warn("⚠️ WS not ready, skipping read event");
+        }
+      })
       .catch(console.error);
-  }, [selectedUser, currentUserId]);
+  }, [selectedUser, currentUserId, socket]);
 
   // ✅ Auto scroll
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length > 0) {
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   // ✅ Send message
@@ -83,16 +130,16 @@ export default function Chat() {
     if (!socket) return;
     if (!selectedUser) return alert("Select a user first");
     if (!input.trim()) return;
-    if (!currentUserId) return; // 🔥 ADD THIS
-  
-    const msg = {
+    if (!currentUserId) return;
+
+    const msg: Message = {
       sender_id: currentUserId,
       receiver_id: selectedUser.id,
       content: input,
     };
-  
-    console.log("📤 Sending:", msg); // DEBUG
-  
+
+    console.log("📤 Sending:", msg);
+
     socket.send(JSON.stringify(msg));
     setInput("");
   };
@@ -138,7 +185,7 @@ export default function Chat() {
         <div className="messages">
           {chatMessages.map((msg, i) => (
             <div
-              key={i}
+              key={msg.message_id || i}
               className={`message ${
                 msg.sender_id === currentUserId ? "me" : ""
               }`}
@@ -149,6 +196,15 @@ export default function Chat() {
                 }`}
               >
                 {msg.content}
+
+                {/* ✅ STATUS TICKS */}
+                {msg.sender_id === currentUserId && (
+                  <span className="status">
+                    {msg.status === "sent" && " ✔"}
+                    {msg.status === "delivered" && " ✔✔"}
+                    {msg.status === "read" && " ✔✔"}
+                  </span>
+                )}
               </span>
             </div>
           ))}

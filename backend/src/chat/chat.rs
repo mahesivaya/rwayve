@@ -1,47 +1,46 @@
 use crate::prelude::*;
 use crate::security::encryption::{encrypt, decrypt};
-use crate::models::message::{Message, ChatMessage};
+use crate::models::message::{Message, ChatMessage, MessageStatus};
+
+use actix::{Actor, StreamHandler, Handler, Addr, Message as ActixMessage, ActorFutureExt};
+use actix_web_actors::ws;
+use actix_web_actors::ws::WebsocketContext;
+
+use serde::Deserialize;
+use sqlx::{Row, PgPool};
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
-use actix::{Actor, StreamHandler, Handler, Addr, Message as ActixMessage};
-use actix_web_actors::ws;
-use sqlx::{PgPool, Row};
 
-//
-// 🔥 GLOBAL SESSION STORE
-//
+// ================= GLOBAL SESSIONS =================
+
 lazy_static! {
     static ref SESSIONS: Mutex<HashMap<i32, Addr<ChatSession>>> =
         Mutex::new(HashMap::new());
 }
 
-//
-// 🔥 WS MESSAGE TYPE
-//
+// ================= WS MESSAGE =================
+
 #[derive(ActixMessage)]
 #[rtype(result = "()")]
 pub struct WsMessage(pub String);
 
-//
-// 🔥 CHAT SESSION
-//
+// ================= CHAT SESSION =================
+
 pub struct ChatSession {
     pub pool: PgPool,
     pub user_id: i32,
 }
 
-//
-// 🔥 WS ENTRY POINT
-//
+// ================= WS ENTRY =================
+
 pub async fn chat_ws(
     req: HttpRequest,
     stream: web::Payload,
     pool: web::Data<PgPool>,
-) -> Result<HttpResponse, Error> {
+) -> Result<HttpResponse, actix_web::Error> {
 
-    // ✅ extract user_id from query
     let user_id = req
         .query_string()
         .split('=')
@@ -59,34 +58,24 @@ pub async fn chat_ws(
     )
 }
 
-//
-// 🔥 ACTOR LIFECYCLE
-//
+// ================= ACTOR =================
+
 impl Actor for ChatSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
         println!("🟢 User connected: {}", self.user_id);
-
-        SESSIONS
-            .lock()
-            .unwrap()
-            .insert(self.user_id, ctx.address());
-            println!("📡 Active sessions: {:?}", SESSIONS.lock().unwrap().keys());
+        SESSIONS.lock().unwrap().insert(self.user_id, ctx.address());
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
         println!("🔴 User disconnected: {}", self.user_id);
-
         SESSIONS.lock().unwrap().remove(&self.user_id);
-        println!("📡 Active sessions: {:?}", SESSIONS.lock().unwrap().keys());
-
     }
 }
 
-//
-// 🔥 HANDLE OUTGOING WS MESSAGE
-//
+// ================= RECEIVE WS =================
+
 impl Handler<WsMessage> for ChatSession {
     type Result = ();
 
@@ -95,9 +84,8 @@ impl Handler<WsMessage> for ChatSession {
     }
 }
 
-//
-// 🔥 HANDLE INCOMING WS MESSAGE
-//
+// ================= MAIN WS LOGIC =================
+
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
 
@@ -109,12 +97,36 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
 
                 if let Ok(data) = parsed {
 
+                    // ================= READ RECEIPT =================
+                    if matches!(data.status, Some(MessageStatus::Read)) {
+                        let pool = self.pool.clone();
+                        let reader = data.sender_id;
+                        let other = data.receiver_id;
+
+                        actix::spawn(async move {
+                            let _ = sqlx::query(
+                                r#"
+                                UPDATE messages
+                                SET status = 'read'
+                                WHERE receiver_id = $1 AND sender_id = $2
+                                "#
+                            )
+                            .bind(reader)
+                            .bind(other)
+                            .execute(&pool)
+                            .await;
+                        });
+
+                        return;
+                    }
+
+                    // ================= NORMAL MESSAGE =================
+
                     let pool = self.pool.clone();
                     let sender_id = data.sender_id;
                     let receiver_id = data.receiver_id;
                     let content = data.content.clone();
 
-                    // 🔐 ENCRYPT
                     let (iv, encrypted) = match encrypt(&content) {
                         Ok(res) => res,
                         Err(e) => {
@@ -123,56 +135,74 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                         }
                     };
 
-                    // 💾 SAVE TO DB
                     let fut = async move {
-                        match sqlx::query(
-                            "INSERT INTO messages (sender_id, receiver_id, content_encrypted, content_iv)
-                             VALUES ($1, $2, $3, $4)"
+                        sqlx::query(
+                            r#"
+                            INSERT INTO messages 
+                            (sender_id, receiver_id, content_encrypted, content_iv, status)
+                            VALUES ($1, $2, $3, $4, 'sent')
+                            RETURNING id
+                            "#
                         )
                         .bind(sender_id)
                         .bind(receiver_id)
                         .bind(encrypted)
                         .bind(iv)
-                        .execute(&pool)
+                        .fetch_one(&pool)
                         .await
-                        {
-                            Ok(_) => println!("✅ Message saved"),
-                            Err(e) => println!("❌ DB ERROR: {:?}", e),
-                        }
                     };
 
-                    ctx.spawn(actix::fut::wrap_future(fut));
+                    let sender_addr = ctx.address();
 
-                    // 📦 CREATE JSON MESSAGE
-                    let msg_json = serde_json::json!({
-                        "sender_id": sender_id,
-                        "receiver_id": receiver_id,
-                        "content": content
-                    })
-                    .to_string();
+                    ctx.spawn(
+                        actix::fut::wrap_future(fut).map(
+                            move |res, _act, ctx: &mut WebsocketContext<Self>| {
 
-                    // ✅ SEND TO RECEIVER (REAL-TIME)
-                    if let Some(addr) = SESSIONS.lock().unwrap().get(&receiver_id) {
-                        addr.do_send(WsMessage(msg_json.clone()));
-                    }
+                                if let Ok(row) = res {
+                                    let message_id: i32 = row.get("id");
 
-                    // ✅ SEND BACK TO SENDER
-                    ctx.text(msg_json);
+                                    let msg_json = serde_json::json!({
+                                        "message_id": message_id,
+                                        "sender_id": sender_id,
+                                        "receiver_id": receiver_id,
+                                        "content": content,
+                                        "status": "sent"
+                                    })
+                                    .to_string();
+
+                                    // SEND TO RECEIVER
+                                    if let Some(addr) = SESSIONS.lock().unwrap().get(&receiver_id) {
+                                        addr.do_send(WsMessage(msg_json.clone()));
+
+                                        // 🔥 DELIVERED
+                                        let delivered_json = serde_json::json!({
+                                            "type": "status_update",
+                                            "message_id": message_id,
+                                            "status": "delivered"
+                                        })
+                                        .to_string();
+
+                                        sender_addr.do_send(WsMessage(delivered_json));
+                                    }
+
+                                    // SEND BACK TO SENDER
+                                    ctx.text(msg_json);
+                                }
+                            },
+                        )
+                    );
                 }
             }
 
             Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
-
             Ok(ws::Message::Close(_)) => ctx.stop(),
-
             _ => {}
         }
     }
 }
 
-//
-// 🔥 FETCH MESSAGES API (DECRYPTED)
-//
+// ================= FETCH API =================
+
 #[derive(Deserialize)]
 pub struct QueryParams {
     pub user1: i32,
@@ -187,13 +217,14 @@ pub async fn get_messages(
 
     let result = sqlx::query(
         r#"
-        SELECT sender_id, receiver_id, content_encrypted, content_iv
+        SELECT id, sender_id, receiver_id, content_encrypted, content_iv, status, created_at
         FROM messages
         WHERE 
             (sender_id = $1 AND receiver_id = $2)
             OR
             (sender_id = $2 AND receiver_id = $1)
-        ORDER BY id ASC
+        ORDER BY created_at DESC
+        LIMIT 50
         "#
     )
     .bind(query.user1)
@@ -203,18 +234,35 @@ pub async fn get_messages(
 
     match result {
         Ok(rows) => {
-            let messages: Vec<Message> = rows.into_iter().map(|row| {
+
+            let _ = sqlx::query(
+                r#"
+                UPDATE messages
+                SET status = 'read'
+                WHERE receiver_id = $1 AND sender_id = $2
+                "#
+            )
+            .bind(query.user1)
+            .bind(query.user2)
+            .execute(pool.get_ref())
+            .await;
+
+            let mut messages: Vec<Message> = rows.into_iter().map(|row| {
                 let encrypted: String = row.get("content_encrypted");
                 let iv: String = row.get("content_iv");
 
                 let content = decrypt(&iv, &encrypted);
 
                 Message {
+                    message_id: Some(row.get("id")),
                     sender_id: row.get("sender_id"),
                     receiver_id: row.get("receiver_id"),
                     content,
+                    status: Some(row.get::<String, _>("status")),
                 }
             }).collect();
+
+            messages.reverse();
 
             HttpResponse::Ok().json(messages)
         }

@@ -3,19 +3,32 @@ use crate::prelude::*;
 //
 // 🔹 2. API STRUCT (Decrypted → Sent to frontend)
 //
-#[derive(Debug, Serialize)]
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageStatus {
+    Sent,
+    Delivered,
+    Read,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Message {
+    pub message_id: Option<i32>,
     pub sender_id: i32,
     pub receiver_id: i32,
     pub content: String,
+    pub status: Option<String>,
 }
-
 //
 // 🔹 3. Incoming WebSocket / API Payload
 //
-#[derive(Debug, Deserialize)]
+
+#[derive(Serialize, Deserialize)]
 pub struct ChatMessage {
     pub sender_id: i32,
     pub receiver_id: i32,
     pub content: String,
+    pub status: Option<MessageStatus>,
+    pub message_id: Option<i32>,
 }

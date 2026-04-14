@@ -84,3 +84,20 @@
     color: white;
     border-radius: 8px;
   }
+
+  .status {
+    font-size: 12px;
+    margin-left: 6px;
+  }
+  
+  .status.sent {
+    color: gray;
+  }
+  
+  .status.delivered {
+    color: #aaa;
+  }
+  
+  .status.read {
+    color: #4fc3f7; /* 🔵 WhatsApp blue */
+  }
