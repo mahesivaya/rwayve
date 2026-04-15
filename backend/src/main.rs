@@ -4,7 +4,6 @@
 mod prelude;
 mod models;
 mod chat;
-mod gmail;
 mod scheduler;
 mod drive;
 pub mod security;
@@ -25,12 +24,12 @@ use models::email_request::UserResponse;
 use crate::prelude::*;
 use crate::logging::logger::init_logger;
 use crate::chat::{chat_ws, get_messages};
-use crate::gmail::{gmail_login, oauth_callback, send, get_me};
 use crate::drive::{upload_file, get_files};
 use crate::scheduler::{create_meeting, get_meetings};
 use crate::call::call::call_ws;
+use crate::email::sync::sync_all;
 use crate::security::encryption::decrypt;
-
+use crate::email::handler::{gmail_login,oauth_callback,send,get_me };
 
 // ==============================
 // 🔹 EXTERNAL CRATES
@@ -393,7 +392,7 @@ async fn main() -> std::io::Result<()> {
         loop {
             println!("Sync loop");
 
-            if let Err(e) = gmail::sync_all(&pool_clone).await {
+            if let Err(e) = sync_all(&pool_clone).await {
                 println!("sync error {:?}", e);
             }
 
