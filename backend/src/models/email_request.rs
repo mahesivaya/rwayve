@@ -7,3 +7,9 @@ pub struct SendEmailRequest {
     pub subject: String,
     pub body: String,
 }
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct UserResponse {
+    pub id: i32,
+    pub email: String,
+}

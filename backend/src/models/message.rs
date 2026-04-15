@@ -21,7 +21,11 @@ pub struct Message {
     pub status: Option<String>,
 }
 //
-// 🔹 3. Incoming WebSocket / API Payload
+#[derive(Serialize)]
+pub struct MessageResponse {
+    pub message: String,
+}
+
 //
 
 #[derive(Serialize, Deserialize)]

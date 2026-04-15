@@ -6,3 +6,4 @@ pub mod scheduler;
 pub mod message;
 pub mod drive;
 pub mod callmodel;
+pub mod user;

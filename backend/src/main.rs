@@ -9,9 +9,15 @@ mod scheduler;
 mod drive;
 pub mod security;
 mod call;
+mod email;
 mod logging;
 
-
+use models::account::Account;
+use models::auth::Claims;
+use models::user::User;
+use models::auth::{RegisterInput, LoginInput, LoginResponse};
+use models::message::MessageResponse;
+use models::email_request::UserResponse;
 
 // ==============================
 // 🔹 USE INTERNAL MODULES
@@ -32,7 +38,7 @@ use crate::security::encryption::decrypt;
 use actix_cors::Cors;
 use actix_files::Files;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
-use sqlx::{PgPool, FromRow, Row};
+use sqlx::{PgPool, Row};
 use tokio::time::{sleep, Duration};
 use chrono::{Utc, Duration as ChronoDuration};
 use bcrypt::{hash, verify, DEFAULT_COST};
@@ -41,54 +47,8 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use std::env;
 
 
-
-
-#[derive(FromRow)]
-struct User {
-    id: i32,
-    email: String,
-    password: String,
-}
-
-#[derive(Deserialize)]
-struct RegisterInput {
-    email: String,
-    password: String,
-    confirm_password: String,
-}
-
-#[derive(Serialize)]
-struct MessageResponse {
-    message: String,
-}
-
-
-#[derive(serde::Serialize, FromRow)]
-struct Account {
-    id: i32,
-    email: String,
-}
-
-#[derive(Deserialize)]
-struct LoginInput {
-    email: String,
-    password: String,
-}
-
-#[derive(Serialize)]
-struct LoginResponse {
-    token: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Claims {
-    sub: i32,
-    email: String,
-    exp: usize,
-}
-
 #[post("/api/register")]
-async fn register(
+pub async fn register(
     pool: web::Data<PgPool>,
     data: web::Json<RegisterInput>,
 ) -> HttpResponse {
@@ -218,7 +178,7 @@ async fn login(
 
 
 
-fn create_jwt(user_id: i32, email: String) -> String {
+pub fn create_jwt(user_id: i32, email: String) -> String {
     let expiration = Utc::now()
         .checked_add_signed(ChronoDuration::hours(24))
         .unwrap()
@@ -396,12 +356,6 @@ async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
             HttpResponse::InternalServerError().body("error")
         }
     }
-}
-
-#[derive(serde::Serialize, sqlx::FromRow)]
-pub struct UserResponse {
-    id: i32,
-    email: String,
 }
 
 
