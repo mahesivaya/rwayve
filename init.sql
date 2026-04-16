@@ -6,19 +6,6 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 
-CREATE TABLE IF NOT EXISTS emails (
-    id SERIAL PRIMARY KEY,
-    gmail_id TEXT NOT NULL,
-    account_id INTEGER REFERENCES email_accounts(id) ON DELETE CASCADE,
-    subject TEXT,
-    sender TEXT,
-    receiver TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    body_encrypted TEXT NOT NULL,
-    body_iv TEXT NOT NULL,
-    UNIQUE(account_id, gmail_id)
-);
-
 
 CREATE TABLE IF NOT EXISTS email_accounts (
     id SERIAL PRIMARY KEY,
@@ -38,6 +25,21 @@ CREATE TABLE IF NOT EXISTS email_accounts (
         ON DELETE CASCADE
 );
 
+
+CREATE TABLE IF NOT EXISTS emails (
+    id SERIAL PRIMARY KEY,
+    gmail_id TEXT NOT NULL,
+    account_id INTEGER REFERENCES email_accounts(id) ON DELETE CASCADE,
+    subject TEXT,
+    sender TEXT,
+    receiver TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    body_encrypted TEXT NOT NULL,
+    body_iv TEXT NOT NULL,
+    UNIQUE(account_id, gmail_id)
+);
+
+
 -- 1. Remove old wrong constraint (if exists)
 ALTER TABLE email_accounts
 ADD CONSTRAINT unique_user_email UNIQUE (user_id, email);
@@ -46,12 +48,11 @@ ADD CONSTRAINT unique_user_email UNIQUE (user_id, email);
 
 CREATE TABLE IF NOT EXISTS meetings (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER,
+    user_id INTEGER NOT NULL,
     title TEXT NOT NULL,
     date DATE NOT NULL,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
-    user_id INTEGER NOT NULL,
 
     CONSTRAINT fk_user_meetings
     FOREIGN KEY (user_id)
