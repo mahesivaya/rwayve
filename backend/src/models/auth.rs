@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+pub use actix_web::HttpRequest;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -44,4 +45,15 @@ pub fn decode_jwt(token: &str) -> Option<Claims> {
             None
         }
     }
+}
+
+pub fn get_user_id_from_request(req: &HttpRequest) -> Option<i32> {
+    let header = req.headers().get("Authorization")?.to_str().ok()?;
+
+    // Expect: "Bearer <token>"
+    let token = header.strip_prefix("Bearer ")?;
+
+    let claims = decode_jwt(token)?;
+
+    Some(claims.sub)
 }

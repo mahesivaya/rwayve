@@ -1,10 +1,10 @@
 use crate::prelude::*;
 
-
 use crate::models::email_request::SendEmailRequest;
 use crate::email::oauth::load_google_secrets;
 use crate::email::oauth::HTTP_CLIENT;
-
+use crate::models::auth::get_user_id_from_request;
+use actix_web::HttpRequest;
 use base64::Engine;
 
 #[derive(Deserialize)]
@@ -191,6 +191,7 @@ pub async fn oauth_callback(
 
 #[post("/send")]
 async fn send(
+    req: HttpRequest, 
     data: web::Json<SendEmailRequest>,
     pool: web::Data<PgPool>,
 ) -> HttpResponse {
@@ -199,10 +200,16 @@ async fn send(
         return HttpResponse::BadRequest().body("Recipient and Subject are required");
     }
 
+    let user_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().body("Invalid token"),
+    };
+
     let account = sqlx::query(
         "SELECT email, access_token FROM email_accounts 
         WHERE id = $1 AND user_id = $2")
         .bind(data.account_id)
+        .bind(user_id)
         .fetch_one(pool.get_ref())
         .await;
     
@@ -216,12 +223,12 @@ async fn send(
     };
     let raw_email = format!(
         "From: {}\r\n\
-To: {}\r\n\
-Subject: {}\r\n\
-MIME-Version: 1.0\r\n\
-Content-Type: text/plain; charset=utf-8\r\n\
-\r\n\
-{}",
+        To: {}\r\n\
+        Subject: {}\r\n\
+        MIME-Version: 1.0\r\n\
+        Content-Type: text/plain; charset=utf-8\r\n\
+        \r\n\
+        {}",
         from_email.trim(),
         data.to.trim(),
         data.subject.trim(),

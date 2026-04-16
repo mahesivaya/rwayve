@@ -61,6 +61,13 @@ CREATE TABLE IF NOT EXISTS meetings (
 );
 
 
+DO $$ BEGIN
+    CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+
 CREATE TABLE IF NOT EXISTS messages (
     id SERIAL PRIMARY KEY,
     sender_id INT REFERENCES users(id) ON DELETE CASCADE,
@@ -90,12 +97,6 @@ CREATE TABLE IF NOT EXISTS files (
         ON DELETE CASCADE
 );
 
-
-DO $$ BEGIN
-    CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
 
 
 -- 🔥 INDEXES

@@ -101,3 +101,7 @@ d: dev
 u: docker-up
 ud: docker-up-detached
 dd: docker-down
+
+
+AES_KEY=12345678901234567890123456789012
+DATABASE_URL=postgres://wayve_user:wayve_password@postgres_db:5432/wayve_db
