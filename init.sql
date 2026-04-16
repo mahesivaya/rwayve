@@ -113,18 +113,6 @@ ON messages (id ASC);
 CREATE INDEX IF NOT EXISTS idx_meetings_date
 ON meetings (date);
 
--- Emails pagination
-CREATE INDEX IF NOT EXISTS idx_emails_account_created
-ON emails (account_id, created_at DESC, id DESC);
-
--- Chat queries
-CREATE INDEX IF NOT EXISTS idx_messages_users
-ON messages (sender_id, receiver_id);
-
--- Meetings
-CREATE INDEX IF NOT EXISTS idx_meetings_date
-ON meetings (date);
-
 CREATE INDEX idx_files_user_id ON files(user_id);
 
 CREATE INDEX idx_email_accounts_user_id
@@ -132,9 +120,3 @@ ON email_accounts(user_id);
 
 CREATE UNIQUE INDEX unique_user_email_idx
 ON email_accounts (user_id, LOWER(email));
-
-CREATE INDEX idx_emails_account_created
-ON emails(account_id, created_at DESC, id DESC);
-
-CREATE INDEX idx_email_accounts_user
-ON email_accounts(user_id);
