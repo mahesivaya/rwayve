@@ -50,7 +50,7 @@ async fn get_emails(
             sqlx::query(
                 r#"
                 SELECT 
-                    e.id, e.sender, e.subject, e.body_encrypted, e.body_iv, e.created_at
+                    e.id, e.sender, e.receiver, e.subject, e.body_encrypted, e.body_iv, e.created_at
                 FROM emails e
                 JOIN email_accounts a ON e.account_id = a.id
                 WHERE e.account_id = $1
@@ -71,7 +71,7 @@ async fn get_emails(
             sqlx::query(
                 r#"
                 SELECT 
-                    e.id, e.sender, e.subject, e.body_encrypted, e.body_iv, e.created_at
+                    e.id, e.sender, e.receiver, e.subject, e.body_encrypted, e.body_iv, e.created_at
                 FROM emails e
                 JOIN email_accounts a ON e.account_id = a.id
                 WHERE a.user_id = $1
@@ -96,7 +96,7 @@ async fn get_emails(
             sqlx::query(
                 r#"
                 SELECT 
-                    e.id, e.sender, e.subject, e.body_encrypted, e.body_iv, e.created_at
+                    e.id, e.sender, e.receiver, e.subject, e.body_encrypted, e.body_iv, e.created_at
                 FROM emails e
                 JOIN email_accounts a ON e.account_id = a.id
                 WHERE a.user_id = $1
@@ -115,6 +115,7 @@ async fn get_emails(
                 SELECT 
                     e.id,
                     e.sender,
+                    e.receiver,
                     e.subject,
                     e.body_encrypted,
                     e.body_iv,
@@ -137,6 +138,7 @@ async fn get_emails(
             let emails: Vec<_> = rows.into_iter().map(|row| {
                 let id: i32 = row.try_get("id").unwrap_or(0);
                 let sender: String = row.try_get("sender").unwrap_or_default();
+                let receiver: String = row.try_get("receiver").unwrap_or_default();
                 let subject: String = row.try_get("subject").unwrap_or_default();
                 let created_at: chrono::NaiveDateTime =
                     row.try_get("created_at").unwrap_or_else(|_| chrono::Utc::now().naive_utc());
@@ -161,6 +163,7 @@ async fn get_emails(
                 serde_json::json!({
                     "id": id,
                     "sender": sender,
+                    "receiver":receiver,
                     "subject": subject,
                     "body": body,
                     "created_at": created_at

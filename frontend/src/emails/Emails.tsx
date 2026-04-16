@@ -5,6 +5,7 @@
   type Email = {
     id: number;
     sender: string;
+    receiver: string,
     subject: string;
     body: string;
     created_at: string;
@@ -214,6 +215,7 @@
       >
         <div className="email-top">
           <span className="email-sender">{email.sender}</span>
+          <span className="email-receiver">{email.receiver}</span>
 
           <span className="email-time">
             {new Date(email.created_at).toLocaleTimeString([], {
@@ -240,6 +242,7 @@
             <>
               <h2>{selected.subject}</h2>
               <p><b>From:</b> {selected.sender}</p>
+              <p><b>To:</b> {selected.receiver}</p>
               <hr />
 
               <div className="email-body">
