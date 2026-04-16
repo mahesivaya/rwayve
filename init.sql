@@ -5,19 +5,30 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+
+CREATE TABLE IF NOT EXISTS emails (
+    id SERIAL PRIMARY KEY,
+    gmail_id TEXT NOT NULL,
+    account_id INTEGER REFERENCES email_accounts(id) ON DELETE CASCADE,
+    subject TEXT,
+    sender TEXT,
+    receiver TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    body_encrypted TEXT NOT NULL,
+    body_iv TEXT NOT NULL,
+    UNIQUE(account_id, gmail_id)
+);
+
+
 CREATE TABLE IF NOT EXISTS email_accounts (
     id SERIAL PRIMARY KEY,
-    
     email TEXT NOT NULL,
     user_id INTEGER NOT NULL,
-
     access_token TEXT,
     refresh_token TEXT,
     token_expiry TIMESTAMP,
-
     is_active BOOLEAN DEFAULT TRUE,
     last_sync BIGINT,
-
     created_at TIMESTAMP DEFAULT NOW(),
 
     -- 🔐 Constraints
@@ -25,8 +36,12 @@ CREATE TABLE IF NOT EXISTS email_accounts (
         FOREIGN KEY (user_id)
         REFERENCES users(id)
         ON DELETE CASCADE
-
 );
+
+-- 1. Remove old wrong constraint (if exists)
+ALTER TABLE email_accounts
+ADD CONSTRAINT unique_user_email UNIQUE (user_id, email);
+
 
 
 CREATE TABLE IF NOT EXISTS meetings (
@@ -45,25 +60,6 @@ CREATE TABLE IF NOT EXISTS meetings (
 );
 
 
-CREATE TABLE IF NOT EXISTS emails (
-    id SERIAL PRIMARY KEY,
-    gmail_id TEXT NOT NULL,
-    account_id INTEGER REFERENCES email_accounts(id) ON DELETE CASCADE,
-    subject TEXT,
-    sender TEXT,
-    receiver TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    body_encrypted TEXT NOT NULL,
-    body_iv TEXT NOT NULL,
-    UNIQUE(account_id, gmail_id)
-);
-
-DO $$ BEGIN
-    CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
 CREATE TABLE IF NOT EXISTS messages (
     id SERIAL PRIMARY KEY,
     sender_id INT REFERENCES users(id) ON DELETE CASCADE,
@@ -74,15 +70,14 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+
 CREATE TABLE IF NOT EXISTS files (
     id BIGSERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
-
     name TEXT NOT NULL,
     file_type TEXT,
     file_path TEXT NOT NULL,
     size BIGINT DEFAULT 0,
-
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     is_deleted BOOLEAN DEFAULT FALSE,
@@ -94,6 +89,12 @@ CREATE TABLE IF NOT EXISTS files (
         ON DELETE CASCADE
 );
 
+
+DO $$ BEGIN
+    CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 
 -- 🔥 INDEXES

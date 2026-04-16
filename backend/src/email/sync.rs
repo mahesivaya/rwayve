@@ -4,6 +4,8 @@ use crate::email::utils::extract_body;
 use crate::email::oauth::{load_google_secrets,refresh_access_token,HTTP_CLIENT};
 use crate::security::encryption::encrypt;
 
+use serde_json::Value;
+
 pub async fn fetch_email_detail(
     token: &str,
     msg_id: &str,
@@ -21,28 +23,13 @@ pub async fn fetch_email_detail(
         .await?
         .json()
         .await?;
-    
+
     let payload = &res["payload"];
-    let headers = &res["payload"]["headers"];
 
-    let mut subject = String::new();
-    let mut sender = String::new();
-    let mut receiver = String::new();
+    // ✅ ONLY THIS (no override later)
+    let (sender, receiver, subject) = extract_headers(&res);
 
-    if let Some(arr) = headers.as_array() {
-        for h in arr {
-            let name = h.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let value = h.get("value").and_then(|v| v.as_str()).unwrap_or("");
-
-            match name {
-                "Subject" => subject = value.to_string(),
-                "From" => sender = value.to_string(),
-                "To" => receiver = value.to_string(),
-                _ => {}
-            }
-        }
-    }
-
+    // optional snippet fallback
     let _snippet = res["snippet"]
         .as_str()
         .unwrap_or("")
@@ -51,7 +38,7 @@ pub async fn fetch_email_detail(
     let body = extract_body(payload).unwrap_or_else(|| {
         res["snippet"].as_str().unwrap_or("").to_string()
     });
-    
+    println!("📧 {} | {} | {}", sender, receiver, subject);
     Ok((
         msg_id.to_string(),
         sender,
@@ -60,6 +47,7 @@ pub async fn fetch_email_detail(
         body,
     ))
 }
+
 
 pub async fn sync_all(pool: &PgPool) -> Result<()> {
 
@@ -180,20 +168,60 @@ pub async fn fetch_ids(
 
 // Extract Headers inside deep dive.
 
+pub fn extract_headers(res: &Value) -> (String, String, String) {
+    let mut sender: Option<String> = None;
+    let mut receiver: Option<String> = None;
+    let mut subject: Option<String> = None;
 
-use serde_json::Value;
+    // 🔁 recursive function to walk through payload
+    fn walk_parts(
+        node: &Value,
+        sender: &mut Option<String>,
+        receiver: &mut Option<String>,
+        subject: &mut Option<String>,
+    ) {
+        // 1. Check headers at current level
+        if let Some(headers) = node["headers"].as_array() {
+            for h in headers {
+                let name = h["name"].as_str().unwrap_or("");
+                let value = h["value"].as_str().unwrap_or("").to_string();
 
-pub fn extract_headers(payload: &Value) -> (String, String, String) {
-    let mut sender = String::new();
-    let mut receiver = String::new();
-    let mut subject = String::new();
+                match name {
+                    "From" => {
+                        if sender.is_none() && !value.is_empty() {
+                            *sender = Some(value);
+                        }
+                    }
+                    "To" => {
+                        if receiver.is_none() && !value.is_empty() {
+                            *receiver = Some(value);
+                        }
+                    }
+                    "Subject" => {
+                        if subject.is_none() && !value.is_empty() {
+                            *subject = Some(value);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
 
-    extract_headers_recursive(payload, &mut sender, &mut receiver, &mut subject);
-
-    // ✅ Optional UX fix
-    if subject.is_empty() {
-        subject = "(No Subject)".to_string();
+        // 2. Traverse deeper if parts exist
+        if let Some(parts) = node["parts"].as_array() {
+            for part in parts {
+                walk_parts(part, sender, receiver, subject);
+            }
+        }
     }
+
+    // 🚀 Start from payload root
+    walk_parts(&res["payload"], &mut sender, &mut receiver, &mut subject);
+
+    // 🛡️ Fallback defaults
+    let sender = sender.unwrap_or_else(|| "Unknown".to_string());
+    let receiver = receiver.unwrap_or_else(|| "Unknown".to_string());
+    let subject = subject.unwrap_or_else(|| "(No Subject)".to_string());
 
     (sender, receiver, subject)
 }
