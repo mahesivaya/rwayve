@@ -59,48 +59,94 @@
 
     // ================= LOAD =================
     useEffect(() => {
-      const url =
-        activeAccount !== null
-          ? `/api/emails?account_id=${activeAccount}`
-          : `/api/emails`;
+  const token = localStorage.getItem("token");
 
-        fetch(`${BASE_URL}${url}`)
-        .then(res => res.json())
-        .then((data: Email[]) => {
-          setEmails(data);
-          setSelected(data[0]);
+  const url =
+    activeAccount !== null
+      ? `/api/emails?account_id=${activeAccount}`
+      : `/api/emails`;
 
-          if (data.length) {
-            const last = data[data.length - 1];
-            setLastTimestamp(last.created_at);
-            setLastId(last.id);
-          }
-        });
-    }, [activeAccount]);
-
-    // ================= LOAD MORE =================
-    const loadMore = async () => {
-      if (!lastTimestamp || !lastId || loadingMore) return;
-
-      setLoadingMore(true);
-
-      const url =
-        activeAccount !== null
-          ? `/api/emails?account_id=${activeAccount}&before=${lastTimestamp}&before_id=${lastId}`
-          : `/api/emails?before=${lastTimestamp}&before_id=${lastId}`;
-
-      const res = await fetch(`${BASE_URL}${url}`);
-      const data: Email[] = await res.json();
-
-      setEmails(prev => [...prev, ...data]);
+  fetch(`${BASE_URL}${url}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+    .then(res => {
+      if (!res.ok) throw new Error("Unauthorized");
+      return res.json();
+    })
+    .then((data: Email[]) => {
+      setEmails(data);
+      setSelected(data[0]);
 
       if (data.length) {
         const last = data[data.length - 1];
         setLastTimestamp(last.created_at);
         setLastId(last.id);
       }
+    })
+    .catch(err => {
+      console.error(err);
+      setEmails([]);
+    });
+}, [activeAccount]);
 
-      setLoadingMore(false);
+    // ================= LOAD MORE =================
+    
+    const loadMore = async () => {
+      if (!lastTimestamp || !lastId || loadingMore) return;
+    
+      setLoadingMore(true);
+    
+      try {
+        const token = localStorage.getItem("token");
+    
+        if (!token) {
+          console.error("❌ No token found");
+          setLoadingMore(false);
+          return;
+        }
+    
+        const url =
+          activeAccount !== null
+            ? `/api/emails?account_id=${activeAccount}&before=${lastTimestamp}&before_id=${lastId}`
+            : `/api/emails?before=${lastTimestamp}&before_id=${lastId}`;
+    
+        const res = await fetch(`${BASE_URL}${url}`, {
+          headers: {
+            Authorization: `Bearer ${token}`, // 🔥 FIX 1
+          },
+        });
+    
+        // 🔥 FIX 2 — prevent JSON crash
+        if (!res.ok) {
+          const text = await res.text();
+          console.error("❌ Load more API error:", text);
+          setLoadingMore(false);
+          return;
+        }
+    
+        const data: Email[] = await res.json();
+    
+        // 🔥 FIX 3 — prevent duplicates (important)
+        setEmails(prev => {
+          const existingIds = new Set(prev.map(e => e.id));
+          const newItems = data.filter(e => !existingIds.has(e.id));
+          return [...prev, ...newItems];
+        });
+    
+        // 🔥 FIX 4 — update cursor safely
+        if (data.length > 0) {
+          const last = data[data.length - 1];
+          setLastTimestamp(last.created_at);
+          setLastId(last.id);
+        }
+    
+      } catch (err) {
+        console.error("❌ Load more failed:", err);
+      } finally {
+        setLoadingMore(false);
+      }
     };
 
     return (

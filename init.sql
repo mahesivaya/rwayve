@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS email_accounts (
 
 CREATE TABLE IF NOT EXISTS meetings (
     id SERIAL PRIMARY KEY,
+    user_id INTEGER,
     title TEXT NOT NULL,
     date DATE NOT NULL,
     start_time TIME NOT NULL,
@@ -131,3 +132,9 @@ ON email_accounts(user_id);
 
 CREATE UNIQUE INDEX unique_user_email_idx
 ON email_accounts (user_id, LOWER(email));
+
+CREATE INDEX idx_emails_account_created
+ON emails(account_id, created_at DESC, id DESC);
+
+CREATE INDEX idx_email_accounts_user
+ON email_accounts(user_id);
