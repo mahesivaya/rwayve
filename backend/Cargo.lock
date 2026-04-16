@@ -2183,6 +2183,7 @@ dependencies = [
  "base64 0.21.7",
  "bcrypt",
  "chrono",
+ "dotenvy",
  "fern",
  "futures",
  "futures-util",

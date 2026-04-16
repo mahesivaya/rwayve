@@ -10,10 +10,20 @@ use base64::Engine;
 #[derive(Deserialize)]
 pub struct CallbackQuery {
     pub code: String,
+    pub state: Option<String>,
 }
 
 
-pub async fn gmail_login() -> impl Responder {
+#[derive(Deserialize)]
+pub struct LoginQuery {
+    pub token: Option<String>,
+}
+
+
+pub async fn gmail_login(
+    req: HttpRequest,
+    query: web::Query<LoginQuery>,
+) -> impl Responder {
     let secrets = load_google_secrets();
     let client_id = secrets["web"]["client_id"]
         .as_str()
@@ -21,6 +31,22 @@ pub async fn gmail_login() -> impl Responder {
     let redirect_uri = secrets["web"]["redirect_uris"][0]
         .as_str()
         .unwrap();
+
+    let token = if let Some(t) = &query.token {
+        t.clone()
+    } else {
+        req.headers()
+            .get("Authorization")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.strip_prefix("Bearer "))
+            .unwrap_or("")
+            .to_string()
+    };
+
+    if token.is_empty() {
+        return HttpResponse::Unauthorized().body("Missing token");
+    }
+    
     let scope = "https://www.googleapis.com/auth/userinfo.email \
                  https://www.googleapis.com/auth/gmail.send \
                  https://www.googleapis.com/auth/gmail.modify \
@@ -32,10 +58,12 @@ pub async fn gmail_login() -> impl Responder {
         &response_type=code\
         &scope={}\
         &access_type=offline\
-        &prompt=consent",
+        &prompt=consent\
+        &state={}",
         client_id,
         redirect_uri,
-        scope
+        scope,
+        token
     );
 
     HttpResponse::Found()
@@ -52,11 +80,25 @@ pub async fn oauth_callback(
     let code = &query.code;
 
     let secrets = load_google_secrets();
+    // 🔥 Extract token from state
+    let token = match &query.state {
+        Some(t) => t,
+        None => return HttpResponse::Unauthorized().body("Missing state"),
+    };
+
+    // 🔥 Decode JWT
+    let decoded = match crate::models::auth::decode_jwt(token) {
+        Some(d) => d,
+        None => return HttpResponse::Unauthorized().body("Invalid token"),
+    };
+
+    // ✅ FINALLY user_id exists
+    let user_id = decoded.sub;
 
     let client_id = secrets["web"]["client_id"]
-    .as_str()
-    .unwrap()
-    .to_string();
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let client_secret = secrets["web"]["client_secret"]
         .as_str()
@@ -78,12 +120,8 @@ pub async fn oauth_callback(
             ("redirect_uri", &redirect_uri),
             ("grant_type", &"authorization_code".to_string()),
         ])
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+        .send().await.unwrap()
+        .json().await.unwrap();
 
     let access_token = res["access_token"].as_str().unwrap_or("");
     let refresh_token = res["refresh_token"].as_str().unwrap_or("");
@@ -116,9 +154,9 @@ pub async fn oauth_callback(
     match sqlx::query(
         r#"
         INSERT INTO email_accounts
-        (email, access_token, refresh_token, token_expiry, is_active)
-        VALUES ($1,$2,$3,$4,true)
-        ON CONFLICT (email)
+        (email, user_id, access_token, refresh_token, token_expiry, is_active)
+        VALUES ($1,$2,$3,$4,$5,true)
+        ON CONFLICT (user_id, email)
         DO UPDATE SET
             access_token = EXCLUDED.access_token,
             token_expiry = EXCLUDED.token_expiry,
@@ -129,6 +167,7 @@ pub async fn oauth_callback(
         "#
     )
     .bind(email)
+    .bind(user_id)
     .bind(access_token)
     .bind(refresh_token)
     .bind(expiry)
@@ -147,10 +186,10 @@ pub async fn oauth_callback(
 
     return HttpResponse::Found()
         .append_header(("Location", redirect))
-        .finish();
+        .finish()
 }
 
-#[post("/api/send")]
+#[post("/send")]
 async fn send(
     data: web::Json<SendEmailRequest>,
     pool: web::Data<PgPool>,
@@ -160,7 +199,9 @@ async fn send(
         return HttpResponse::BadRequest().body("Recipient and Subject are required");
     }
 
-    let account = sqlx::query("SELECT email, access_token FROM email_accounts WHERE id = $1")
+    let account = sqlx::query(
+        "SELECT email, access_token FROM email_accounts 
+        WHERE id = $1 AND user_id = $2")
         .bind(data.account_id)
         .fetch_one(pool.get_ref())
         .await;
@@ -216,38 +257,8 @@ Content-Type: text/plain; charset=utf-8\r\n\
     }
 }
 
-#[get("/accounts")]
-async fn get_accounts(pool: web::Data<PgPool>) -> impl Responder {
-    let result = sqlx::query(
-        "SELECT id, email FROM email_accounts"
-    )
-    .fetch_all(pool.get_ref())
-    .await;
 
-    match result {
-        Ok(rows) => {
-            let accounts: Vec<_> = rows
-                .into_iter()
-                .map(|r| {
-                    serde_json::json!({
-                        "id": r.get::<i32, _>("id"),
-                        "email": r.get::<String, _>("email"),
-                    })
-                })
-                .collect();
-
-            HttpResponse::Ok().json(accounts) // ✅ IMPORTANT
-        }
-        Err(_e) => {
-            HttpResponse::InternalServerError().json(
-                serde_json::json!({ "error": "DB failure" })
-            )
-        }
-    }
-}
-
-
-#[get("/api/me")]
+#[get("/me")]
 async fn get_me(
     req: HttpRequest,
     pool: web::Data<PgPool>,

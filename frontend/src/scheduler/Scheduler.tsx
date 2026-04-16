@@ -30,9 +30,21 @@ export default function Scheduler() {
 
   // 🔥 FETCH EVENTS
   const fetchMeetings = async () => {
-    const res = await fetch("http://localhost:8080/meetings");
+    const token = localStorage.getItem("token");
+  
+    const res = await fetch("http://localhost:8080/api/meetings", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  
+    if (!res.ok) {
+      console.log("❌ API error", res.status);
+      return;
+    }
+  
     const data = await res.json();
-
+  
     const formatted = data.map((m: any) => ({
       id: m.id,
       title: m.title,
@@ -40,7 +52,7 @@ export default function Scheduler() {
       start: fromTime(m.start_time),
       end: fromTime(m.end_time),
     }));
-
+  
     setEvents(formatted);
   };
 
@@ -50,10 +62,13 @@ export default function Scheduler() {
 
   // 🔥 CREATE EVENT
   const createMeeting = async () => {
-    await fetch("http://localhost:8080/meetings", {
+    const token = localStorage.getItem("token");
+  
+    await fetch("http://localhost:8080/api/meetings", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         title,
@@ -62,7 +77,7 @@ export default function Scheduler() {
         end: toMinutes(end),
       }),
     });
-
+  
     setShowModal(false);
     setTitle("");
     fetchMeetings();

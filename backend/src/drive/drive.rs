@@ -45,7 +45,7 @@ pub struct FileRecord {
 //
 // 🔥 UPDATED UPLOAD FILE (FIXED USER_ID)
 //
-#[post("/api/files/upload")]
+#[post("/files/upload")]
 pub async fn upload_file(
     mut payload: Multipart,
     pool: web::Data<PgPool>,
@@ -178,7 +178,7 @@ pub async fn upload_file(
 //
 // ✅ GET FILES
 //
-#[get("/api/files")]
+#[get("/files")]
 pub async fn get_files(
     pool: web::Data<PgPool>,
     query: web::Query<FileQuery>,

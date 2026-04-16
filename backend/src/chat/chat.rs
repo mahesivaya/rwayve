@@ -209,7 +209,7 @@ pub struct QueryParams {
     pub user2: i32,
 }
 
-#[get("/api/messages")]
+#[get("/messages")]
 pub async fn get_messages(
     pool: web::Data<PgPool>,
     query: web::Query<QueryParams>,

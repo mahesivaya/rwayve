@@ -1,13 +1,3 @@
-CREATE TABLE IF NOT EXISTS email_accounts (
-    id SERIAL PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE,
-    access_token TEXT,
-    refresh_token TEXT,
-    token_expiry TIMESTAMP,
-    is_active BOOLEAN DEFAULT TRUE,
-    last_sync BIGINT
-);
-
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
@@ -15,14 +5,44 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS email_accounts (
+    id SERIAL PRIMARY KEY,
+    
+    email TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+
+    access_token TEXT,
+    refresh_token TEXT,
+    token_expiry TIMESTAMP,
+
+    is_active BOOLEAN DEFAULT TRUE,
+    last_sync BIGINT,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    -- 🔐 Constraints
+    CONSTRAINT fk_user_accounts
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
+
+);
+
+
 CREATE TABLE IF NOT EXISTS meetings (
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
     date DATE NOT NULL,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
+    user_id INTEGER NOT NULL,
+
+    CONSTRAINT fk_user_meetings
+    FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON DELETE CASCADE
 );
+
 
 CREATE TABLE IF NOT EXISTS emails (
     id SERIAL PRIMARY KEY,
@@ -37,7 +57,11 @@ CREATE TABLE IF NOT EXISTS emails (
     UNIQUE(account_id, gmail_id)
 );
 
-CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read');
+DO $$ BEGIN
+    CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TABLE IF NOT EXISTS messages (
     id SERIAL PRIMARY KEY,
@@ -51,12 +75,23 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE TABLE IF NOT EXISTS files (
     id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+
     name TEXT NOT NULL,
+    file_type TEXT,
     file_path TEXT NOT NULL,
     size BIGINT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT NOW()
-);
 
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE,
+
+    -- Foreign key constraint
+    CONSTRAINT fk_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
+);
 
 
 
@@ -88,3 +123,11 @@ ON messages (sender_id, receiver_id);
 -- Meetings
 CREATE INDEX IF NOT EXISTS idx_meetings_date
 ON meetings (date);
+
+CREATE INDEX idx_files_user_id ON files(user_id);
+
+CREATE INDEX idx_email_accounts_user_id
+ON email_accounts(user_id);
+
+CREATE UNIQUE INDEX unique_user_email_idx
+ON email_accounts (user_id, LOWER(email));

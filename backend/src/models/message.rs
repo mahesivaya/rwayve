@@ -1,8 +1,5 @@
 use crate::prelude::*;
 
-//
-// 🔹 2. API STRUCT (Decrypted → Sent to frontend)
-//
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]

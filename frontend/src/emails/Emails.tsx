@@ -16,6 +16,7 @@
   };
 
   export default function Emails() {
+    const BASE_URL = "http://localhost:8080";
     const [emails, setEmails] = useState<Email[]>([]);
     const [selected, setSelected] = useState<Email | null>(null);
     const [accounts, setAccounts] = useState<Account[]>([]);
@@ -27,13 +28,31 @@
     const [loadingMore, setLoadingMore] = useState(false);
 
     const connectGmail = () => {
-      window.location.href = "http://localhost:8080/gmail/login";
+      const token = localStorage.getItem("token");
+    
+      if (!token) {
+        alert("User not logged in");
+        return;
+      }
+    
+      window.location.href = `http://localhost:8080/gmail/login?token=${token}`;
     };
 
     // ================= ACCOUNTS =================
     useEffect(() => {
-      fetch("/api/accounts")
-        .then(res => res.json())
+      const token = localStorage.getItem("token");
+    
+      fetch(`${BASE_URL}/api/accounts`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+        .then(res => {
+          if (!res.ok) {
+            throw new Error("Unauthorized");
+          }
+          return res.json();
+        })
         .then(setAccounts)
         .catch(() => setAccounts([]));
     }, []);
@@ -45,7 +64,7 @@
           ? `/api/emails?account_id=${activeAccount}`
           : `/api/emails`;
 
-      fetch(url)
+        fetch(`${BASE_URL}${url}`)
         .then(res => res.json())
         .then((data: Email[]) => {
           setEmails(data);
@@ -70,7 +89,7 @@
           ? `/api/emails?account_id=${activeAccount}&before=${lastTimestamp}&before_id=${lastId}`
           : `/api/emails?before=${lastTimestamp}&before_id=${lastId}`;
 
-      const res = await fetch(url);
+      const res = await fetch(`${BASE_URL}${url}`);
       const data: Email[] = await res.json();
 
       setEmails(prev => [...prev, ...data]);

@@ -4,10 +4,12 @@ services:
   postgres_db:
     image: postgres:15
     container_name: postgres_db
+    env_file:
+      - backend/.env
     environment:
-      POSTGRES_DB: wayve_db
-      POSTGRES_USER: wayve_user
-      POSTGRES_PASSWORD: wayve_password
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
