@@ -226,35 +226,6 @@ pub fn extract_headers(res: &Value) -> (String, String, String) {
     (sender, receiver, subject)
 }
 
-fn extract_headers_recursive(
-    node: &Value,
-    sender: &mut String,
-    receiver: &mut String,
-    subject: &mut String,
-) {
-    // ✅ Read headers at current level
-    if let Some(headers) = node.get("headers").and_then(|h| h.as_array()) {
-        for h in headers {
-            let name = h["name"].as_str().unwrap_or("");
-            let value = h["value"].as_str().unwrap_or("");
-
-            match name {
-                "From" if sender.is_empty() => *sender = value.to_string(),
-                "To" if receiver.is_empty() => *receiver = value.to_string(),
-                "Subject" if subject.is_empty() => *subject = value.to_string(),
-                _ => {}
-            }
-        }
-    }
-
-    // ✅ Recurse into parts (handles nested MIME)
-    if let Some(parts) = node.get("parts").and_then(|p| p.as_array()) {
-        for part in parts {
-            extract_headers_recursive(part, sender, receiver, subject);
-        }
-    }
-}
-
 //////////////////////////////////////////////////
 // SYNC ACCOUNT
 //////////////////////////////////////////////////
