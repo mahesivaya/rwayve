@@ -1,18 +1,18 @@
 import { useState } from "react";
 
-type Event = {
+type EventType = {
   id: number;
   title: string;
   start: number;
   end: number;
 };
 
-export default function TimeGrid({
-  events,
-  onCreateEvent,
-}: any) {
+type Props = {
+  events: EventType[];
+  onCreateEvent: (event: EventType) => void;
+};
 
-  // ✅ MOVE HERE (inside component)
+export default function TimeGrid({ events, onCreateEvent }: Props) {
   const [dragStart, setDragStart] = useState<number | null>(null);
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
@@ -33,27 +33,26 @@ export default function TimeGrid({
     e: React.MouseEvent<HTMLDivElement>,
     hour: number
   ) => {
-    const start = getMinutesFromEvent(e, hour);
-    setDragStart(start);
+    setDragStart(getMinutesFromEvent(e, hour));
   };
 
   const handleMouseUp = (
     e: React.MouseEvent<HTMLDivElement>,
     hour: number
   ) => {
-    if (dragStart !== null) {
-      const end = getMinutesFromEvent(e, hour);
+    if (dragStart === null) return;
 
-      const newEvent = {
-        id: Date.now(),
-        start: Math.min(dragStart, end),
-        end: Math.max(dragStart, end),
-        title: "New Event",
-      };
+    const end = getMinutesFromEvent(e, hour);
 
-      onCreateEvent(newEvent); // 🔥 send to backend
-      setDragStart(null);
-    }
+    const newEvent: EventType = {
+      id: Date.now(),
+      start: Math.min(dragStart, end),
+      end: Math.max(dragStart, end),
+      title: "New Event",
+    };
+
+    onCreateEvent(newEvent);
+    setDragStart(null);
   };
 
   return (
@@ -68,9 +67,18 @@ export default function TimeGrid({
             onMouseUp={(e) => handleMouseUp(e, hour)}
           >
             {events
-              .filter((e: Event) => Math.floor(e.start / 60) === hour)
-              .map((e: Event) => (
-                <EventBlock key={e.id} event={e} />
+              .filter((ev) => Math.floor(ev.start / 60) === hour)
+              .map((ev) => (
+                <div
+                  key={ev.id}
+                  className="event-block"
+                  style={{
+                    top: (ev.start % 60),
+                    height: ev.end - ev.start,
+                  }}
+                >
+                  {ev.title}
+                </div>
               ))}
           </div>
         </div>

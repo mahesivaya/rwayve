@@ -152,3 +152,500 @@
     border-radius: 4px;
     font-size: 12px;
   }
+
+  .participants-box {
+    margin-top: 10px;
+  }
+  
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  
+  .chip {
+    background: #e3f2fd;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  .chip span {
+    cursor: pointer;
+    font-weight: bold;
+  }
+  
+  .participant-input {
+    display: flex;
+    gap: 6px;
+  }
+  
+  .participant-input input {
+    flex: 1;
+    padding: 6px;
+  }
+  
+  .participant-input button {
+    padding: 6px 10px;
+  }
+
+  .view-btn {
+    padding: 6px 10px;
+    border: none;
+    background: #eee;
+    cursor: pointer;
+  }
+  
+  .view-btn.active {
+    background: #1976d2;
+    color: white;
+  }
+
+  .hour-cell {
+    position: relative;   /* ✅ parent must be relative */
+    height: 60px;         /* 1 hour = 60px */
+    border-bottom: 1px solid #eee;
+  }
+  
+  .event-block {
+    background: #1976d2;
+    color: white;
+    font-size: 12px;
+    border-radius: 4px;
+    padding: 2px 4px;
+    overflow: hidden;
+  }
+
+  .modal {
+    position: relative; /* ✅ required for absolute positioning */
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+  }
+  
+  .close-btn {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    border: none;
+    background: transparent;
+    font-size: 18px;
+    cursor: pointer;
+  }
+  
+  .close-btn:hover {
+    color: red;
+  }
+
+  .modal {
+    position: relative;
+    width: 320px;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+  }
+  
+  /* 🔥 form layout */
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  /* each field */
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .form-group label {
+    font-size: 13px;
+    font-weight: 500;
+  }
+  
+  /* inputs */
+  .form-group input {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+  }
+  
+  /* buttons */
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 15px;
+  }
+
+  .mini-day {
+    padding: 6px;
+    cursor: pointer;
+    border-radius: 6px;
+  }
+  
+  .mini-day:hover {
+    background: #eee;
+  }
+  
+  .mini-day.active {
+    background: #1976d2;
+    color: white;
+  }
+
+  .mini-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  
+  .mini-header button {
+    border: none;
+    background: #eee;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  
+  .mini-header span {
+    font-weight: bold;
+  }
+
+  .delete-btn {
+    background: #e53935;
+    color: white;
+    border: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  
+  .delete-btn:hover {
+    background: #c62828;
+  }
+
+  .month-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+  }
+  
+  .day-cell {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    min-height: 120px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .date {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+  
+  .events {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+  }
+
+  .day-view {
+    padding: 10px;
+  }
+  
+  .week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+  }
+  
+  .day-column {
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 6px;
+  }
+  
+  .event {
+    background: #3b82f6;
+    color: white;
+    padding: 4px;
+    margin-top: 4px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  .day-container {
+    display: flex;
+    height: 960px;
+    border: 1px solid #ddd;
+    background: white;
+  }
+  
+  /* Left time column */
+  .time-column {
+    width: 80px;
+    border-right: 1px solid #ddd;
+  }
+  
+  .time-slot {
+    height: 40px; /* ✅ EXACT */
+    font-size: 12px;
+    padding: 2px 6px;
+    border-bottom: 1px solid #eee;
+    color: #666;
+  }
+  
+  /* Right event area */
+  .events-column {
+    flex: 1;
+    position: relative;
+  }
+  
+  /* Hour lines */
+  .events-column::before {
+    content: "";
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+      to bottom,
+      #eee,
+      #eee 1px,
+      transparent 1px,
+      transparent calc(960px / 24)
+    );
+  }
+  
+  /* Event block */
+  .event-block {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    background: #3b82f6;
+    color: white;
+    border-radius: 6px;
+    padding: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  
+  .event-block:hover {
+    background: #2563eb;
+  }
+
+  .week-container {
+    display: flex;
+    height: 960px;
+    border: 1px solid #ddd;
+    background: white;
+  }
+  
+  /* Left time column */
+  .time-column {
+    width: 80px;
+    border-right: 1px solid #ddd;
+  }
+  
+  .time-slot {
+    height: 40px; /* ✅ EXACT */
+    font-size: 12px;
+    padding: 2px 6px;
+    border-bottom: 1px solid #eee;
+    color: #666;
+  }
+  
+  /* Right side */
+  .week-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    position: relative;
+  }
+  
+  /* Each day */
+  .day-column {
+    border-right: 1px solid #eee;
+    position: relative;
+  }
+  
+  /* Header */
+  .day-header {
+    height: 32px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 4px;
+    border-bottom: 1px solid #ddd;
+    background: #f9fafb;
+  }
+  
+  /* Hour lines */
+  .day-column::before {
+    content: "";
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+      to bottom,
+      #eee,
+      #eee 1px,
+      transparent 1px,
+      transparent calc(960px / 24)
+    );
+  }
+  
+  /* Event */
+  .event-block {
+    position: absolute;
+    left: 5px;
+    right: 5px;
+    background: #3b82f6;
+    color: white;
+    border-radius: 6px;
+    padding: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  
+  .event-block:hover {
+    background: #2563eb;
+  }
+
+  .time-header {
+    height: 32px; /* MUST match .day-header */
+    border-bottom: 1px solid #ddd;
+  }
+
+  .time-header {
+    height: 0px; /* for day view no header needed */
+  }
+  .events-column::before {
+    content: "";
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+      to bottom,
+      #eee,
+      #eee 1px,
+      transparent 1px,
+      transparent 40px /* match EXACTLY */
+    );
+  }
+
+  .time-header {
+    height: 0px; /* day view */
+  }
+
+  .day-view {
+    padding: 20px;
+  }
+  
+  .time-row {
+    display: flex;
+    border-bottom: 1px solid #eee;
+    padding: 6px 0;
+  }
+  
+  .time-label {
+    width: 60px;
+    font-size: 12px;
+    color: #666;
+  }
+  
+  .time-events {
+    flex: 1;
+  }
+  
+  .event {
+    background: #000;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    cursor: pointer;
+  }
+
+
+  
+  .week-header {
+    display: grid;
+    grid-template-columns: 60px repeat(7, 1fr);
+    border-bottom: 1px solid #ddd;
+  }
+  
+  .week-day-header {
+    padding: 10px;
+    text-align: center;
+    font-weight: bold;
+  }
+  
+  .week-grid {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .week-row {
+    display: grid;
+    grid-template-columns: 60px repeat(7, 1fr);
+    border-bottom: 1px solid #eee;
+  }
+  
+  .week-cell {
+    border-left: 1px solid #eee;
+    min-height: 30px;
+    padding: 2px;
+  }
+  
+  .week-header {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+  }
+  
+
+
+  .day-view {
+    display: flex;
+    flex-direction: column;
+    height: 80%; /* or 100vh */
+  }
+  
+  .day-title {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+    padding: 10px;
+  }
+  
+  .day-slots {
+    overflow-y: auto;   /* ✅ enables vertical scroll */
+    flex: 1;            /* fills remaining space */
+  }
+
+  .week-grid {
+    overflow-y: auto;   /* ✅ enables scrolling */
+    flex: 1;            /* ✅ fills remaining space */
+  }
+  .week-view {
+    display: flex;
+    flex-direction: column;
+  }  
+  .week-view {
+    display: flex;
+    flex-direction: column;
+    height: 80%; /* or 100vh if full screen */
+  }

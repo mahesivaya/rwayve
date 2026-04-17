@@ -60,6 +60,14 @@ CREATE TABLE IF NOT EXISTS meetings (
     ON DELETE CASCADE
 );
 
+CREATE TABLE meeting_participants (
+    id SERIAL PRIMARY KEY,
+    meeting_id INT REFERENCES meetings(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    user_id INT NULL,   -- if exists in your system
+    status TEXT DEFAULT 'pending'
+);
+
 
 DO $$ BEGIN
     CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read');

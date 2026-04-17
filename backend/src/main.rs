@@ -22,7 +22,7 @@ use crate::chat::{chat_ws, get_messages};
 
 use crate::drive::{upload_file, get_files};
 
-use crate::scheduler::{create_meeting, get_meetings};
+use crate::scheduler::scheduler::{create_meeting, get_meetings, update_meeting, delete_meeting};
 
 use crate::call::call::call_ws;
 
@@ -62,6 +62,8 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
                 .service(get_users)
                 .service(create_meeting)
                 .service(get_meetings)
+                .service(update_meeting)
+                .service(delete_meeting)
                 .service(upload_file)
                 .service(get_files)
                 .service(send)
