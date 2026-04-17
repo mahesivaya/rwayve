@@ -177,8 +177,8 @@ pub async fn create_meeting(
 
     let result = sqlx::query(
         r#"
-        INSERT INTO meetings (title, date, start_time, end_time, user_id)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO meetings (title, date, start_time, end_time, user_id, participants)
+        VALUES ($1, $2, $3, $4, $5, $6)
         "#
     )
     .bind(&data.title)
@@ -186,6 +186,7 @@ pub async fn create_meeting(
     .bind(start_time)
     .bind(end_time)
     .bind(user_id)
+    .bind(serde_json::to_value(&data.participants).unwrap())
     .execute(pool.get_ref())
     .await;
 
