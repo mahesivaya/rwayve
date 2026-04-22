@@ -27,12 +27,12 @@ use crate::scheduler::scheduler::{create_meeting, get_meetings, update_meeting, 
 use crate::call::call::call_ws;
 
 use crate::email::sync::sync_all;
-use crate::email::handler::{gmail_login,oauth_callback,send,get_me};
+use crate::email::handler::{gmail_login,oauth_callback,send,get_me, save_public_key};
 
 use crate::routes::account::get_accounts;
 use crate::routes::email::get_emails;
 use crate::routes::auth::{register,login};
-use crate::routes::user::get_users;
+use crate::routes::user::{get_user_by_email,get_all_users};
 
 
 
@@ -44,6 +44,7 @@ use actix_cors::Cors;
 use actix_files::Files;
 use tokio::time::{sleep, Duration};
 use sqlx::PgPool;
+pub use base64::{engine::general_purpose::URL_SAFE_NO_PAD};
 
 use dotenvy::dotenv;
 use std::env;
@@ -59,7 +60,8 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
                 .service(get_emails)
                 .service(get_accounts)
                 .service(get_messages)
-                .service(get_users)
+                .service(get_user_by_email)
+                .service(get_all_users)
                 .service(create_meeting)
                 .service(get_meetings)
                 .service(update_meeting)
@@ -68,6 +70,7 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
                 .service(get_files)
                 .service(send)
                 .service(get_me)
+                .service(save_public_key)
         )
 
         // 🔥 AUTH / GOOGLE

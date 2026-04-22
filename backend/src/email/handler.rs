@@ -212,7 +212,6 @@ async fn send(
         .bind(user_id)
         .fetch_one(pool.get_ref())
         .await;
-    
     let (from_email, access_token) = match account {
         Ok(row) => {
             let email: String = row.get("email");
@@ -223,19 +222,20 @@ async fn send(
     };
     let raw_email = format!(
         "From: {}\r\n\
-        To: {}\r\n\
-        Subject: {}\r\n\
-        MIME-Version: 1.0\r\n\
-        Content-Type: text/plain; charset=utf-8\r\n\
-        \r\n\
-        {}",
+    To: {}\r\n\
+    Subject: {}\r\n\
+    MIME-Version: 1.0\r\n\
+    Content-Type: text/plain; charset=\"UTF-8\"\r\n\
+    Content-Transfer-Encoding: 7bit\r\n\
+    \r\n\
+    {}",
         from_email.trim(),
         data.to.trim(),
         data.subject.trim(),
-        data.body
+        data.body.replace("\n", "\r\n")
     );
-
-    let encoded = URL_SAFE_NO_PAD.encode(raw_email.as_bytes());
+    
+    let encoded = base64::engine::general_purpose::URL_SAFE.encode(raw_email.as_bytes());
 
     let client = reqwest::Client::new();
 
@@ -322,6 +322,39 @@ async fn get_me(
 
         Err(e) => {
             println!("❌ DB ERROR: {}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+
+
+#[post("/save-public-key")]
+async fn save_public_key(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+
+    let user_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().body("Invalid token"),
+    };
+
+    let public_key = body["public_key"].to_string();
+
+    let res = sqlx::query(
+        "UPDATE users SET public_key = $1 WHERE id = $2"
+    )
+    .bind(public_key)
+    .bind(user_id)
+    .execute(pool.get_ref())
+    .await;
+
+    match res {
+        Ok(_) => HttpResponse::Ok().body("Saved"),
+        Err(e) => {
+            println!("DB error: {:?}", e);
             HttpResponse::InternalServerError().finish()
         }
     }

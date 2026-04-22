@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
 
+
 // ================= GLOBAL SESSIONS =================
 
 lazy_static! {
@@ -217,7 +218,7 @@ pub async fn get_messages(
 
     let result = sqlx::query(
         r#"
-        SELECT id, sender_id, receiver_id, content_encrypted, content_iv, status, created_at
+        SELECT id, sender_id, receiver_id, content_encrypted, content_iv, status::TEXT AS status, created_at
         FROM messages
         WHERE 
             (sender_id = $1 AND receiver_id = $2)
@@ -251,7 +252,13 @@ pub async fn get_messages(
                 let encrypted: String = row.get("content_encrypted");
                 let iv: String = row.get("content_iv");
 
-                let content = decrypt(&iv, &encrypted);
+                let content = match decrypt(&iv, &encrypted) {
+                    Ok(text) => text,
+                    Err(e) => {
+                        println!("❌ decrypt error: {:?}", e);
+                        "[decryption failed]".to_string()
+                    }
+                };
 
                 Message {
                     message_id: Some(row.get("id")),

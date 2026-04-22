@@ -12,4 +12,5 @@ pub struct SendEmailRequest {
 pub struct UserResponse {
     pub id: i32,
     pub email: String,
+    pub public_key: Option<String>,
 }

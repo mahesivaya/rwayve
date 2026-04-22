@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { savePrivateKey, loadPrivateKey } from "../crypto/keyStore";
 
 type UserType = {
   email: string;
@@ -13,7 +14,7 @@ type AuthType = {
 
 const AuthContext = createContext<AuthType | null>(null);
 
-// 🔥 Manual JWT decode (NO LIBRARY)
+// 🔥 JWT decode
 const parseJwt = (token: string) => {
   try {
     return JSON.parse(atob(token.split(".")[1]));
@@ -26,42 +27,99 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 🔥 Restore user on refresh
-  // Inside AuthProvider
+  // 🔐 Generate + Save Keys (ONLY ONCE)
+  const setupEncryption = async (token: string) => {
+    try {
+      const existingKey = await loadPrivateKey();
+
+      if (existingKey) {
+        console.log("🔑 Key already exists in IndexedDB");
+        return;
+      }
+
+      console.log("🔐 Generating new key pair...");
+
+      const keyPair = await crypto.subtle.generateKey(
+        {
+          name: "RSA-OAEP",
+          modulusLength: 2048,
+          publicExponent: new Uint8Array([1, 0, 1]),
+          hash: "SHA-256",
+        },
+        true,
+        ["encrypt", "decrypt"]
+      );
+
+      // 🔐 Save private key
+      await savePrivateKey(keyPair.privateKey);
+
+      // 📤 Export public key
+      const publicKey = await crypto.subtle.exportKey("spki", keyPair.publicKey);
+
+      // 🔥 Save public key to backend
+      await fetch("http://localhost:8080/api/save-public-key", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          public_key: Array.from(new Uint8Array(publicKey)),
+        }),
+      });
+
+      console.log("✅ Encryption setup complete");
+
+    } catch (err) {
+      console.error("❌ Encryption setup failed", err);
+    }
+  };
+
+  // 🔥 Restore session
   useEffect(() => {
     const checkAuth = async () => {
       const token = localStorage.getItem("token");
+
       if (!token) {
         setLoading(false);
         return;
       }
+
       try {
-        const res = await fetch("/api/me", {
+        const res = await fetch("http://localhost:8080/api/me", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
+
         if (res.status === 401) {
-          // 🔥 ONLY logout if backend says invalid
           logout();
           return;
         }
+
         if (!res.ok) {
-          // ❌ don't logout on server errors
-          console.warn("Server error, keeping user logged in");
+          console.warn("Server error");
           setLoading(false);
           return;
         }
+
         const data = await res.json();
+
         setUser({
           email: data.email,
           id: data.id,
         });
+
+        // 🔐 Ensure encryption setup
+        await setupEncryption(token);
+
       } catch (err) {
-        console.warn("Network error, keeping session");
+        console.warn("Network error");
       }
-    setLoading(false);
+
+      setLoading(false);
     };
+
     checkAuth();
   }, []);
 
@@ -77,12 +135,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: decoded.sub,
       });
     }
+
+    // ❌ DO NOT call setupEncryption here
+    // it runs in useEffect already
+    setupEncryption(token);
   };
 
-  // 🔥 Logout
+  // 🔥 Logout (FIXED)
   const logout = () => {
     localStorage.removeItem("token");
+
+    // ❗ DO NOT delete private key (important for decrypt)
     setUser(null);
+
     window.location.href = "/login";
   };
 
@@ -95,6 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// 🔥 Hook
 export function useAuth() {
   const context = useContext(AuthContext);
 

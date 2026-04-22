@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
+import { encryptMessage } from "../crypto/crypto";
 
 export default function SendEmail() {
-  const [accountId, setAccountId] = useState(1);
+  const [accountId] = useState(1);
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -9,7 +10,6 @@ export default function SendEmail() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // auto-hide status
   useEffect(() => {
     if (!status) return;
     const timer = setTimeout(() => setStatus(""), 3000);
@@ -17,16 +17,12 @@ export default function SendEmail() {
   }, [status]);
 
   const sendEmail = async () => {
-    console.log("Sending email to: ", to);
-    console.log("Subject: ", subject);
-    console.log("Body: ", body);
     if (!to || !subject || !body) {
       setStatus("Please fill all fields ⚠️");
       return;
     }
 
     const token = localStorage.getItem("token");
-
     if (!token) {
       setStatus("You must login first ❌");
       return;
@@ -36,17 +32,68 @@ export default function SendEmail() {
     setStatus("");
 
     try {
+      // 🔥 1. Check if receiver is Wayve user
+      const checkRes = await fetch(
+        `http://localhost:8080/api/users?email=${to}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      
+      let finalBody = body;
+      
+      if (checkRes.ok) {
+        const users = await checkRes.json();
+      
+        // 👉 FIX: handle array response
+        const user = Array.isArray(users) ? users[0] : users;
+      
+        console.log("USER RESPONSE:", user);
+      
+        if (user && user.public_key) {
+          const parsedKey =
+            typeof user.public_key === "string"
+              ? JSON.parse(user.public_key)
+              : user.public_key;
+      
+          const publicKey = await crypto.subtle.importKey(
+            "spki",
+            new Uint8Array(parsedKey),
+            { name: "RSA-OAEP", hash: "SHA-256" },
+            true,
+            ["encrypt"]
+          );
+      
+          const { encryptedMessage, encryptedKey, iv } =
+            await encryptMessage(body, publicKey);
+      
+          finalBody =
+            "WAYVE_SECURE_V1\n" +
+            JSON.stringify({
+              type: "wayve_encrypted",
+              data: Array.from(new Uint8Array(encryptedMessage)),
+              key: Array.from(new Uint8Array(encryptedKey)),
+              iv: Array.from(iv),
+            });
+        }
+      }
+      
+      console.log("FINAL BODY:", finalBody);
+
+      // 🔥 2. Send email
       const res = await fetch("http://localhost:8080/api/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // 🔥 IMPORTANT
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          account_id: 1,
+          account_id: accountId,
           to,
           subject,
-          body,
+          body: finalBody,
         }),
       });
 
@@ -57,11 +104,9 @@ export default function SendEmail() {
       }
 
       setStatus("Email sent successfully ✅");
-
       setTo("");
       setSubject("");
       setBody("");
-
     } catch (err: any) {
       console.error(err);
       setStatus(err.message || "Failed to send email ❌");
@@ -77,33 +122,31 @@ export default function SendEmail() {
       <input
         placeholder="To"
         value={to}
-        onChange={e => setTo(e.target.value)}
+        onChange={(e) => setTo(e.target.value)}
       />
 
       <input
         placeholder="Subject"
         value={subject}
-        onChange={e => setSubject(e.target.value)}
+        onChange={(e) => setSubject(e.target.value)}
       />
 
       <textarea
         placeholder="Message"
         value={body}
-        onChange={e => setBody(e.target.value)}
+        onChange={(e) => setBody(e.target.value)}
       />
 
-      <button
-        onClick={() => {
-          console.log("🔥 BUTTON CLICKED");
-          sendEmail();
-        }}
-        disabled={loading}
-      >
+      <button onClick={sendEmail} disabled={loading}>
         {loading ? "Sending..." : "Send"}
       </button>
 
       {status && (
-        <div className={`status ${status.includes("success") ? "success" : "error"}`}>
+        <div
+          className={`status ${
+            status.includes("success") ? "success" : "error"
+          }`}
+        >
           {status}
         </div>
       )}

@@ -141,35 +141,43 @@ async fn get_emails(
                 let receiver: String = row.try_get("receiver").unwrap_or_default();
                 let subject: String = row.try_get("subject").unwrap_or_default();
                 let created_at: chrono::NaiveDateTime =
-                    row.try_get("created_at").unwrap_or_else(|_| chrono::Utc::now().naive_utc());
-
+                    row.try_get("created_at")
+                        .unwrap_or_else(|_| chrono::Utc::now().naive_utc());
+        
                 let iv: Option<String> = row.try_get("body_iv").ok();
                 let enc: Option<String> = row.try_get("body_encrypted").ok();
-
+        
                 let plain_body: Option<String> = row.try_get("body").ok();
-
+        
+                // ✅ FIXED BODY LOGIC
                 let body = if let (Some(iv), Some(enc)) = (iv, enc) {
-                    let decrypted = decrypt(&iv, &enc);
-
-                    if decrypted.is_empty() {
-                        plain_body.unwrap_or_default()  // 🔥 fallback
-                    } else {
-                        decrypted
+                    match decrypt(&iv, &enc) {
+                        Ok(text) => {
+                            if text.is_empty() {
+                                plain_body.unwrap_or_default()
+                            } else {
+                                text
+                            }
+                        }
+                        Err(e) => {
+                            println!("❌ decrypt failed: {:?}", e);
+                            plain_body.unwrap_or_default()
+                        }
                     }
                 } else {
-                    plain_body.unwrap_or_default() // 🔥 fallback
+                    plain_body.unwrap_or_default()
                 };
-
+        
                 serde_json::json!({
                     "id": id,
                     "sender": sender,
-                    "receiver":receiver,
+                    "receiver": receiver,
                     "subject": subject,
                     "body": body,
                     "created_at": created_at
                 })
             }).collect();
-
+        
             HttpResponse::Ok().json(emails)
         }
 

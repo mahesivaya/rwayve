@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
-import "./chat.css";
 
 type User = {
   id: number;
@@ -8,226 +7,245 @@ type User = {
 };
 
 type Message = {
-  message_id?: number;
   sender_id: number;
   receiver_id: number;
   content: string;
-  status?: "sent" | "delivered" | "read";
-  type?: string; // for WS events
+  status: "sent" | "delivered" | "read";
+  created_at: string;
 };
 
 export default function Chat() {
+  const { user } = useAuth();
+
   const [users, setUsers] = useState<User[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [socket, setSocket] = useState<WebSocket | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [input, setInput] = useState("");
 
-  const { user } = useAuth();
-  const currentUserId = user?.id;
+  const wsRef = useRef<WebSocket | null>(null);
 
-  const endRef = useRef<HTMLDivElement | null>(null);
+  // =============================
+  // 🔥 FORMAT TIME
+  // =============================
+  const formatTime = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
-  // ✅ Load users
+  // =============================
+  // 🔥 STATUS ICON
+  // =============================
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "sent":
+        return "✓";
+      case "delivered":
+        return "✓✓";
+      case "read":
+        return "👁";
+      default:
+        return "";
+    }
+  };
+
+  // =============================
+  // 🔥 FETCH USERS
+  // =============================
   useEffect(() => {
-    fetch("/api/users")
-      .then(res => res.json())
-      .then(data => {
-        console.log("USERS API:", data);
-        setUsers(data);
-      })
-      .catch(err => console.error("Users error:", err));
-  }, []);
-
-  // ✅ WebSocket connect
-  useEffect(() => {
-    if (!currentUserId) return;
-
-    const ws = new WebSocket(
-      `ws://${window.location.host}/ws/chat?user_id=${currentUserId}`
-    );
-
-    ws.onopen = () => console.log("✅ WS connected");
-
-    ws.onmessage = (event) => {
-      console.log("📥 RAW WS:", event.data);
+    const fetchUsers = async () => {
+      const token = localStorage.getItem("token");
 
       try {
-        const msg: Message = JSON.parse(event.data);
-
-        // 🔥 HANDLE STATUS UPDATE
-        if (msg.type === "status_update") {
-          setMessages(prev =>
-            prev.map(m =>
-              m.message_id === msg.message_id
-                ? { ...m, status: msg.status }
-                : m
-            )
-          );
-          return;
-        }
-
-        // 🔥 PREVENT DUPLICATES
-        setMessages(prev => {
-          if (
-            msg.message_id &&
-            prev.some(m => m.message_id === msg.message_id)
-          ) {
-            return prev;
-          }
-          return [...prev, msg];
+        const res = await fetch("http://localhost:8080/api/users/all", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         });
 
-      } catch (e) {
-        console.error("❌ Parse error:", e);
+        const text = await res.text();
+
+        try {
+          const data = JSON.parse(text);
+
+          // remove current user
+          const filtered = data.filter((u: User) => u.id !== user?.id);
+
+          setUsers(filtered);
+        } catch {
+          console.error("Users error:", text);
+        }
+
+      } catch (err) {
+        console.error("Fetch users failed", err);
       }
     };
 
-    ws.onerror = (err) => console.error("WS error", err);
+    if (user) fetchUsers();
+  }, [user]);
 
-    setSocket(ws);
-    return () => ws.close();
-  }, [currentUserId]);
-
-  // ✅ Clear chat when switching users
+  // =============================
+  // 🔥 CONNECT WEBSOCKET
+  // =============================
   useEffect(() => {
-    setMessages([]);
-  }, [selectedUser]);
+    if (!user) return;
 
-  // ✅ Load chat history + mark as read
-  useEffect(() => {
-    if (!selectedUser || !currentUserId) return;
+    const ws = new WebSocket(`ws://localhost/ws/chat?user_id=${user.id}`);
+    wsRef.current = ws;
 
-    fetch(`/api/messages?user1=${currentUserId}&user2=${selectedUser.id}`)
-      .then(res => res.json())
-      .then(data => {
-        setMessages(data);
-
-        // 🔥 SEND READ EVENT
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({
-            sender_id: currentUserId,
-            receiver_id: selectedUser.id,
-            content: "",
-            status: "read"
-          }));
-        } else {
-          console.warn("⚠️ WS not ready, skipping read event");
-        }
-      })
-      .catch(console.error);
-  }, [selectedUser, currentUserId, socket]);
-
-  // ✅ Auto scroll
-  useEffect(() => {
-    if (messages.length > 0) {
-      endRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
-
-  // ✅ Send message
-  const sendMessage = () => {
-    if (!socket) return;
-    if (!selectedUser) return alert("Select a user first");
-    if (!input.trim()) return;
-    if (!currentUserId) return;
-
-    const msg: Message = {
-      sender_id: currentUserId,
-      receiver_id: selectedUser.id,
-      content: input,
+    ws.onopen = () => {
+      console.log("✅ WS connected");
     };
 
-    console.log("📤 Sending:", msg);
+    ws.onmessage = (event) => {
+      const msg: Message = JSON.parse(event.data);
 
-    socket.send(JSON.stringify(msg));
+      setMessages((prev) => [...prev, msg]);
+    };
+
+    ws.onclose = () => {
+      console.log("❌ WS disconnected");
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [user]);
+
+  // =============================
+  // 🔥 LOAD MESSAGES
+  // =============================
+  const loadMessages = async (otherUser: User) => {
+    if (!user) return;
+
+    const token = localStorage.getItem("token");
+
+    try {
+      const res = await fetch(
+        `http://localhost:8080/api/messages?user1=${user.id}&user2=${otherUser.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await res.json();
+
+      setMessages(data);
+      setSelectedUser(otherUser);
+
+    } catch (err) {
+      console.error("Failed to load messages", err);
+    }
+  };
+
+  // =============================
+  // 🔥 SEND MESSAGE
+  // =============================
+  const sendMessage = () => {
+    if (!wsRef.current || !user || !selectedUser || !input.trim()) return;
+
+    const now = new Date().toISOString();
+
+    const message: Message = {
+      sender_id: user.id,
+      receiver_id: selectedUser.id,
+      content: input,
+      status: "sent", // initial status
+      created_at: now,
+    };
+
+    wsRef.current.send(JSON.stringify(message));
+
+    setMessages((prev) => [...prev, message]);
     setInput("");
   };
 
-  // ✅ Filter messages
-  const chatMessages = messages.filter(
-    m =>
-      selectedUser &&
-      (
-        (m.sender_id === currentUserId && m.receiver_id === selectedUser.id) ||
-        (m.sender_id === selectedUser.id && m.receiver_id === currentUserId)
-      )
-  );
-
+  // =============================
+  // UI
+  // =============================
   return (
-    <div className="chat-container">
+    <div style={{ display: "flex", height: "100%" }}>
 
-      {/* 🧑 USER LIST */}
-      <div className="user-list">
-        <h3>Users</h3>
+      {/* LEFT USERS */}
+      <div style={{ width: "30%", borderRight: "1px solid #ddd" }}>
+        <h3 style={{ padding: 10 }}>Users</h3>
 
-        {users
-          .filter(u => u.id !== currentUserId)
-          .map(u => (
-            <div
-              key={u.id}
-              onClick={() => setSelectedUser(u)}
-              className={`user-item ${
-                selectedUser?.id === u.id ? "active" : ""
-              }`}
-            >
-              💬 {u.email}
-            </div>
-          ))}
+        {users.map((u) => (
+          <div
+            key={u.id}
+            style={{
+              padding: 10,
+              cursor: "pointer",
+              borderBottom: "1px solid #eee",
+              background: selectedUser?.id === u.id ? "#f0f0f0" : "white",
+            }}
+            onClick={() => loadMessages(u)}
+          >
+            {u.email}
+          </div>
+        ))}
       </div>
 
-      {/* 💬 CHAT AREA */}
-      <div className="chat-area">
-        <h3 className="chat-header">
-          {selectedUser ? `Chat with ${selectedUser.email}` : "Select a user"}
-        </h3>
+      {/* RIGHT CHAT */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
-        <div className="messages">
-          {chatMessages.map((msg, i) => (
+        {/* MESSAGES */}
+        <div style={{ flex: 1, padding: 10, overflowY: "auto" }}>
+          {messages.map((msg, i) => (
             <div
-              key={msg.message_id || i}
-              className={`message ${
-                msg.sender_id === currentUserId ? "me" : ""
-              }`}
+              key={i}
+              style={{
+                textAlign:
+                  msg.sender_id === user?.id ? "right" : "left",
+                marginBottom: 10,
+              }}
             >
-              <span
-                className={`bubble ${
-                  msg.sender_id === currentUserId ? "me" : "other"
-                }`}
+              <div
+                style={{
+                  padding: "8px 12px",
+                  background:
+                    msg.sender_id === user?.id ? "#DCF8C6" : "#eee",
+                  borderRadius: 8,
+                  display: "inline-block",
+                  maxWidth: "70%",
+                }}
               >
                 {msg.content}
 
-                {/* ✅ STATUS TICKS */}
-                {msg.sender_id === currentUserId && (
-                  <span className="status">
-                    {msg.status === "sent" && " ✔"}
-                    {msg.status === "delivered" && " ✔✔"}
-                    {msg.status === "read" && " ✔✔"}
-                  </span>
-                )}
-              </span>
+                {/* 🔥 TIME + STATUS */}
+                <div
+                  style={{
+                    fontSize: 10,
+                    marginTop: 4,
+                    opacity: 0.7,
+                    textAlign: "right",
+                  }}
+                >
+                  {formatTime(msg.created_at)}{" "}
+                  {msg.sender_id === user?.id &&
+                    getStatusIcon(msg.status)}
+                </div>
+              </div>
             </div>
           ))}
-          <div ref={endRef} />
         </div>
 
-        <div className="chat-input">
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder="Type message..."
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-          />
-
-          <button onClick={sendMessage} disabled={!selectedUser}>
-            Send
-          </button>
-        </div>
+        {/* INPUT */}
+        {selectedUser && (
+          <div style={{ display: "flex", padding: 10 }}>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              style={{ flex: 1, marginRight: 10 }}
+              placeholder="Type message..."
+            />
+            <button onClick={sendMessage}>Send</button>
+          </div>
+        )}
       </div>
     </div>
   );
