@@ -131,3 +131,6 @@ ON email_accounts(user_id);
 
 CREATE UNIQUE INDEX unique_user_email_idx
 ON email_accounts (user_id, LOWER(email));
+
+CREATE INDEX idx_meeting_participants_meeting_id
+ON meeting_participants(meeting_id);

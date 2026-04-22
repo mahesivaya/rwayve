@@ -28,4 +28,4 @@ node_modules/
 client_secret.json
 .env
 uploads/
-.pem
+*.pem

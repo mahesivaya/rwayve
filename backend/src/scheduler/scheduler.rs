@@ -1,9 +1,7 @@
 use crate::prelude::*;
 use base64::Engine;
-use actix_web::{put, delete};
+use actix_web::{post, put, web, delete, HttpRequest, HttpResponse};
 use serde_json::json;
-
-
 use crate::models::scheduler::{Meeting,CreateMeeting};
 
 // ================= HELPER =================
@@ -154,7 +152,8 @@ You have been invited to a meeting.
     }
 }
 
-// ================= CREATE =================
+// ================= CREATE MEETING =================
+
 #[post("/meetings")]
 pub async fn create_meeting(
     req: HttpRequest,
@@ -162,23 +161,50 @@ pub async fn create_meeting(
     data: web::Json<CreateMeeting>,
 ) -> HttpResponse {
 
+    // ================= AUTH =================
     let user_id = match get_user_id(&req) {
         Ok(id) => id,
         Err(resp) => return resp,
     };
 
-    let start_time = minutes_to_time(data.start);
-    let end_time = minutes_to_time(data.end);
+    // ================= VALIDATION =================
+    if data.title.trim().is_empty() {
+        return HttpResponse::BadRequest().body("Title is required");
+    }
 
+    if data.participants.is_empty() {
+        return HttpResponse::BadRequest().body("At least one participant required");
+    }
+
+    // ================= TIME =================
+    let start_time: NaiveTime = minutes_to_time(data.start);
+    let end_time: NaiveTime = minutes_to_time(data.end);
+
+    if start_time >= end_time {
+        return HttpResponse::BadRequest().body("Invalid time range");
+    }
+
+    // ================= DATE =================
     let date = match NaiveDate::parse_from_str(&data.date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => return HttpResponse::BadRequest().body("Invalid date"),
     };
 
-    let result = sqlx::query(
+    // ================= TRANSACTION =================
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            println!("❌ TX error: {:?}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    // ================= INSERT MEETING =================
+    let meeting = match sqlx::query(
         r#"
-        INSERT INTO meetings (title, date, start_time, end_time, user_id, participants)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO meetings (title, date, start_time, end_time, user_id)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
         "#
     )
     .bind(&data.title)
@@ -186,50 +212,78 @@ pub async fn create_meeting(
     .bind(start_time)
     .bind(end_time)
     .bind(user_id)
-    .bind(serde_json::to_value(&data.participants).unwrap())
-    .execute(pool.get_ref())
-    .await;
-
-    match result {
-        Ok(_) => {
-
-            // ✅ Clone everything BEFORE spawn
-            let pool_clone = pool.clone();
-            let participants = data.participants.clone();
-            let title = data.title.clone();
-            let date_clone = date;
-            let start_clone = start_time;
-            let end_clone = end_time;
-            let user_id_clone = user_id;
-
-            // ✅ Background email sending
-
-actix_web::rt::spawn(async move {
-    send_meeting_emails(
-        pool_clone.get_ref(),
-        user_id_clone,
-        participants,
-        title,
-        date_clone,
-        start_clone,
-        end_clone,
-    )
-    .await;
-});
-
-            // ✅ Immediate response
-            HttpResponse::Ok().json(serde_json::json!({
-                "message": "Meeting created. Emails sending in background"
-            }))
-        }
-
+    .fetch_one(&mut *tx) // ✅ FIXED (use tx)
+    .await
+    {
+        Ok(m) => m,
         Err(e) => {
-            println!("DB error: {:?}", e);
-            HttpResponse::InternalServerError().body("Failed to create meeting")
+            println!("❌ Meeting insert error: {:?}", e);
+            let _ = tx.rollback().await;
+            return HttpResponse::InternalServerError().finish();
         }
-    }
-}
+    };
 
+    let meeting_id: i32 = meeting.get("id");
+
+    // ================= INSERT PARTICIPANTS (BEST WAY) =================
+
+    let insert_participants = sqlx::query(
+        r#"
+        INSERT INTO meeting_participants (meeting_id, email, user_id)
+        SELECT 
+            $1,
+            v.email,
+            u.id
+        FROM UNNEST($2::text[]) AS v(email)
+        LEFT JOIN users u 
+        ON LOWER(TRIM(u.email)) = LOWER(TRIM(v.email));
+        "#
+    )
+    .bind(meeting_id)
+    .bind(&data.participants)
+    .execute(&mut *tx) // ✅ inside transaction
+    .await;
+
+    if let Err(e) = insert_participants {
+        println!("❌ Participants insert error: {:?}", e);
+        let _ = tx.rollback().await;
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    // ================= COMMIT =================
+    if let Err(e) = tx.commit().await {
+        println!("❌ TX commit error: {:?}", e);
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    // ================= BACKGROUND EMAIL =================
+    let pool_clone = pool.clone();
+    let participants = data.participants.clone();
+    let title = data.title.clone();
+    let date_clone = date;
+    let start_clone = start_time;
+    let end_clone = end_time;
+    let user_id_clone = user_id;
+
+    actix_web::rt::spawn(async move {
+        send_meeting_emails(
+            pool_clone.get_ref(),
+            user_id_clone,
+            participants,
+            title,
+            date_clone,
+            start_clone,
+            end_clone,
+        )
+        .await;
+    });
+
+    // ================= RESPONSE =================
+    HttpResponse::Ok().json(json!({
+        "message": "Meeting created successfully",
+        "meeting_id": meeting_id
+    }))
+}
 
 
 
@@ -301,50 +355,118 @@ pub async fn send_email_direct(
     Ok(())
 }
 
+
 #[put("/meetings/{id}")]
-async fn update_meeting(
+pub async fn update_meeting(
     path: web::Path<i32>,
     data: web::Json<CreateMeeting>,
     pool: web::Data<PgPool>,
 ) -> HttpResponse {
     let id = path.into_inner();
 
+    // ================= VALIDATION =================
+    if data.title.trim().is_empty() {
+        return HttpResponse::BadRequest().body("Title is required");
+    }
+
+    if data.participants.is_empty() {
+        return HttpResponse::BadRequest().body("At least one participant required");
+    }
+
     let date = match chrono::NaiveDate::parse_from_str(&data.date, "%Y-%m-%d") {
         Ok(d) => d,
-        Err(_) => {
-            return HttpResponse::BadRequest().body("Invalid date format");
+        Err(_) => return HttpResponse::BadRequest().body("Invalid date format"),
+    };
+
+    let start_time = minutes_to_time(data.start);
+    let end_time = minutes_to_time(data.end);
+
+    if start_time >= end_time {
+        return HttpResponse::BadRequest().body("Invalid time range");
+    }
+
+    // ================= TRANSACTION =================
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            println!("❌ TX error: {:?}", e);
+            return HttpResponse::InternalServerError().finish();
         }
     };
 
-    let result = sqlx::query(
-        "UPDATE meetings 
-         SET title=$1, date=$2, start_time=$3, end_time=$4 
-         WHERE id=$5"
+    // ================= UPDATE MEETING =================
+    let update = sqlx::query(
+        r#"
+        UPDATE meetings 
+        SET title=$1, date=$2, start_time=$3, end_time=$4 
+        WHERE id=$5
+        "#
     )
     .bind(&data.title)
     .bind(date)
-    .bind(minutes_to_time(data.start))
-    .bind(minutes_to_time(data.end))
+    .bind(start_time)
+    .bind(end_time)
     .bind(id)
-    .execute(pool.get_ref())
+    .execute(&mut *tx)
     .await;
 
-    match result {
-        Ok(_) => {
-            HttpResponse::Ok().json(json!({
-                "message": "Meeting updated"
-            }))
-        }
-        Err(e) => {
-            println!("❌ Update error FULL: {:#?}", e);
-            HttpResponse::InternalServerError().body("Failed to update meeting")
-        }
+    if let Err(e) = update {
+        println!("❌ Update error: {:?}", e);
+        let _ = tx.rollback().await;
+        return HttpResponse::InternalServerError().body("Failed to update meeting");
     }
+
+    // ================= DELETE OLD PARTICIPANTS =================
+    if let Err(e) = sqlx::query(
+        "DELETE FROM meeting_participants WHERE meeting_id = $1"
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await {
+        println!("❌ Delete participants error: {:?}", e);
+        let _ = tx.rollback().await;
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    // ================= INSERT NEW PARTICIPANTS =================
+    let insert = sqlx::query(
+        r#"
+        INSERT INTO meeting_participants (meeting_id, email, user_id)
+        SELECT 
+            $1,
+            v.email,
+            u.id
+        FROM UNNEST($2::text[]) AS v(email)
+        LEFT JOIN users u 
+        ON LOWER(TRIM(u.email)) = LOWER(TRIM(v.email))
+        "#
+    )
+    .bind(id)
+    .bind(&data.participants)
+    .execute(&mut *tx)
+    .await;
+
+    if let Err(e) = insert {
+        println!("❌ Insert participants error: {:?}", e);
+        let _ = tx.rollback().await;
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    // ================= COMMIT =================
+    if let Err(e) = tx.commit().await {
+        println!("❌ TX commit error: {:?}", e);
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    // ================= RESPONSE =================
+    HttpResponse::Ok().json(json!({
+        "message": "Meeting updated successfully"
+    }))
 }
 
 
 #[delete("/meetings/{id}")]
-async fn delete_meeting(
+pub async fn delete_meeting(
     path: web::Path<i32>,
     pool: web::Data<PgPool>,
 ) -> HttpResponse {
