@@ -21,42 +21,70 @@ export default function Emails() {
     })();
   }, []);
 
-  // 📥 Fetch accounts
+  const fetchAccounts = async () => {
+    const token = localStorage.getItem("token");
+  
+    const res = await fetch("http://localhost:8080/api/accounts", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  
+    const data = await res.json();
+    setAccounts(data);
+  };
+  
   useEffect(() => {
-    const fetchAccounts = async () => {
-      const token = localStorage.getItem("token");
-
-      const res = await fetch("http://localhost:8080/api/accounts", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const data = await res.json();
-      setAccounts(data);
-    };
-
     fetchAccounts();
   }, []);
+
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+  
+    if (urlParams.get("connected") === "true") {
+      window.history.replaceState({}, document.title, "/emails");
+      fetchAccounts(); // 🔥 refresh
+    }
+  }, []);
+
 
   // 📥 Fetch emails
   useEffect(() => {
     const fetchEmails = async () => {
       const token = localStorage.getItem("token");
-
+  
       let url = "http://localhost:8080/api/emails";
-      if (activeAccount) {
+  
+      if (activeAccount !== null) {
         url += `?account_id=${activeAccount}`;
       }
-
+  
+      console.log("Fetching:", url);
+  
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
+  
       const data = await res.json();
+      console.log("EMAILS:", data);
+  
       setEmails(data);
     };
-
+  
     fetchEmails();
   }, [activeAccount]);
+
+// Connect to gmail
+const connectGmail = () => {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    alert("Login required ❌");
+    return;
+  }
+
+  window.location.href =
+    `http://localhost:8080/gmail/login?token=${token}`;
+};
+
 
   // 🔓 Open email
   const openEmail = async (email: any) => {
@@ -93,17 +121,31 @@ export default function Emails() {
         {/* 🔥 TOP ACTIONS */}
         <div style={{ padding: 10 }}>
           <button onClick={() => setShowCompose(true)}>+ Compose</button>
-          <button style={{ marginLeft: 10 }}>➕ Add Account</button>
+          <button style={{ marginLeft: 10 }}onClick={connectGmail}>➕ Add Account</button>
         </div>
 
         {/* 🔥 ACCOUNT FILTER */}
         <div style={{ padding: 10 }}>
-          <button onClick={() => setActiveAccount(null)}>All</button>
+          {/* ALL */}
+          <button
+            onClick={() => setActiveAccount(null)}
+            style={{
+              marginRight: 5,
+              background: activeAccount === null ? "#ddd" : "white"
+            }}
+          >
+            All
+          </button>
 
+          {/* ACCOUNTS */}
           {accounts.map((acc) => (
             <button
               key={acc.id}
               onClick={() => setActiveAccount(acc.id)}
+              style={{
+                marginRight: 5,
+                background: activeAccount === acc.id ? "#ddd" : "white"
+              }}
             >
               {acc.email}
             </button>

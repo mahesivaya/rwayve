@@ -80,6 +80,7 @@ pub async fn oauth_callback(
     let code = &query.code;
 
     let secrets = load_google_secrets();
+
     // 🔥 Extract token from state
     let token = match &query.state {
         Some(t) => t,
@@ -92,23 +93,11 @@ pub async fn oauth_callback(
         None => return HttpResponse::Unauthorized().body("Invalid token"),
     };
 
-    // ✅ FINALLY user_id exists
     let user_id = decoded.sub;
 
-    let client_id = secrets["web"]["client_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    let client_secret = secrets["web"]["client_secret"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    let redirect_uri = secrets["web"]["redirect_uris"][0]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let client_id = secrets["web"]["client_id"].as_str().unwrap().to_string();
+    let client_secret = secrets["web"]["client_secret"].as_str().unwrap().to_string();
+    let redirect_uri = secrets["web"]["redirect_uris"][0].as_str().unwrap().to_string();
 
     // 🔁 exchange code → tokens
     let res: Value = HTTP_CLIENT
@@ -141,16 +130,7 @@ pub async fn oauth_callback(
 
     let email = user_info["email"].as_str().unwrap_or("");
 
-    let frontend = std::env::var("FRONTEND_URL")
-    .unwrap_or("http://localhost:5173".to_string());
-
-    let redirect = format!("{}/emails", frontend);
-
-    HttpResponse::Found()
-        .append_header(("Location", redirect))
-        .finish();
-
-    // 💾 SAVE TO DB (THIS WAS MISSING)
+    // 💾 SAVE TO DB FIRST ✅
     match sqlx::query(
         r#"
         INSERT INTO email_accounts
@@ -175,19 +155,26 @@ pub async fn oauth_callback(
     .await
     {
         Ok(_) => println!("✅ Account saved"),
-        Err(_e) => println!("❌ DB ERROR: {}", _e),
+        Err(e) => {
+            println!("❌ DB ERROR: {}", e);
+            return HttpResponse::InternalServerError().body("Failed to save account");
+        }
     }
 
     println!("🚀 Redirecting to frontend...");
+
+    // 🔁 Redirect AFTER saving
     let frontend = std::env::var("FRONTEND_URL")
-        .unwrap_or("http://localhost".to_string());
+        .unwrap_or("http://localhost:5173".to_string());
 
-    let redirect = format!("{}/emails", frontend);
+    let redirect = format!("{}/emails?connected=true", frontend);
 
-    return HttpResponse::Found()
+    HttpResponse::Found()
         .append_header(("Location", redirect))
         .finish()
 }
+
+
 
 #[post("/send")]
 async fn send(
