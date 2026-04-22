@@ -21,7 +21,10 @@ pub struct EmailResponse {
 #[derive(Deserialize)]
 pub struct EmailQuery {
     pub account_id: Option<i32>,
+    pub before: Option<i64>,
+    pub before_id: Option<i32>,
 }
+
 
 #[get("/emails")]
 pub async fn get_emails(
@@ -29,54 +32,98 @@ pub async fn get_emails(
     query: web::Query<EmailQuery>,
 ) -> impl Responder {
 
-    let result = if let Some(account_id) = query.account_id {
+    let limit = 50;
 
-        sqlx::query(
-            r#"
-            SELECT id, subject, sender, receiver, body_encrypted, body_iv, account_id, created_at
-            FROM emails
-            WHERE account_id = $1
-            ORDER BY created_at DESC
-            LIMIT 50
-            "#
-        )
-        .bind(account_id)
-        .fetch_all(pool.get_ref())
-        .await
+    let result = match (query.account_id, query.before, query.before_id) {
 
-    } else {
+        // 🔥 account + pagination
+        (Some(account_id), Some(before), Some(before_id)) => {
+            sqlx::query(
+                r#"
+                SELECT id, subject, sender, receiver, body_encrypted, body_iv, account_id, created_at
+                FROM emails
+                WHERE account_id = $1
+                AND (created_at, id) < (to_timestamp($2), $3)
+                ORDER BY created_at DESC, id DESC
+                LIMIT $4
+                "#
+            )
+            .bind(account_id)
+            .bind(before)
+            .bind(before_id)
+            .bind(limit)
+            .fetch_all(pool.get_ref())
+            .await
+        }
 
-        sqlx::query(
-            r#"
-            SELECT id, subject, sender, receiver, body_encrypted, body_iv, account_id, created_at
-            FROM emails
-            ORDER BY created_at DESC
-            LIMIT 50
-            "#
-        )
-        .fetch_all(pool.get_ref())
-        .await
+        // 🔥 account only
+        (Some(account_id), _, _) => {
+            sqlx::query(
+                r#"
+                SELECT id, subject, sender, receiver, body_encrypted, body_iv, account_id, created_at
+                FROM emails
+                WHERE account_id = $1
+                ORDER BY created_at DESC, id DESC
+                LIMIT $2
+                "#
+            )
+            .bind(account_id)
+            .bind(limit)
+            .fetch_all(pool.get_ref())
+            .await
+        }
+
+        // 🔥 ALL + pagination
+        (None, Some(before), Some(before_id)) => {
+            sqlx::query(
+                r#"
+                SELECT id, subject, sender, receiver, body_encrypted, body_iv, account_id, created_at
+                FROM emails
+                WHERE (created_at, id) < (to_timestamp($1), $2)
+                ORDER BY created_at DESC, id DESC
+                LIMIT $3
+                "#
+            )
+            .bind(before)
+            .bind(before_id)
+            .bind(limit)
+            .fetch_all(pool.get_ref())
+            .await
+        }
+
+        // 🔥 ALL default
+        _ => {
+            sqlx::query(
+                r#"
+                SELECT id, subject, sender, receiver, body_encrypted, body_iv, account_id, created_at
+                FROM emails
+                ORDER BY created_at DESC, id DESC
+                LIMIT $1
+                "#
+            )
+            .bind(limit)
+            .fetch_all(pool.get_ref())
+            .await
+        }
     };
 
     match result {
         Ok(rows) => {
-
-            let emails: Vec<EmailResponse> = rows.into_iter().map(|row| {
-                EmailResponse {
-                    id: row.get("id"),
-                    subject: row.get("subject"),
-                    sender: row.get("sender"),
-                    receiver: row.get("receiver"),
-                    body_encrypted: row.get("body_encrypted"),
-                    body_iv: row.get("body_iv"),
-                    account_id: row.get("account_id"),
-                    created_at: row.get("created_at"),
-                }
+            let emails: Vec<_> = rows.into_iter().map(|row| {
+                serde_json::json!({
+                    "id": row.get::<i32,_>("id"),
+                    "subject": row.get::<Option<String>,_>("subject"),
+                    "sender": row.get::<Option<String>,_>("sender"),
+                    "receiver": row.get::<Option<String>,_>("receiver"),
+                    "body_encrypted": row.get::<String,_>("body_encrypted"),
+                    "body_iv": row.get::<String,_>("body_iv"),
+                    "account_id": row.get::<Option<i32>,_>("account_id"),
+                    "created_at": row.get::<Option<NaiveDateTime>,_>("created_at"),
+                })
             }).collect();
 
             HttpResponse::Ok().json(emails)
         }
-
         Err(e) => {
             println!("❌ DB error: {:?}", e);
             HttpResponse::InternalServerError().finish()

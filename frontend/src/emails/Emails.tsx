@@ -5,6 +5,8 @@ import { loadPrivateKey } from "../crypto/keyStore";
 
 export default function Emails() {
   const [emails, setEmails] = useState<any[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [activeAccount, setActiveAccount] = useState<number | null>(null);
 
@@ -58,20 +60,50 @@ export default function Emails() {
         url += `?account_id=${activeAccount}`;
       }
   
-      console.log("Fetching:", url);
-  
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
   
       const data = await res.json();
-      console.log("EMAILS:", data);
   
       setEmails(data);
+      setHasMore(data.length === 50); // pagination check
     };
   
     fetchEmails();
   }, [activeAccount]);
+
+
+  const loadMore = async () => {
+    if (emails.length === 0 || !hasMore) return;
+  
+    setLoadingMore(true);
+  
+    const token = localStorage.getItem("token");
+  
+    const last = emails[emails.length - 1];
+  
+    const before = Math.floor(new Date(last.created_at).getTime() / 1000);
+    const before_id = last.id;
+  
+    let url = `http://localhost:8080/api/emails?before=${before}&before_id=${before_id}`;
+  
+    if (activeAccount !== null) {
+      url += `&account_id=${activeAccount}`;
+    }
+  
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  
+    const data = await res.json();
+  
+    setEmails((prev) => [...prev, ...data]);
+    setHasMore(data.length === 50);
+    setLoadingMore(false);
+  };
+
+
 
 // Connect to gmail
 const connectGmail = () => {
@@ -141,7 +173,11 @@ const connectGmail = () => {
           {accounts.map((acc) => (
             <button
               key={acc.id}
-              onClick={() => setActiveAccount(acc.id)}
+              onClick={() => {
+                setActiveAccount(acc.id); // switch account
+                setEmails([]);            // 🔥 clear old emails
+                setHasMore(true);         // 🔥 reset pagination
+              }}
               style={{
                 marginRight: 5,
                 background: activeAccount === acc.id ? "#ddd" : "white"
@@ -168,6 +204,11 @@ const connectGmail = () => {
               )}
             </div>
           ))}
+          {hasMore && (
+          <button onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "Loading..." : "Load More"}
+          </button>
+        )}
         </div>
       </div>
 
