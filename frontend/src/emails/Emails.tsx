@@ -14,6 +14,8 @@ export default function Emails() {
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
 
   const [showCompose, setShowCompose] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  
 
   // 🔐 Load private key
   useEffect(() => {
@@ -152,41 +154,77 @@ const connectGmail = () => {
 
         {/* 🔥 TOP ACTIONS */}
         <div style={{ padding: 10 }}>
-          <button onClick={() => setShowCompose(true)}>+ Compose</button>
-          <button style={{ marginLeft: 10 }}onClick={connectGmail}>➕ Add Account</button>
-        </div>
 
-        {/* 🔥 ACCOUNT FILTER */}
-        <div style={{ padding: 10 }}>
-          {/* ALL */}
-          <button
-            onClick={() => setActiveAccount(null)}
-            style={{
-              marginRight: 5,
-              background: activeAccount === null ? "#ddd" : "white"
-            }}
-          >
-            All
-          </button>
+  {/* PRIMARY */}
+  <button
+    onClick={() => setShowCompose(true)}
+    style={{
+      width: "100%",
+      background: "#007bff",
+      color: "white",
+      padding: "10px",
+      borderRadius: 6,
+      border: "none",
+      marginBottom: 10
+    }}
+  >
+    + Compose
+  </button>
 
-          {/* ACCOUNTS */}
-          {accounts.map((acc) => (
-            <button
-              key={acc.id}
-              onClick={() => {
-                setActiveAccount(acc.id); // switch account
-                setEmails([]);            // 🔥 clear old emails
-                setHasMore(true);         // 🔥 reset pagination
-              }}
-              style={{
-                marginRight: 5,
-                background: activeAccount === acc.id ? "#ddd" : "white"
-              }}
-            >
-              {acc.email}
-            </button>
-          ))}
-        </div>
+  {/* SECONDARY */}
+  <button
+    onClick={connectGmail}
+    style={{
+      width: "100%",
+      background: "#f5f5f5",
+      padding: "10px",
+      borderRadius: 6,
+      border: "1px solid #ddd"
+    }}
+  >
+    ➕ Add Account
+  </button>
+
+</div>
+
+<div style={{ padding: 10, display: "flex", flexDirection: "column" }}>
+  
+  {/* ALL */}
+  <button
+    onClick={() => {
+      setActiveAccount(null);
+      setEmails([]);
+      setHasMore(true);
+    }}
+    style={{
+      marginBottom: 5,                 // 🔥 vertical spacing
+      textAlign: "left",
+      background: activeAccount === null ? "#ddd" : "white"
+    }}
+  >
+    All
+  </button>
+
+  {/* ACCOUNTS */}
+  {accounts.map((acc) => (
+    <button
+      key={acc.id}
+      onClick={() => {
+        setActiveAccount(acc.id);
+        setEmails([]);
+        setHasMore(true);
+      }}
+      style={{
+        marginBottom: 5,               // 🔥 vertical spacing
+        textAlign: "left",
+        background: activeAccount === acc.id ? "#ddd" : "white"
+      }}
+    >
+      {acc.email}
+    </button>
+  ))}
+
+</div>
 
         {/* 🔥 EMAIL LIST */}
         <div style={{ overflowY: "auto", height: "80%" }}>
@@ -229,27 +267,63 @@ const connectGmail = () => {
         )}
       </div>
 
+
+
       {/* 🔥 COMPOSE MODAL */}
       {showCompose && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          background: "rgba(0,0,0,0.5)"
-        }}>
-          <div style={{
-            background: "white",
-            width: 500,
-            margin: "100px auto",
-            padding: 20
-          }}>
-            <SendEmail />
-            <button onClick={() => setShowCompose(false)}>Close</button>
-          </div>
-        </div>
-      )}
+  <div style={{
+    position: "fixed",
+    bottom: 20,
+    right: 20,
+    width: 400,
+    height: 500,
+    background: "white",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+    borderRadius: 8,
+    display: "flex",
+    flexDirection: "column",
+    zIndex: 1000
+  }}>
+
+    {/* HEADER */}
+    <div style={{
+      background: "#007bff",
+      color: "white",
+      padding: "10px",
+      borderTopLeftRadius: 8,
+      borderTopRightRadius: 8,
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center"
+    }}>
+      <span>New Message</span>
+      <button
+        onClick={() => setShowCompose(false)}
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "white",
+          fontSize: 16,
+          cursor: "pointer"
+        }}
+      >
+        ✕
+      </button>
+    </div>
+
+    {/* BODY */}
+    <div style={{
+      flex: 1,
+      overflow: "auto",
+      padding: 10
+    }}>
+      <SendEmail />
+    </div>
+
+  </div>
+)}
+
+      
 
     </div>
   );

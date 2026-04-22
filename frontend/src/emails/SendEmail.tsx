@@ -116,40 +116,73 @@ export default function SendEmail() {
   };
 
   return (
-    <div className="send-container">
-      <h3>Compose Email</h3>
-
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: "10px"
+    }}>
+  
+      <h3 style={{ marginBottom: 5 }}>Compose Email</h3>
+  
       <input
         placeholder="To"
         value={to}
         onChange={(e) => setTo(e.target.value)}
+        style={{
+          padding: "8px",
+          borderRadius: 5,
+          border: "1px solid #ccc"
+        }}
       />
-
+  
       <input
         placeholder="Subject"
         value={subject}
         onChange={(e) => setSubject(e.target.value)}
+        style={{
+          padding: "8px",
+          borderRadius: 5,
+          border: "1px solid #ccc"
+        }}
       />
-
+  
       <textarea
         placeholder="Message"
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        style={{
+          padding: "8px",
+          borderRadius: 5,
+          border: "1px solid #ccc",
+          minHeight: 120,
+          resize: "none"
+        }}
       />
-
-      <button onClick={sendEmail} disabled={loading}>
+  
+      <button
+        onClick={sendEmail}
+        disabled={loading}
+        style={{
+          background: "#007bff",
+          color: "white",
+          padding: "10px",
+          borderRadius: 5,
+          border: "none",
+          cursor: "pointer"
+        }}
+      >
         {loading ? "Sending..." : "Send"}
       </button>
-
+  
       {status && (
-        <div
-          className={`status ${
-            status.includes("success") ? "success" : "error"
-          }`}
-        >
+        <div style={{
+          fontSize: 12,
+          color: status.includes("success") ? "green" : "red"
+        }}>
           {status}
         </div>
       )}
+  
     </div>
   );
 }

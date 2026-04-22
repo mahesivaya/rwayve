@@ -5,19 +5,6 @@ use sqlx::PgPool;
 use sqlx::Row;
 
 
-#[derive(Serialize)]
-pub struct EmailResponse {
-    pub id: i32,
-    pub subject: Option<String>,
-    pub sender: Option<String>,
-    pub receiver: Option<String>,
-    pub body_encrypted: String,
-    pub body_iv: String,
-    pub account_id: Option<i32>,
-    pub created_at: Option<NaiveDateTime>,
-}
-
-
 #[derive(Deserialize)]
 pub struct EmailQuery {
     pub account_id: Option<i32>,
