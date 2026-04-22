@@ -321,40 +321,6 @@ pub async fn get_meetings(
 }
 
 
-fn format_meeting_email(title: &str, date: &NaiveDate, start: NaiveTime, end: NaiveTime) -> String {
-    format!(
-        "Subject: Meeting Scheduled\r\n\
-         Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n\
-         Your meeting has been scheduled.\n\n\
-         Title: {}\n\
-         Date: {}\n\
-         Time: {} - {}\n",
-        title,
-        date,
-        start.format("%H:%M"),
-        end.format("%H:%M"),
-    )
-}
-
-pub async fn send_email_direct(
-    access_token: &str,
-    _to: &str,
-    raw_message: String,
-) -> Result<(), reqwest::Error> {
-    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(raw_message);
-
-    let client = reqwest::Client::new();
-
-    client
-        .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
-        .bearer_auth(access_token)
-        .json(&serde_json::json!({ "raw": encoded }))
-        .send()
-        .await?;
-
-    Ok(())
-}
-
 
 #[put("/meetings/{id}")]
 pub async fn update_meeting(

@@ -31,9 +31,6 @@ pub use once_cell::sync::Lazy;
 // 📁 File handling
 pub use std::fs;
 
-// 🔐 Encoding
-pub use base64::{engine::general_purpose::URL_SAFE_NO_PAD};
-
 // ❗ Error handling
 pub use anyhow::Result;
 
