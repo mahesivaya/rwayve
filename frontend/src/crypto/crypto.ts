@@ -27,9 +27,9 @@ export async function encrypt(text: string, key: CryptoKey) {
   const encoded = new TextEncoder().encode(text);
 
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv: toArrayBuffer(iv) },
     key,
-    encoded
+    toArrayBuffer(encoded)
   );
 
   return {
@@ -47,14 +47,54 @@ export async function decrypt(
   const data = Uint8Array.from(atob(encrypted.data), c => c.charCodeAt(0));
 
   const decrypted = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv: toArrayBuffer(iv) },
     key,
-    data
+    toArrayBuffer(data)
   );
 
   return new TextDecoder().decode(decrypted);
 }
 
+
+
+
+export async function encryptMessage(
+  message: string,
+  publicKey: CryptoKey
+) {
+  // 1. Generate AES key
+  const aesKey = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+
+  // 2. Create IV
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+
+  // 3. Encrypt message
+  const encryptedMessage = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: toArrayBuffer(iv) },
+    aesKey,
+    new TextEncoder().encode(message)
+  );
+
+  // 4. Export AES key
+  const rawKey = await crypto.subtle.exportKey("raw", aesKey);
+
+  // 5. Encrypt AES key with receiver public key
+  const encryptedKey = await crypto.subtle.encrypt(
+    { name: "RSA-OAEP" },
+    publicKey,
+    rawKey
+  );
+
+  return {
+    encryptedMessage,
+    encryptedKey,
+    iv,
+  };
+}
 
 export async function decryptMessage(
   encryptedMessage: ArrayBuffer | SharedArrayBuffer | Uint8Array,
@@ -81,50 +121,10 @@ export async function decryptMessage(
   );
 
   const decrypted = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv: toArrayBuffer(iv) },
     aesKey,
     msg
   );
 
   return new TextDecoder().decode(decrypted);
-}
-
-
-
-export async function encryptMessage(
-  message: string,
-  publicKey: CryptoKey
-) {
-  // 1. Generate AES key
-  const aesKey = await crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"]
-  );
-
-  // 2. Create IV
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-
-  // 3. Encrypt message
-  const encryptedMessage = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    new TextEncoder().encode(message)
-  );
-
-  // 4. Export AES key
-  const rawKey = await crypto.subtle.exportKey("raw", aesKey);
-
-  // 5. Encrypt AES key with receiver public key
-  const encryptedKey = await crypto.subtle.encrypt(
-    { name: "RSA-OAEP" },
-    publicKey,
-    rawKey
-  );
-
-  return {
-    encryptedMessage,
-    encryptedKey,
-    iv,
-  };
 }

@@ -126,3 +126,13 @@ src/
 
 ├── auth/            # oauth + jwt
 ├── utils/
+
+
+
+cargo build ---> cargo check
+
+install:
+cargo install cargo-watch
+
+for stopped app: cargo watch -x check
+for running app: cargo watch -x run
