@@ -21,13 +21,18 @@ pub fn create_jwt(user_id: i32, email: String) -> String {
         exp: expiration,
     };
 
+    let secret = std::env::var("JWT_SECRET")
+        .expect("JWT_SECRET must be set");
+
     encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret("secret".as_ref()),
+        &EncodingKey::from_secret(secret.as_bytes()),
     )
     .unwrap()
 }
+
+
 
 #[post("/register")]
 pub async fn register(

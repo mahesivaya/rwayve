@@ -1,271 +1,154 @@
 import { useEffect, useRef, useState } from "react";
-import { useAuth } from "../auth/AuthContext";
-import "./call.css";
 
-type User = {
-  id: number;
-  email: string;
-};
+const WS_URL = "/ws/call"; // adjust if needed
 
 export default function Call() {
-  const { user } = useAuth();
-  const currentUserId = user?.id;
-
-  const [users, setUsers] = useState<User[]>([]);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-
-  const [incomingCall, setIncomingCall] = useState<any>(null);
-  const [inCall, setInCall] = useState(false);
-
-  const localVideo = useRef<HTMLVideoElement>(null);
-  const remoteVideo = useRef<HTMLVideoElement>(null);
-
-  const socketRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
 
-  // 🔹 Load users
-  useEffect(() => {
-    fetch("/api/users")
-      .then(res => res.json())
-      .then(setUsers)
-      .catch(console.error);
-  }, []);
+  const [connected, setConnected] = useState(false);
 
-  // 🔹 WebSocket connect
-  useEffect(() => {
-    if (!currentUserId) return;
+  // 🔥 Create PeerConnection safely
+  const createPeerConnection = () => {
+    if (pcRef.current) return pcRef.current;
 
-    const ws = new WebSocket(`ws://localhost:8080/ws/call?user_id=${currentUserId}`);
-    socketRef.current = ws;
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+      ],
+    });
 
-    ws.onopen = () => {
-      console.log("✅ WebSocket connected");
+    pc.onicecandidate = (event) => {
+      if (event.candidate && wsRef.current) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "ice-candidate",
+            candidate: event.candidate,
+          })
+        );
+      }
     };
 
-    ws.onclose = () => {
-      console.log("❌ WebSocket closed");
+    pc.ontrack = (event) => {
+      console.log("📡 Received remote stream", event.streams[0]);
+      const audio = document.getElementById("remoteAudio") as HTMLAudioElement;
+      if (audio) {
+        audio.srcObject = event.streams[0];
+      }
+    };
+
+    pcRef.current = pc;
+    return pc;
+  };
+
+  // 🔥 Start WebSocket
+  useEffect(() => {
+    const ws = new WebSocket(WS_URL);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log("✅ WS connected");
+      setConnected(true);
     };
 
     ws.onmessage = async (event) => {
       const data = JSON.parse(event.data);
 
-      // 📞 Incoming call
-      if (data.type === "call_request") {
-        setIncomingCall(data);
-        return;
-      }
+      const pc = createPeerConnection();
 
-      if (data.type === "call_accept") {
-        await startWebRTC(true, data.from, data.callType || "video");
-        setInCall(true);
-        return;
-      }
+      try {
+        // 🔥 OFFER
+        if (data.type === "offer") {
+          console.log("📩 Received offer");
 
-      if (data.type === "call_reject") {
-        alert("❌ Call rejected");
-        return;
-      }
+          await pc.setRemoteDescription({
+            type: "offer",
+            sdp: data.sdp,
+          });
 
-      let pc = pcRef.current;
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
 
-        if (!pc) {
-          console.log("⚠️ PC not ready, creating...");
-          await startWebRTC(false, data.from, data.callType || "video");
-          pc = pcRef.current;
+          ws.send(
+            JSON.stringify({
+              type: "answer",
+              sdp: answer.sdp,
+            })
+          );
         }
 
-      // 📥 OFFER
-      if (data.type === "Offer") {
-        await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
+        // 🔥 ANSWER
+        else if (data.type === "answer") {
+          console.log("📩 Received answer");
 
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        socketRef.current?.send(JSON.stringify({
-          type: "Answer",
-          to: data.from,
-          sdp: answer.sdp,
-        }));
-      }
-
-      // 📥 ANSWER
-      
-      if (data.type === "Answer") {
-        await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
-      }
-
-      // ❄️ ICE
-      if (data.type === "IceCandidate") {
-        if (data.candidate) {
-          await pc.addIceCandidate(data.candidate);
+          await pc.setRemoteDescription({
+            type: "answer",
+            sdp: data.sdp,
+          });
         }
+
+        // 🔥 ICE
+        else if (data.type === "ice-candidate") {
+          console.log("❄️ Received ICE");
+
+          if (data.candidate) {
+            await pc.addIceCandidate(data.candidate);
+          }
+        }
+      } catch (err) {
+        console.error("❌ WebRTC error", err);
       }
+    };
+
+    ws.onclose = () => {
+      console.log("❌ WS closed");
+      setConnected(false);
     };
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
+      ws.close();
     };
-  }, [currentUserId]);
+  }, []);
 
-  // 🚀 WebRTC setup
-  const startWebRTC = async (
-    isCaller: boolean,
-    targetId: number,
-    callType: "audio" | "video"
-  ) => {
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
+  // 🔥 Start call (send offer)
+  const startCall = async () => {
+    const pc = createPeerConnection();
 
-    pcRef.current = pc;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: callType === "video",
-      audio: true,
-    }
-  );
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
+      });
 
-    if (localVideo.current) {
-      localVideo.current.srcObject = stream;
-    }
-
-    stream.getTracks().forEach(track => pc.addTrack(track, stream));
-
-    pc.ontrack = (event) => {
-      if (remoteVideo.current) {
-        remoteVideo.current.srcObject = event.streams[0];
-      }
-    };
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socketRef.current?.send(JSON.stringify({
-          type: "IceCandidate",
-          to: targetId,
-          candidate: event.candidate,
-        }));
-      }
-    };
-
-    if (isCaller) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      socketRef.current?.send(JSON.stringify({
-        type: "Offer",
-        to: targetId,
-        sdp: offer.sdp,
-      }));
+      wsRef.current?.send(
+        JSON.stringify({
+          type: "offer",
+          sdp: offer.sdp,
+        })
+      );
+
+      console.log("📤 Sent offer");
+    } catch (err) {
+      console.error("❌ startCall error", err);
     }
-  };
-
-  // 📞 Start call (SAFE)
-  const startCall = (callType: "audio" | "video") => {
-    if (!selectedUser) return;
-  
-    const ws = socketRef.current;
-  
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      console.warn("⚠️ WebSocket not ready");
-      return;
-    }
-  
-    console.log(`📞 Calling ${selectedUser.email} [ID: ${selectedUser.id}] (${callType})`);
-  
-    ws.send(JSON.stringify({
-      type: "call_request",     // ✅ always string
-      to: selectedUser.id,
-      from: currentUserId,      // 🔥 ADD THIS (important)
-      callType: callType,       // ✅ no conflict
-    }));
-  };
-
-  // ✅ Accept
-  const acceptCall = async () => {
-    if (!incomingCall) return;
-
-    socketRef.current?.send(JSON.stringify({
-      type: "call_accept",
-      to: incomingCall.from,
-      from: currentUserId, 
-      callType: incomingCall.callType || "video",
-    }));
-
-    await startWebRTC(false, incomingCall.from, incomingCall.callType || "video");
-
-    setIncomingCall(null);
-    setInCall(true);
-  };
-
-  // ❌ Reject
-  const rejectCall = () => {
-    socketRef.current?.send(JSON.stringify({
-      type: "call_reject",
-      to: incomingCall.from,
-      from: currentUserId, 
-    }));
-
-    setIncomingCall(null);
-  };
-
-  // 🛑 End
-  const endCall = () => {
-    pcRef.current?.close();
-    pcRef.current = null;
-
-    if (localVideo.current) localVideo.current.srcObject = null;
-    if (remoteVideo.current) remoteVideo.current.srcObject = null;
-
-    setInCall(false);
   };
 
   return (
-    <div className="call-container">
+    <div style={{ padding: 20 }}>
+      <h2>Call</h2>
 
-      {incomingCall && (
-        <div className="incoming-call">
-          <h3>📞 Incoming Call</h3>
-          <p>User {incomingCall.from} is calling...</p>
+      <button onClick={startCall} disabled={!connected}>
+        Start Call
+      </button>
 
-          <div className="call-actions">
-            <button className="accept" onClick={acceptCall}>Accept</button>
-            <button className="reject" onClick={rejectCall}>Reject</button>
-          </div>
-        </div>
-      )}
-
-      <div className="call-users">
-        <h3>Users</h3>
-        {users.map(u => (
-          <div
-            key={u.id}
-            className={`user-item ${selectedUser?.id === u.id ? "active" : ""}`}
-            onClick={() => setSelectedUser(u)}
-          >
-            {u.email}
-          </div>
-        ))}
-      </div>
-
-      <div className="call-area">
-        <div className="videos">
-          <video ref={remoteVideo} autoPlay playsInline className="remote-video" />
-          <video ref={localVideo} autoPlay playsInline muted className="local-video" />
-        </div>
-
-        <div className="controls">
-          {!inCall ? (
-            <div className="call-buttons">
-              <button className="audio-btn" onClick={() => startCall("audio")} disabled={!selectedUser}>📞</button>
-              <button className="video-btn" onClick={() => startCall("video")} disabled={!selectedUser}>🎥</button>
-            </div>
-          ) : (
-            <button className="end" onClick={endCall}>❌ End Call</button>
-          )}
-        </div>
-      </div>
+      <audio id="remoteAudio" autoPlay />
     </div>
   );
 }

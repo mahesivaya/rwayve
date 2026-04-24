@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const publicKey = await crypto.subtle.exportKey("spki", keyPair.publicKey);
 
       // 🔥 Save public key to backend
-      await fetch("http://localhost:8080/api/save-public-key", {
+      await fetch("/api/save-public-key", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const res = await fetch("http://localhost:8080/api/me", {
+        const res = await fetch("/api/me", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
