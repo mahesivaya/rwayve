@@ -35,6 +35,19 @@ export default function Emails() {
     const data = await res.json();
     setAccounts(data);
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+  
+    if (params.get("connected") === "true") {
+      console.log("🔄 Refreshing accounts after OAuth");
+  
+      fetchAccounts();
+  
+      // clean URL
+      window.history.replaceState({}, document.title, "/emails");
+    }
+  }, []);
   
   useEffect(() => {
     fetchAccounts();

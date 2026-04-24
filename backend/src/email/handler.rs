@@ -167,7 +167,11 @@ pub async fn oauth_callback(
     let frontend = std::env::var("FRONTEND_URL")
         .unwrap_or("http://localhost:5173".to_string());
 
-    let redirect = format!("{}/emails?connected=true", frontend);
+        let redirect = format!(
+            "{}/emails?connected=true&token={}",
+            frontend,
+            token
+        );
 
     HttpResponse::Found()
         .append_header(("Location", redirect))

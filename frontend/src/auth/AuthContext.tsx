@@ -75,53 +75,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 🔥 Restore session
-  useEffect(() => {
-    const checkAuth = async () => {
-      const token = localStorage.getItem("token");
 
+
+  useEffect(() => {
+    const initAuth = async () => {
+      const params = new URLSearchParams(window.location.search);
+  
+      let token = localStorage.getItem("token");
+      const tokenFromUrl = params.get("token");
+  
+      // 1) Prefer token from URL (OAuth)
+      if (tokenFromUrl) {
+        console.log("🔐 Restoring token from OAuth");
+        localStorage.setItem("token", tokenFromUrl);
+        token = tokenFromUrl;
+  
+        // remove only token param, keep connected=true
+        params.delete("token");
+        const newUrl = `/emails?${params.toString()}`;
+        window.history.replaceState({}, document.title, newUrl);
+      }
+  
+      // 2) If still no token → stop
       if (!token) {
+        console.warn("⚠️ No token found");
         setLoading(false);
         return;
       }
-
+  
       try {
+        // 3) Call /api/me with the SAME token variable
         const res = await fetch("/api/me", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         });
-
+  
         if (res.status === 401) {
           logout();
           return;
         }
-
+  
         if (!res.ok) {
-          console.warn("Server error");
+          const txt = await res.text();
+          console.error("❌ /api/me failed:", res.status, txt);
           setLoading(false);
           return;
         }
-
+  
         const data = await res.json();
-
-        setUser({
-          email: data.email,
-          id: data.id,
-        });
-
-        // 🔐 Ensure encryption setup
+        setUser({ email: data.email, id: data.id });
+  
+        // 4) Ensure keys exist
         await setupEncryption(token);
-
       } catch (err) {
-        console.warn("Network error");
+        console.error("❌ Network error:", err);
       }
-
+  
       setLoading(false);
     };
-
-    checkAuth();
+  
+    initAuth();
   }, []);
+
+  
 
   // 🔥 Login
   const login = (token: string) => {

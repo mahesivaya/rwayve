@@ -3,6 +3,13 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 
 // https://vite.dev/config/
-export default defineConfig({
-  base: "./",   // 🔥 critical for S3/CloudFront
-});
+export default {
+  server: {
+    proxy: {
+      "/api": "http://localhost:8080",
+      "/gmail": "http://localhost:8080",
+      "/oauth": "http://localhost:8080",
+      "/ws": "ws://localhost:8080",
+    },
+  },
+};

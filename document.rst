@@ -136,3 +136,8 @@ cargo install cargo-watch
 
 for stopped app: cargo watch -x check
 for running app: cargo watch -x run
+
+
+
+➜  frontend git:(main) ✗ pkill -f vite
+➜  frontend git:(main) ✗ lsof -i :5173
