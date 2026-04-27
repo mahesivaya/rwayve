@@ -1,24 +1,22 @@
+use crate::models::message::{ChatMessage, Message, MessageStatus};
 use crate::prelude::*;
-use crate::security::encryption::{encrypt, decrypt};
-use crate::models::message::{Message, ChatMessage, MessageStatus};
+use crate::security::encryption::{decrypt, encrypt};
 
-use actix::{Actor, StreamHandler, Handler, Addr, Message as ActixMessage, ActorFutureExt};
+use actix::{Actor, ActorFutureExt, Addr, Handler, Message as ActixMessage, StreamHandler};
 use actix_web_actors::ws;
 use actix_web_actors::ws::WebsocketContext;
 
 use serde::Deserialize;
-use sqlx::{Row, PgPool};
+use sqlx::{PgPool, Row};
 
+use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use lazy_static::lazy_static;
-
 
 // ================= GLOBAL SESSIONS =================
 
 lazy_static! {
-    static ref SESSIONS: Mutex<HashMap<i32, Addr<ChatSession>>> =
-        Mutex::new(HashMap::new());
+    static ref SESSIONS: Mutex<HashMap<i32, Addr<ChatSession>>> = Mutex::new(HashMap::new());
 }
 
 // ================= WS MESSAGE =================
@@ -41,7 +39,6 @@ pub async fn chat_ws(
     stream: web::Payload,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, actix_web::Error> {
-
     let user_id = req
         .query_string()
         .split('=')
@@ -89,7 +86,6 @@ impl Handler<WsMessage> for ChatSession {
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
-
         match msg {
             Ok(ws::Message::Text(text)) => {
                 println!("📩 Incoming: {}", text);
@@ -97,7 +93,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                 let parsed: Result<ChatMessage, _> = serde_json::from_str(&text);
 
                 if let Ok(data) = parsed {
-
                     // ================= READ RECEIPT =================
                     if matches!(data.status, Some(MessageStatus::Read)) {
                         let pool = self.pool.clone();
@@ -110,7 +105,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                                 UPDATE messages
                                 SET status = 'read'
                                 WHERE receiver_id = $1 AND sender_id = $2
-                                "#
+                                "#,
                             )
                             .bind(reader)
                             .bind(other)
@@ -143,7 +138,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                             (sender_id, receiver_id, content_encrypted, content_iv, status)
                             VALUES ($1, $2, $3, $4, 'sent')
                             RETURNING id
-                            "#
+                            "#,
                         )
                         .bind(sender_id)
                         .bind(receiver_id)
@@ -155,43 +150,40 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
 
                     let sender_addr = ctx.address();
 
-                    ctx.spawn(
-                        actix::fut::wrap_future(fut).map(
-                            move |res, _act, ctx: &mut WebsocketContext<Self>| {
+                    ctx.spawn(actix::fut::wrap_future(fut).map(
+                        move |res, _act, ctx: &mut WebsocketContext<Self>| {
+                            if let Ok(row) = res {
+                                let message_id: i32 = row.get("id");
 
-                                if let Ok(row) = res {
-                                    let message_id: i32 = row.get("id");
+                                let msg_json = serde_json::json!({
+                                    "message_id": message_id,
+                                    "sender_id": sender_id,
+                                    "receiver_id": receiver_id,
+                                    "content": content,
+                                    "status": "sent"
+                                })
+                                .to_string();
 
-                                    let msg_json = serde_json::json!({
+                                // SEND TO RECEIVER
+                                if let Some(addr) = SESSIONS.lock().unwrap().get(&receiver_id) {
+                                    addr.do_send(WsMessage(msg_json.clone()));
+
+                                    // 🔥 DELIVERED
+                                    let delivered_json = serde_json::json!({
+                                        "type": "status_update",
                                         "message_id": message_id,
-                                        "sender_id": sender_id,
-                                        "receiver_id": receiver_id,
-                                        "content": content,
-                                        "status": "sent"
+                                        "status": "delivered"
                                     })
                                     .to_string();
 
-                                    // SEND TO RECEIVER
-                                    if let Some(addr) = SESSIONS.lock().unwrap().get(&receiver_id) {
-                                        addr.do_send(WsMessage(msg_json.clone()));
-
-                                        // 🔥 DELIVERED
-                                        let delivered_json = serde_json::json!({
-                                            "type": "status_update",
-                                            "message_id": message_id,
-                                            "status": "delivered"
-                                        })
-                                        .to_string();
-
-                                        sender_addr.do_send(WsMessage(delivered_json));
-                                    }
-
-                                    // SEND BACK TO SENDER
-                                    ctx.text(msg_json);
+                                    sender_addr.do_send(WsMessage(delivered_json));
                                 }
-                            },
-                        )
-                    );
+
+                                // SEND BACK TO SENDER
+                                ctx.text(msg_json);
+                            }
+                        },
+                    ));
                 }
             }
 
@@ -215,7 +207,6 @@ pub async fn get_messages(
     pool: web::Data<PgPool>,
     query: web::Query<QueryParams>,
 ) -> impl Responder {
-
     let result = sqlx::query(
         r#"
         SELECT id, sender_id, receiver_id, content_encrypted, content_iv, status::TEXT AS status, created_at
@@ -235,39 +226,41 @@ pub async fn get_messages(
 
     match result {
         Ok(rows) => {
-
             let _ = sqlx::query(
                 r#"
                 UPDATE messages
                 SET status = 'read'
                 WHERE receiver_id = $1 AND sender_id = $2
-                "#
+                "#,
             )
             .bind(query.user1)
             .bind(query.user2)
             .execute(pool.get_ref())
             .await;
 
-            let mut messages: Vec<Message> = rows.into_iter().map(|row| {
-                let encrypted: String = row.get("content_encrypted");
-                let iv: String = row.get("content_iv");
+            let mut messages: Vec<Message> = rows
+                .into_iter()
+                .map(|row| {
+                    let encrypted: String = row.get("content_encrypted");
+                    let iv: String = row.get("content_iv");
 
-                let content = match decrypt(&iv, &encrypted) {
-                    Ok(text) => text,
-                    Err(e) => {
-                        println!("❌ decrypt error: {:?}", e);
-                        "[decryption failed]".to_string()
+                    let content = match decrypt(&iv, &encrypted) {
+                        Ok(text) => text,
+                        Err(e) => {
+                            println!("❌ decrypt error: {:?}", e);
+                            "[decryption failed]".to_string()
+                        }
+                    };
+
+                    Message {
+                        message_id: Some(row.get("id")),
+                        sender_id: row.get("sender_id"),
+                        receiver_id: row.get("receiver_id"),
+                        content,
+                        status: Some(row.get::<String, _>("status")),
                     }
-                };
-
-                Message {
-                    message_id: Some(row.get("id")),
-                    sender_id: row.get("sender_id"),
-                    receiver_id: row.get("receiver_id"),
-                    content,
-                    status: Some(row.get::<String, _>("status")),
-                }
-            }).collect();
+                })
+                .collect();
 
             messages.reverse();
 
@@ -277,9 +270,8 @@ pub async fn get_messages(
         Err(e) => {
             println!("❌ DB error: {:?}", e);
 
-            HttpResponse::InternalServerError().json(
-                serde_json::json!({ "error": "Failed to fetch messages" })
-            )
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": "Failed to fetch messages" }))
         }
     }
 }

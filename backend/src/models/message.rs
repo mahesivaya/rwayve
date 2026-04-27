@@ -1,7 +1,6 @@
 use crate::prelude::*;
 use sqlx::Type;
 
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageStatus {

@@ -1,8 +1,8 @@
+use crate::models::scheduler::{CreateMeeting, Meeting};
 use crate::prelude::*;
+use actix_web::{HttpRequest, HttpResponse, delete, post, put, web};
 use base64::Engine;
-use actix_web::{post, put, web, delete, HttpRequest, HttpResponse};
 use serde_json::json;
-use crate::models::scheduler::{Meeting,CreateMeeting};
 
 // ================= HELPER =================
 fn minutes_to_time(mins: i32) -> NaiveTime {
@@ -26,10 +26,9 @@ fn get_user_id(req: &HttpRequest) -> Result<i32, HttpResponse> {
     Ok(decoded.sub)
 }
 
-
-use sqlx::{PgPool, Row};
-use chrono::{NaiveDate, NaiveTime};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use chrono::{NaiveDate, NaiveTime};
+use sqlx::{PgPool, Row};
 
 pub async fn send_meeting_emails(
     pool: &PgPool,
@@ -43,7 +42,7 @@ pub async fn send_meeting_emails(
     // ✅ Get user's active Gmail account
     let result = sqlx::query(
         "SELECT access_token, email FROM email_accounts 
-         WHERE user_id = $1 AND is_active = true LIMIT 1"
+         WHERE user_id = $1 AND is_active = true LIMIT 1",
     )
     .bind(user_id)
     .fetch_optional(pool)
@@ -72,7 +71,7 @@ pub async fn send_meeting_emails(
     // ✅ Clean participants
     let valid_participants: Vec<String> = participants
         .into_iter()
-        .map(|e| e.trim().to_lowercase())   // ✅ FIX
+        .map(|e| e.trim().to_lowercase()) // ✅ FIX
         .filter(|e| e.contains("@") && e.contains("."))
         .collect();
 
@@ -87,7 +86,7 @@ pub async fn send_meeting_emails(
 
     // ✅ Email body
     let body = format!(
-"📅 Meeting Invitation
+        "📅 Meeting Invitation
 
 Title: {}
 Date: {}
@@ -110,20 +109,17 @@ You have been invited to a meeting.
         Content-Type: text/plain; charset=\"UTF-8\"\r\n\
         \r\n\
         {}",
-        sender_email,
-        to_list,
-        title,
-        body
-        );
+        sender_email, to_list, title, body
+    );
 
     // ✅ Encode for Gmail
     let encoded = URL_SAFE_NO_PAD.encode(raw_message);
 
     // ✅ Send email
     let client = reqwest::Client::builder()
-    .timeout(std::time::Duration::from_secs(10))
-    .build()
-    .unwrap();
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap();
 
     let res = client
         .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
@@ -160,7 +156,6 @@ pub async fn create_meeting(
     pool: web::Data<PgPool>,
     data: web::Json<CreateMeeting>,
 ) -> HttpResponse {
-
     // ================= AUTH =================
     let user_id = match get_user_id(&req) {
         Ok(id) => id,
@@ -205,7 +200,7 @@ pub async fn create_meeting(
         INSERT INTO meetings (title, date, start_time, end_time, user_id)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING id
-        "#
+        "#,
     )
     .bind(&data.title)
     .bind(date)
@@ -237,7 +232,7 @@ pub async fn create_meeting(
         FROM UNNEST($2::text[]) AS v(email)
         LEFT JOIN users u 
         ON LOWER(TRIM(u.email)) = LOWER(TRIM(v.email));
-        "#
+        "#,
     )
     .bind(meeting_id)
     .bind(&data.participants)
@@ -285,15 +280,9 @@ pub async fn create_meeting(
     }))
 }
 
-
-
 // ================= GET =================
 #[get("/meetings")]
-pub async fn get_meetings(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-) -> HttpResponse {
-
+pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
     let user_id = match get_user_id(&req) {
         Ok(id) => id,
         Err(resp) => return resp,
@@ -305,7 +294,7 @@ pub async fn get_meetings(
         FROM meetings
         WHERE user_id = $1
         ORDER BY date, start_time
-        "#
+        "#,
     )
     .bind(user_id)
     .fetch_all(pool.get_ref())
@@ -319,8 +308,6 @@ pub async fn get_meetings(
         }
     }
 }
-
-
 
 #[put("/meetings/{id}")]
 pub async fn update_meeting(
@@ -366,7 +353,7 @@ pub async fn update_meeting(
         UPDATE meetings 
         SET title=$1, date=$2, start_time=$3, end_time=$4 
         WHERE id=$5
-        "#
+        "#,
     )
     .bind(&data.title)
     .bind(date)
@@ -383,12 +370,11 @@ pub async fn update_meeting(
     }
 
     // ================= DELETE OLD PARTICIPANTS =================
-    if let Err(e) = sqlx::query(
-        "DELETE FROM meeting_participants WHERE meeting_id = $1"
-    )
-    .bind(id)
-    .execute(&mut *tx)
-    .await {
+    if let Err(e) = sqlx::query("DELETE FROM meeting_participants WHERE meeting_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+    {
         println!("❌ Delete participants error: {:?}", e);
         let _ = tx.rollback().await;
         return HttpResponse::InternalServerError().finish();
@@ -405,7 +391,7 @@ pub async fn update_meeting(
         FROM UNNEST($2::text[]) AS v(email)
         LEFT JOIN users u 
         ON LOWER(TRIM(u.email)) = LOWER(TRIM(v.email))
-        "#
+        "#,
     )
     .bind(id)
     .bind(&data.participants)
@@ -430,12 +416,8 @@ pub async fn update_meeting(
     }))
 }
 
-
 #[delete("/meetings/{id}")]
-pub async fn delete_meeting(
-    path: web::Path<i32>,
-    pool: web::Data<PgPool>,
-) -> HttpResponse {
+pub async fn delete_meeting(path: web::Path<i32>, pool: web::Data<PgPool>) -> HttpResponse {
     let id = path.into_inner();
 
     let result = sqlx::query("DELETE FROM meetings WHERE id = $1")
@@ -444,11 +426,9 @@ pub async fn delete_meeting(
         .await;
 
     match result {
-        Ok(_) => {
-            HttpResponse::Ok().json(json!({
-                "message": "Meeting deleted"
-            }))
-        }
+        Ok(_) => HttpResponse::Ok().json(json!({
+            "message": "Meeting deleted"
+        })),
         Err(e) => {
             println!("❌ Delete error FULL: {:#?}", e);
             HttpResponse::InternalServerError().body("Failed to delete meeting")

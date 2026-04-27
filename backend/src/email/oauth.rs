@@ -1,20 +1,16 @@
 use crate::prelude::*;
 
-
 pub fn load_google_secrets() -> serde_json::Value {
-    let data = fs::read_to_string("client_secret.json")
-        .expect("Failed to read client_secret.json");
+    let data = fs::read_to_string("client_secret.json").expect("Failed to read client_secret.json");
 
     serde_json::from_str(&data).unwrap()
 }
-
 
 pub async fn refresh_access_token(
     client_id: &str,
     client_secret: &str,
     refresh_token: &str,
 ) -> Result<String> {
-
     let res: Value = HTTP_CLIENT
         .post("https://oauth2.googleapis.com/token")
         .form(&[
@@ -32,12 +28,8 @@ pub async fn refresh_access_token(
         return Err(anyhow::anyhow!("Token refresh failed"));
     }
 
-    Ok(res["access_token"]
-        .as_str()
-        .unwrap_or("")
-        .to_string())
+    Ok(res["access_token"].as_str().unwrap_or("").to_string())
 }
-
 
 pub static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
     Client::builder()

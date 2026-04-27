@@ -1,13 +1,13 @@
 use crate::prelude::*;
 use actix_multipart::Multipart;
-use actix_web::{get, post, web, HttpResponse, Responder};
-use futures_util::StreamExt;
-use sqlx::{PgPool, FromRow};
-use uuid::Uuid;
+use actix_web::{HttpResponse, Responder, get, post, web};
 use chrono::NaiveDateTime;
+use futures_util::StreamExt;
+use sqlx::{FromRow, PgPool};
 use std::path::Path;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use uuid::Uuid;
 
 //
 // ✅ QUERY PARAM
@@ -46,10 +46,7 @@ pub struct FileRecord {
 // 🔥 UPDATED UPLOAD FILE (FIXED USER_ID)
 //
 #[post("/files/upload")]
-pub async fn upload_file(
-    mut payload: Multipart,
-    pool: web::Data<PgPool>,
-) -> impl Responder {
+pub async fn upload_file(mut payload: Multipart, pool: web::Data<PgPool>) -> impl Responder {
     let upload_dir = "./uploads";
 
     if let Err(e) = fs::create_dir_all(upload_dir).await {
@@ -155,7 +152,7 @@ pub async fn upload_file(
             r#"
             INSERT INTO files (name, file_path, size, file_type, user_id)
             VALUES ($1, $2, $3, $4, $5)
-            "#
+            "#,
         )
         .bind(&filename)
         .bind(&filepath)
@@ -179,10 +176,7 @@ pub async fn upload_file(
 // ✅ GET FILES
 //
 #[get("/files")]
-pub async fn get_files(
-    pool: web::Data<PgPool>,
-    query: web::Query<FileQuery>,
-) -> impl Responder {
+pub async fn get_files(pool: web::Data<PgPool>, query: web::Query<FileQuery>) -> impl Responder {
     println!("📥 Fetch files for user_id: {}", query.user_id);
 
     let result = sqlx::query_as::<_, FileRecord>(
@@ -205,11 +199,7 @@ pub async fn get_files(
                         .to_string_lossy()
                         .to_string();
 
-                    let file_type = file_name
-                        .split('.')
-                        .last()
-                        .unwrap_or("")
-                        .to_string();
+                    let file_type = file_name.split('.').last().unwrap_or("").to_string();
 
                     FileResponse {
                         id: row.id,
@@ -228,9 +218,8 @@ pub async fn get_files(
         Err(e) => {
             println!("❌ DB error: {:?}", e);
 
-            HttpResponse::InternalServerError().json(
-                serde_json::json!({ "error": "Failed to fetch files" })
-            )
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": "Failed to fetch files" }))
         }
     }
 }

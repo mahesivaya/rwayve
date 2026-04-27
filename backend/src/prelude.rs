@@ -1,23 +1,21 @@
 // 📦 Logger functions (your custom ones)
-pub use crate::logging::logger::{
-    log_auth
-};
+pub use crate::logging::logger::log_auth;
 
 // 🌐 Actix Web
-pub use actix_web::{web, HttpResponse, HttpRequest, Responder, Error, get, post};
+pub use actix_web::{Error, HttpRequest, HttpResponse, Responder, get, post, web};
 
 // 🔌 WebSocket (Actix actors)
-pub use actix::{Actor, StreamHandler, ActorContext, AsyncContext};
+pub use actix::{Actor, ActorContext, AsyncContext, StreamHandler};
 
 // 🗄️ Database (SQLx)
-pub use sqlx::{PgPool, FromRow, Row};       
+pub use sqlx::{FromRow, PgPool, Row};
 
 // 📦 Serialization
-pub use serde::{Serialize, Deserialize};
+pub use serde::{Deserialize, Serialize};
 pub use serde_json::Value;
 
 // ⏱️ Date & Time
-pub use chrono::{NaiveDateTime, NaiveDate, NaiveTime};
+pub use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 
 // 🌍 HTTP client (Gmail API etc.)
 pub use reqwest::Client;

@@ -138,6 +138,8 @@ for stopped app: cargo watch -x check
 for running app: cargo watch -x run
 
 
+cargo watch -x run
+
 
 ➜  frontend git:(main) ✗ pkill -f vite
 ➜  frontend git:(main) ✗ lsof -i :5173
@@ -149,3 +151,16 @@ Back-end: ECS: http://52.23.197.236:8080/
 
 
 
+13656* cargo clippy
+13657* cd backend
+13658* cargo clippy
+13659* cargo fmt --all\ncargo clippy --all -- -D warnings
+13660* cargo fmt
+13661* cargo lint
+
+
+
+
+.. Always do this before commit
+cargo fmt
+cargo check

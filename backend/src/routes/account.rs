@@ -1,12 +1,8 @@
-use crate::prelude::*;
 use crate::models::account::Account;
+use crate::prelude::*;
 
 #[get("/accounts")]
-async fn get_accounts(
-    req: HttpRequest,
-    pool: web::Data<PgPool>
-) -> impl Responder {
-
+async fn get_accounts(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     // 🔥 Extract token
     let token = match req.headers().get("Authorization") {
         Some(h) => h.to_str().unwrap_or("").replace("Bearer ", ""),
@@ -28,7 +24,7 @@ async fn get_accounts(
         FROM email_accounts
         WHERE user_id = $1
         ORDER BY id DESC
-        "#
+        "#,
     )
     .bind(user_id)
     .fetch_all(pool.get_ref())

@@ -1,13 +1,9 @@
-use actix_web::{get, web, HttpRequest, HttpResponse, Responder};
-use sqlx::PgPool;
 use crate::models::email_request::UserResponse;
+use actix_web::{HttpRequest, HttpResponse, Responder, get, web};
+use sqlx::PgPool;
 
 #[get("/users")]
-pub async fn get_user_by_email(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-) -> impl Responder {
-
+pub async fn get_user_by_email(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     let query = req.query_string();
 
     let email = match query.split("email=").nth(1) {
@@ -16,7 +12,7 @@ pub async fn get_user_by_email(
     };
 
     let result = sqlx::query_as::<_, UserResponse>(
-        "SELECT id, email, public_key FROM users WHERE email = $1"
+        "SELECT id, email, public_key FROM users WHERE email = $1",
     )
     .bind(email)
     .fetch_optional(pool.get_ref())
@@ -27,23 +23,22 @@ pub async fn get_user_by_email(
             let parsed_key = user
                 .public_key
                 .and_then(|k| serde_json::from_str::<Vec<u8>>(&k).ok());
-    
+
             HttpResponse::Ok().json(serde_json::json!({
                 "id": user.id,
                 "email": user.email,
                 "public_key": parsed_key
             }))
         }
-    
+
         Ok(None) => HttpResponse::Ok().json(serde_json::json!(null)),
-    
+
         Err(e) => {
             println!("DB error: {:?}", e);
             HttpResponse::InternalServerError().finish()
         }
     }
 }
-
 
 use sqlx::Row;
 

@@ -1,10 +1,6 @@
-target
-node_modules
-.git
-.gitignore
-Dockerfile
-docker-compose.yml
-logs
-uploads
-frontend
-dist
+target/
+.git/
+node_modules/
+uploads/
+logs/
+.env

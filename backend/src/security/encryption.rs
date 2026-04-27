@@ -1,13 +1,11 @@
-use anyhow::Result;
 use aes_gcm::{
-    Aes256Gcm,
-    Key,
-    Nonce,
-    aead::{Aead, KeyInit}
+    Aes256Gcm, Key, Nonce,
+    aead::{Aead, KeyInit},
 };
-use rand::{RngCore, thread_rng};
-use base64::engine::general_purpose;
+use anyhow::Result;
 use base64::Engine;
+use base64::engine::general_purpose;
+use rand::{RngCore, thread_rng};
 
 pub fn encrypt(text: &str) -> Result<(String, String)> {
     let key_bytes = get_key();
@@ -28,7 +26,6 @@ pub fn encrypt(text: &str) -> Result<(String, String)> {
         general_purpose::STANDARD.encode(ciphertext),
     ))
 }
-
 
 pub fn decrypt(nonce_b64: &str, cipher_b64: &str) -> Result<String, String> {
     let key_bytes = get_key();
@@ -51,8 +48,7 @@ pub fn decrypt(nonce_b64: &str, cipher_b64: &str) -> Result<String, String> {
         .map_err(|e| format!("Decrypt error: {:?}", e))?;
 
     // utf8 conversion
-    let text = String::from_utf8(decrypted)
-        .map_err(|e| format!("UTF8 error: {:?}", e))?;
+    let text = String::from_utf8(decrypted).map_err(|e| format!("UTF8 error: {:?}", e))?;
 
     Ok(text)
 }

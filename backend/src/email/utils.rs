@@ -1,9 +1,8 @@
 use crate::prelude::*;
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 
 pub fn extract_body(payload: &Value) -> Option<String> {
-
     // ✅ 1. direct body
     if let Some(data) = payload["body"]["data"].as_str() {
         return Some(decode_base64(data));
@@ -12,7 +11,6 @@ pub fn extract_body(payload: &Value) -> Option<String> {
     // ✅ 2. parts (most important)
     if let Some(parts) = payload["parts"].as_array() {
         for part in parts {
-
             let mime = part["mimeType"].as_str().unwrap_or("");
 
             // 🔥 prefer HTML

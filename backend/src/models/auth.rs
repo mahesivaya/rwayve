@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
 pub use actix_web::HttpRequest;
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: i32,     // user_id
+    pub sub: i32, // user_id
     pub email: String,
     pub exp: usize,
 }
@@ -26,7 +26,6 @@ pub struct LoginInput {
 pub struct LoginResponse {
     pub token: String,
 }
-
 
 // 🔥 Decode JWT
 pub fn decode_jwt(token: &str) -> Option<Claims> {

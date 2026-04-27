@@ -1,17 +1,16 @@
 // ==============================
 // 🔹 INTERNAL MODULES (declare first)
 // ==============================
-mod prelude;
-mod models;
-mod chat;
-mod scheduler;
-mod drive;
-pub mod security;
 mod call;
+mod chat;
+mod drive;
 mod email;
-mod routes;
 mod logging;
-
+mod models;
+mod prelude;
+mod routes;
+mod scheduler;
+pub mod security;
 
 // ==============================
 // 🔹 USE INTERNAL MODULES
@@ -20,38 +19,35 @@ use crate::logging::logger::init_logger;
 
 use crate::chat::{chat_ws, get_messages};
 
-use crate::drive::{upload_file, get_files};
+use crate::drive::{get_files, upload_file};
 
-use crate::scheduler::scheduler::{create_meeting, get_meetings, update_meeting, delete_meeting};
+use crate::scheduler::scheduler::{create_meeting, delete_meeting, get_meetings, update_meeting};
 
 use crate::call::call::call_ws;
 
+use crate::email::handler::{get_me, gmail_login, oauth_callback, save_public_key, send};
 use crate::email::sync::sync_all;
-use crate::email::handler::{gmail_login,oauth_callback,send,get_me, save_public_key};
 
 use crate::routes::account::get_accounts;
+use crate::routes::auth::{login, register};
 use crate::routes::email::get_emails;
-use crate::routes::auth::{register,login};
-use crate::routes::user::{get_user_by_email,get_all_users};
-
-
+use crate::routes::user::{get_all_users, get_user_by_email};
 
 // ==============================
 // 🔹 EXTERNAL CRATES
 // ==============================
-use actix_web::{App,web,HttpServer};
 use actix_cors::Cors;
 use actix_files::Files;
-use tokio::time::{sleep, Duration};
+use actix_web::{App, HttpServer, web};
+pub use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sqlx::PgPool;
-pub use base64::{engine::general_purpose::URL_SAFE_NO_PAD};
+use tokio::time::{Duration, sleep};
 
 use dotenvy::dotenv;
 use std::env;
 
 fn app_routes(cfg: &mut web::ServiceConfig) {
     cfg
-
         // 🔥 GROUP API ROUTES
         .service(
             web::scope("/api")
@@ -70,22 +66,19 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
                 .service(get_files)
                 .service(send)
                 .service(get_me)
-                .service(save_public_key)
+                .service(save_public_key),
         )
-
         // 🔥 AUTH / GOOGLE
         .route("/gmail/login", web::get().to(gmail_login))
         .route("/oauth/callback", web::get().to(oauth_callback))
-
         // 🔥 WEBSOCKETS
         .route("/ws/chat", web::get().to(chat_ws))
         .route("/ws/call", web::get().to(call_ws))
-
         // 🔥 STATIC FILES
         .service(Files::new("/uploads", "./uploads").show_files_listing());
 }
 
-fn start_sync_worker(pool:PgPool){
+fn start_sync_worker(pool: PgPool) {
     tokio::spawn(async move {
         loop {
             println!("Sync loop");
@@ -103,9 +96,7 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
 
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL missing");
-    let pool = PgPool::connect(&db_url)
-        .await
-        .expect("DB failed");
+    let pool = PgPool::connect(&db_url).await.expect("DB failed");
     start_sync_worker(pool.clone());
 
     HttpServer::new(move || {
@@ -126,7 +117,6 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(web::Data::new(pool.clone()))
             .configure(app_routes)
-
     })
     .bind(("0.0.0.0", 8080))?
     .run()

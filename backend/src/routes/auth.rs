@@ -1,13 +1,12 @@
 use crate::prelude::*;
 
-use bcrypt::{hash, verify, DEFAULT_COST};
-use crate::models::message::MessageResponse;
-use crate::models::auth::{RegisterInput, LoginInput, LoginResponse};
-use crate::models::user::User;
 use crate::models::auth::Claims;
-use jsonwebtoken::{encode, EncodingKey, Header};
-use chrono::{Utc, Duration as ChronoDuration};
-
+use crate::models::auth::{LoginInput, LoginResponse, RegisterInput};
+use crate::models::message::MessageResponse;
+use crate::models::user::User;
+use bcrypt::{DEFAULT_COST, hash, verify};
+use chrono::{Duration as ChronoDuration, Utc};
+use jsonwebtoken::{EncodingKey, Header, encode};
 
 pub fn create_jwt(user_id: i32, email: String) -> String {
     let expiration = Utc::now()
@@ -21,8 +20,7 @@ pub fn create_jwt(user_id: i32, email: String) -> String {
         exp: expiration,
     };
 
-    let secret = std::env::var("JWT_SECRET")
-        .expect("JWT_SECRET must be set");
+    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
 
     encode(
         &Header::default(),
@@ -32,20 +30,17 @@ pub fn create_jwt(user_id: i32, email: String) -> String {
     .unwrap()
 }
 
-
-
 #[post("/register")]
-pub async fn register(
-    pool: web::Data<PgPool>,
-    data: web::Json<RegisterInput>,
-) -> HttpResponse {
+pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -> HttpResponse {
     log_auth("simple message");
     log_auth(format!("User registered: {}", data.email));
     if data.password != data.confirm_password {
-        log_auth(&format!("Register failed (password mismatch): {}", data.email));
-        return HttpResponse::BadRequest().json(
-            serde_json::json!({ "message": "Passwords do not match" })
-        );
+        log_auth(&format!(
+            "Register failed (password mismatch): {}",
+            data.email
+        ));
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "message": "Passwords do not match" }));
     }
     log_auth(&format!("User registered successfully: {}", data.email));
 
@@ -54,19 +49,16 @@ pub async fn register(
         Ok(h) => h,
         Err(e) => {
             println!("Hash error: {:?}", e);
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({ "message": "Password hashing failed" })
-            );
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Password hashing failed" }));
         }
     };
 
-    let result = sqlx::query(
-        "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id"
-    )
-    .bind(&data.email)
-    .bind(&hashed) // ✅ FIXED
-    .fetch_one(pool.get_ref())
-    .await;
+    let result = sqlx::query("INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id")
+        .bind(&data.email)
+        .bind(&hashed) // ✅ FIXED
+        .fetch_one(pool.get_ref())
+        .await;
 
     match result {
         Ok(row) => {
@@ -82,45 +74,36 @@ pub async fn register(
                 &Header::default(),
                 &claims,
                 &EncodingKey::from_secret("secret".as_ref()),
-            ).unwrap();
-
-            HttpResponse::Ok().json(
-                serde_json::json!({ "token": token })
             )
+            .unwrap();
+
+            HttpResponse::Ok().json(serde_json::json!({ "token": token }))
         }
 
         Err(e) => {
             println!("DB ERROR: {:?}", e);
 
             if e.to_string().contains("duplicate key") {
-                HttpResponse::BadRequest().json(
-                    serde_json::json!({ "message": "User already exists" })
-                )
+                HttpResponse::BadRequest()
+                    .json(serde_json::json!({ "message": "User already exists" }))
             } else {
-                HttpResponse::InternalServerError().json(
-                    serde_json::json!({ "message": "Insert failed" })
-                )
+                HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "message": "Insert failed" }))
             }
         }
     }
 }
 
-
 #[post("/login")]
-async fn login(
-    pool: web::Data<PgPool>,
-    data: web::Json<LoginInput>,
-) -> HttpResponse {
-
+async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResponse {
     println!("Login attempt: {}", data.email);
 
     // ✅ HANDLE DB RESULT PROPERLY
-    let user_result = sqlx::query_as::<_, User>(
-        "SELECT id, email, password FROM users WHERE email = $1"
-    )
-    .bind(&data.email)
-    .fetch_optional(pool.get_ref())
-    .await;
+    let user_result =
+        sqlx::query_as::<_, User>("SELECT id, email, password FROM users WHERE email = $1")
+            .bind(&data.email)
+            .fetch_optional(pool.get_ref())
+            .await;
 
     let user = match user_result {
         Ok(Some(user)) => user,

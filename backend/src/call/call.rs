@@ -1,16 +1,15 @@
 use crate::prelude::*;
+use actix::Addr;
 use actix::*;
 use actix_web_actors::ws;
+use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use lazy_static::lazy_static;
-use actix::Addr;
 
 use crate::models::callmodel::SignalMessage;
 
 lazy_static! {
-    static ref SESSIONS: Mutex<HashMap<i32, Addr<CallSession>>> =
-        Mutex::new(HashMap::new());
+    static ref SESSIONS: Mutex<HashMap<i32, Addr<CallSession>>> = Mutex::new(HashMap::new());
 }
 
 pub struct CallSession {
@@ -48,7 +47,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for CallSession {
                 println!("📩 Incoming: {}", text);
 
                 if let Ok(signal) = serde_json::from_str::<SignalMessage>(&text) {
-
                     let target = signal.to;
 
                     let sessions = SESSIONS.lock().unwrap();
@@ -63,11 +61,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for CallSession {
                             sdp: signal.sdp.clone(),
                             candidate: signal.candidate.clone(),
                         });
-
                     } else {
                         println!("⚠️ User {} not connected", target);
                     }
-
                 } else {
                     println!("❌ Failed to parse message");
                 }
@@ -91,7 +87,6 @@ pub async fn call_ws(
     stream: web::Payload,
     query: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
-
     let user_id = query
         .get("user_id")
         .and_then(|id| id.parse::<i32>().ok())

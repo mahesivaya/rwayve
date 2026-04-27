@@ -1,0 +1,12 @@
+# 🚫 Disallow risky patterns
+disallowed-methods = [
+  "unwrap",
+  "expect"
+]
+
+# 🔥 Force better code
+too-many-arguments-threshold = 5
+type-complexity-threshold = 200
+
+# 👇 Optional but useful
+cognitive-complexity-threshold = 30

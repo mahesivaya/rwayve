@@ -1,9 +1,8 @@
 use crate::prelude::*;
 
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, web};
 use sqlx::PgPool;
 use sqlx::Row;
-
 
 #[derive(Deserialize)]
 pub struct EmailQuery {
@@ -12,13 +11,8 @@ pub struct EmailQuery {
     pub before_id: Option<i32>,
 }
 
-
 #[get("/emails")]
-pub async fn get_emails(
-    pool: web::Data<PgPool>,
-    query: web::Query<EmailQuery>,
-) -> impl Responder {
-
+pub async fn get_emails(pool: web::Data<PgPool>, query: web::Query<EmailQuery>) -> impl Responder {
     let limit = 50;
 
     let result = match (query.account_id, query.before, query.before_id) {
@@ -96,18 +90,21 @@ pub async fn get_emails(
 
     match result {
         Ok(rows) => {
-            let emails: Vec<_> = rows.into_iter().map(|row| {
-                serde_json::json!({
-                    "id": row.get::<i32,_>("id"),
-                    "subject": row.get::<Option<String>,_>("subject"),
-                    "sender": row.get::<Option<String>,_>("sender"),
-                    "receiver": row.get::<Option<String>,_>("receiver"),
-                    "body_encrypted": row.get::<String,_>("body_encrypted"),
-                    "body_iv": row.get::<String,_>("body_iv"),
-                    "account_id": row.get::<Option<i32>,_>("account_id"),
-                    "created_at": row.get::<Option<NaiveDateTime>,_>("created_at"),
+            let emails: Vec<_> = rows
+                .into_iter()
+                .map(|row| {
+                    serde_json::json!({
+                        "id": row.get::<i32,_>("id"),
+                        "subject": row.get::<Option<String>,_>("subject"),
+                        "sender": row.get::<Option<String>,_>("sender"),
+                        "receiver": row.get::<Option<String>,_>("receiver"),
+                        "body_encrypted": row.get::<String,_>("body_encrypted"),
+                        "body_iv": row.get::<String,_>("body_iv"),
+                        "account_id": row.get::<Option<i32>,_>("account_id"),
+                        "created_at": row.get::<Option<NaiveDateTime>,_>("created_at"),
+                    })
                 })
-            }).collect();
+                .collect();
 
             HttpResponse::Ok().json(emails)
         }
