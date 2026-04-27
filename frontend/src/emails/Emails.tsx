@@ -4,6 +4,7 @@ import { decryptMessage } from "../crypto/crypto";
 import { loadPrivateKey } from "../crypto/keyStore";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { apiFetch } from "../api";
 
 
 export default function Emails() {
@@ -45,22 +46,9 @@ useEffect(() => {
 // 📧 Fetch accounts (production-safe)
 const fetchAccounts = async () => {
   try {
-    const token = localStorage.getItem("token");
+    const res = await apiFetch("/api/accounts");
 
-    if (!token) {
-      console.warn("⚠️ No token found");
-      return;
-    }
-
-    const res = await fetch(`${API_BASE}/api/accounts`, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    // 🔐 Handle expired/invalid token
+    // 🔐 Handle expired token
     if (res.status === 401) {
       console.warn("❌ Token expired. Logging out...");
       localStorage.removeItem("token");
