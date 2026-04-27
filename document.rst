@@ -163,4 +163,6 @@ Back-end: ECS: http://52.23.197.236:8080/
 
 .. Always do this before commit
 cargo fmt
+cargo clippy -- -D warnings
 cargo check
+

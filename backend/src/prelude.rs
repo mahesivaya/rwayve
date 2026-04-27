@@ -5,7 +5,7 @@ pub use crate::logging::logger::log_auth;
 pub use actix_web::{Error, HttpRequest, HttpResponse, Responder, get, post, web};
 
 // 🔌 WebSocket (Actix actors)
-pub use actix::{Actor, ActorContext, AsyncContext, StreamHandler};
+pub use actix::{Actor, ActorContext, AsyncContext};
 
 // 🗄️ Database (SQLx)
 pub use sqlx::{FromRow, PgPool, Row};

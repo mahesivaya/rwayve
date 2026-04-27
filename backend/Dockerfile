@@ -19,7 +19,8 @@ RUN cargo fmt --all -- --check
 
 
 # 🔥 CLIPPY STRICT (fail build if lint fails)
-RUN cargo clippy --all --all-targets -- -D warnings
+# 🔥 LINT CHECK (fail if issues)
+RUN cargo clippy --all-targets --all-features -- -D warnings
 
 
 RUN cargo build --release
