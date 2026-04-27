@@ -30,6 +30,15 @@ export default function Emails() {
         setAccounts(data);
     };
     useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("connected") === "true") {
+            console.log("🔄 Refreshing accounts after OAuth");
+            fetchAccounts();
+            // clean URL
+            window.history.replaceState({}, document.title, "/emails");
+        }
+    }, []);
+    useEffect(() => {
         fetchAccounts();
     }, []);
     useEffect(() => {
@@ -133,7 +142,7 @@ export default function Emails() {
                                     marginBottom: 5, // 🔥 vertical spacing
                                     textAlign: "left",
                                     background: activeAccount === acc.id ? "#ddd" : "white"
-                                }, children: acc.email }, acc.id)))] }), _jsxs("div", { style: { overflowY: "auto", height: "80%" }, children: [emails.map((email) => (_jsxs("div", { style: { padding: 10, cursor: "pointer" }, onClick: () => openEmail(email), children: [_jsx("strong", { children: email.sender }), _jsx("div", { children: email.subject }), email.body?.startsWith("WAYVE_SECURE_V1") && (_jsx("span", { children: "\uD83D\uDD10" }))] }, email.id))), hasMore && (_jsx("button", { onClick: loadMore, disabled: loadingMore, children: loadingMore ? "Loading..." : "Load More" }))] })] }), _jsx("div", { style: { flex: 1, padding: 20 }, children: selected ? (_jsxs(_Fragment, { children: [_jsx("h2", { children: selected.subject }), selected.body?.startsWith("WAYVE_SECURE_V1") ? (_jsx("p", { children: selected.body })) : (_jsx("div", { dangerouslySetInnerHTML: { __html: selected.body } }))] })) : (_jsx("p", { children: "Select an email" })) }), showCompose && (_jsxs("div", { style: {
+                                }, children: acc.email }, acc.id)))] }), _jsxs("div", { style: { overflowY: "auto", height: "80%" }, children: [emails.map((email) => (_jsxs("div", { style: { padding: 10, cursor: "pointer" }, onClick: () => openEmail(email), children: [_jsx("strong", { children: email.sender }), _jsx("div", { children: email.subject }), email.body?.startsWith("WAYVE_SECURE_V1") && (_jsx("span", { children: "\uD83D\uDD10" }))] }, `${email.account_id}-${email.gmail_id || email.id}-${email.created_at}`))), hasMore && (_jsx("button", { onClick: loadMore, disabled: loadingMore, children: loadingMore ? "Loading..." : "Load More" }))] })] }), _jsx("div", { style: { flex: 1, padding: 20 }, children: selected ? (_jsxs(_Fragment, { children: [_jsx("h2", { children: selected.subject }), selected.body?.startsWith("WAYVE_SECURE_V1") ? (_jsx("p", { children: selected.body })) : (_jsx("div", { dangerouslySetInnerHTML: { __html: selected.body } }))] })) : (_jsx("p", { children: "Select an email" })) }), showCompose && (_jsxs("div", { style: {
                     position: "fixed",
                     bottom: 20,
                     right: 20,

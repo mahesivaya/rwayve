@@ -141,3 +141,11 @@ for running app: cargo watch -x run
 
 ➜  frontend git:(main) ✗ pkill -f vite
 ➜  frontend git:(main) ✗ lsof -i :5173
+
+Front-end URL: Cloudfront: https://d2j48xaszdfk51.cloudfront.net/login
+
+Back-end: ECS: http://52.23.197.236:8080/
+
+
+
+

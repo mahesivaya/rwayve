@@ -2,8 +2,15 @@ import { useEffect, useState } from "react";
 import SendEmail from "./SendEmail";
 import { decryptMessage } from "../crypto/crypto";
 import { loadPrivateKey } from "../crypto/keyStore";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+
 
 export default function Emails() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { login } = useAuth();
+
   const [emails, setEmails] = useState<any[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -15,26 +22,63 @@ export default function Emails() {
 
   const [showCompose, setShowCompose] = useState(false);
   const [minimized, setMinimized] = useState(false);
+  const API_BASE = import.meta.env.VITE_API_URL;
   
 
   // 🔐 Load private key
-  useEffect(() => {
-    (async () => {
+  // 🔐 Load private key
+useEffect(() => {
+  const initKey = async () => {
+    try {
       const key = await loadPrivateKey();
       if (key) setPrivateKey(key);
-    })();
-  }, []);
+    } catch (err) {
+      console.error("❌ Failed to load private key:", err);
+    }
+  };
 
-  const fetchAccounts = async () => {
+  initKey();
+}, []);
+
+
+
+// 📧 Fetch accounts (production-safe)
+const fetchAccounts = async () => {
+  try {
     const token = localStorage.getItem("token");
-  
-    const res = await fetch("http://localhost:8080/api/accounts", {
-      headers: { Authorization: `Bearer ${token}` },
+
+    if (!token) {
+      console.warn("⚠️ No token found");
+      return;
+    }
+
+    const res = await fetch(`${API_BASE}/api/accounts`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
     });
-  
+
+    // 🔐 Handle expired/invalid token
+    if (res.status === 401) {
+      console.warn("❌ Token expired. Logging out...");
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+      return;
+    }
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
     const data = await res.json();
     setAccounts(data);
-  };
+
+  } catch (err) {
+    console.error("❌ Failed to fetch accounts:", err);
+  }
+};
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -243,7 +287,7 @@ const connectGmail = () => {
         <div style={{ overflowY: "auto", height: "80%" }}>
           {emails.map((email) => (
             <div
-              key={email.id}
+            key={`${email.account_id}-${email.gmail_id || email.id}-${email.created_at}`}
               style={{ padding: 10, cursor: "pointer" }}
               onClick={() => openEmail(email)}
             >
