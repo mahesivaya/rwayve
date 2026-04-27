@@ -43,30 +43,17 @@ useEffect(() => {
 
 
 
-// 📧 Fetch accounts (production-safe)
-const fetchAccounts = async () => {
-  try {
-    const res = await apiFetch("/api/accounts");
-
-    // 🔐 Handle expired token
-    if (res.status === 401) {
-      console.warn("❌ Token expired. Logging out...");
-      localStorage.removeItem("token");
-      window.location.href = "/login";
-      return;
+  // 📧 Fetch accounts (production-safe)
+  const fetchAccounts = async () => {
+    try {
+      const res = await apiFetch("/api/accounts");
+      const data = await res.json();
+      setAccounts(data);
+    } catch (err) {
+      console.error(err);
     }
+  };
 
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
-    setAccounts(data);
-
-  } catch (err) {
-    console.error("❌ Failed to fetch accounts:", err);
-  }
-};
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
