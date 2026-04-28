@@ -1,5 +1,6 @@
 use crate::prelude::*;
 
+use crate::security::jwt::create_jwt;
 use crate::models::auth::Claims;
 use crate::models::auth::{LoginInput, LoginResponse, RegisterInput};
 use crate::models::message::MessageResponse;

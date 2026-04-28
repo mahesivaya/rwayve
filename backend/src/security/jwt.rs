@@ -1,14 +1,24 @@
-use crate::prelude::*;
+use chrono::{Utc, Duration as ChronoDuration};
+use jsonwebtoken::{
+    encode, decode,
+    Header, EncodingKey, DecodingKey, Validation, Algorithm
+};
+use serde::{Serialize, Deserialize};
 
-use crate::models::auth::Claims;
-use actix_web::HttpRequest;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: i32,
+    pub email: String,
+    pub exp: usize,
+}
 
-
+// 🔥 CREATE JWT
 pub fn create_jwt(user_id: i32, email: String) -> String {
+    let secret = std::env::var("JWT_SECRET").unwrap_or("secret".into());
+
     let expiration = Utc::now()
         .checked_add_signed(ChronoDuration::hours(24))
-        .unwrap()
+        .expect("valid timestamp")
         .timestamp() as usize;
 
     let claims = Claims {
@@ -17,26 +27,23 @@ pub fn create_jwt(user_id: i32, email: String) -> String {
         exp: expiration,
     };
 
-    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-
     encode(
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
     )
-    .unwrap()
+    .expect("JWT encode failed")
 }
 
-// 🔥 Decode JWT
+// 🔥 DECODE JWT
 pub fn decode_jwt(token: &str) -> Option<Claims> {
     let secret = std::env::var("JWT_SECRET").unwrap_or("secret".into());
-    let result = decode::<Claims>(
+
+    match decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::new(Algorithm::HS256),
-    );
-
-    match result {
+    ) {
         Ok(data) => Some(data.claims),
         Err(e) => {
             println!("❌ JWT decode error: {}", e);
@@ -45,9 +52,11 @@ pub fn decode_jwt(token: &str) -> Option<Claims> {
     }
 }
 
+// 🔥 Extract user from request
+use actix_web::HttpRequest;
+
 pub fn get_user_id_from_request(req: &HttpRequest) -> Option<i32> {
     let header = req.headers().get("Authorization")?.to_str().ok()?;
-    // Expect: "Bearer <token>"
     let token = header.strip_prefix("Bearer ")?;
     let claims = decode_jwt(token)?;
     Some(claims.sub)

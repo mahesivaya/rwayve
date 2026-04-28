@@ -10,7 +10,7 @@ async fn get_accounts(req: HttpRequest, pool: web::Data<PgPool>) -> impl Respond
     };
 
     // 🔥 Decode JWT
-    let decoded = match crate::security::jwt::decode_jwt(token) {
+    let decoded = match crate::security::jwt::decode_jwt(&token) {
         Some(d) => d,
         None => return HttpResponse::Unauthorized().body("Invalid token"),
     };

@@ -2,7 +2,7 @@ use crate::prelude::*;
 
 use crate::email::oauth::HTTP_CLIENT;
 use crate::email::oauth::load_google_secrets;
-use crate::models::auth::get_user_id_from_request;
+use crate::security::jwt::get_user_id_from_request;
 use crate::models::email_request::SendEmailRequest;
 use actix_web::HttpRequest;
 use base64::Engine;
@@ -74,7 +74,7 @@ pub async fn oauth_callback(
     };
 
     // 🔥 Decode JWT
-    let decoded = match crate::security::jwt::decode_jwt(token) {
+    let decoded = match crate::security::jwt::decode_jwt(&token) {
         Some(d) => d,
         None => return HttpResponse::Unauthorized().body("Invalid token"),
     };
@@ -257,7 +257,7 @@ async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     let token = auth_header.replace("Bearer ", "");
 
     // 🔥 3. Decode JWT
-    let decoded = match crate::security::jwt::decode_jwt(token) {
+    let decoded = match crate::security::jwt::decode_jwt(&token) {
         Some(d) => d,
         None => {
             return HttpResponse::Unauthorized()
