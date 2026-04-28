@@ -1,7 +1,7 @@
 # 🚫 Disallow risky patterns
 disallowed-methods = [
-  "unwrap",
-  "expect"
+  { path = "core::option::Option::unwrap", allow-invalid = true },
+  { path = "core::result::Result::expect", allow-invalid = true }
 ]
 
 # 🔥 Force better code

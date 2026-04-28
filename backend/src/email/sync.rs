@@ -161,20 +161,14 @@ pub fn extract_headers(res: &Value) -> (String, String, String) {
                 let value = h["value"].as_str().unwrap_or("").to_string();
 
                 match name {
-                    "From" => {
-                        if sender.is_none() && !value.is_empty() {
-                            *sender = Some(value);
-                        }
+                    "From" if sender.is_none() && !value.is_empty() => {
+                        *sender = Some(value);
                     }
-                    "To" => {
-                        if receiver.is_none() && !value.is_empty() {
-                            *receiver = Some(value);
-                        }
+                    "To" if receiver.is_none() && !value.is_empty() => {
+                        *receiver = Some(value);
                     }
-                    "Subject" => {
-                        if subject.is_none() && !value.is_empty() {
-                            *subject = Some(value);
-                        }
+                    "Subject" if subject.is_none() && !value.is_empty() => {
+                        *subject = Some(value);
                     }
                     _ => {}
                 }

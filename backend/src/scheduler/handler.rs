@@ -2,13 +2,19 @@ use crate::models::scheduler::{CreateMeeting, Meeting};
 use crate::prelude::*;
 use actix_web::{HttpRequest, HttpResponse, delete, post, put, web};
 use base64::Engine;
+use chrono::Utc;
 use serde_json::json;
+
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use chrono::{NaiveDate, NaiveTime};
+use sqlx::{PgPool, Row};
 
 // ================= HELPER =================
 fn minutes_to_time(mins: i32) -> NaiveTime {
     let h = mins / 60;
     let m = mins % 60;
-    NaiveTime::from_hms_opt(h as u32, m as u32, 0).unwrap()
+    NaiveTime::from_hms_opt(h as u32, m as u32, 0)
+        .unwrap_or_else(|| NaiveTime::from_hms_opt(0, 0, 0).unwrap())
 }
 
 // ================= EXTRACT USER =================
@@ -26,136 +32,115 @@ fn get_user_id(req: &HttpRequest) -> Result<i32, HttpResponse> {
     Ok(decoded.sub)
 }
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use chrono::{NaiveDate, NaiveTime};
-use sqlx::{PgPool, Row};
+// ================= REQUEST STRUCT =================
+pub struct MeetingEmailRequest {
+    pub user_id: i32,
+    pub participants: Vec<String>,
+    pub title: String,
+    pub date: NaiveDate,
+    pub start: NaiveTime,
+    pub end: NaiveTime,
+}
 
-pub async fn send_meeting_emails(
-    pool: &PgPool,
-    user_id: i32,
-    participants: Vec<String>,
-    title: String,
-    date: NaiveDate,
-    start: NaiveTime,
-    end: NaiveTime,
-) {
-    // ✅ Get user's active Gmail account
-    let result = sqlx::query(
+// ================= MAIN FUNCTION =================
+pub async fn send_meeting_emails(pool: &PgPool, req: MeetingEmailRequest) -> Result<(), String> {
+    let MeetingEmailRequest {
+        user_id,
+        participants,
+        title,
+        date,
+        start,
+        end,
+    } = req;
+
+    let row = sqlx::query(
         "SELECT access_token, email FROM email_accounts 
          WHERE user_id = $1 AND is_active = true LIMIT 1",
     )
     .bind(user_id)
     .fetch_optional(pool)
-    .await;
+    .await
+    .map_err(|e| format!("DB error: {:?}", e))?;
 
-    let row: sqlx::postgres::PgRow = match result {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            println!("❌ No active Gmail account found");
-            return;
-        }
-        Err(e) => {
-            println!("❌ DB error fetching email account: {:?}", e);
-            return;
-        }
+    let row = match row {
+        Some(r) => r,
+        None => return Err("No active Gmail account found".into()),
     };
 
     let access_token: String = row.get("access_token");
     let sender_email: String = row.get("email");
 
     if access_token.is_empty() {
-        println!("❌ Missing access token");
-        return;
+        return Err("Missing access token".into());
     }
 
-    // ✅ Clean participants
     let valid_participants: Vec<String> = participants
         .into_iter()
-        .map(|e| e.trim().to_lowercase()) // ✅ FIX
+        .map(|e| e.trim().to_lowercase())
         .filter(|e| e.contains("@") && e.contains("."))
         .collect();
 
     if valid_participants.is_empty() {
-        println!("⚠️ No valid participants to send");
-        return;
+        return Err("No valid participants".into());
     }
 
-    // ✅ Convert times to readable format
     let start_str = start.format("%H:%M").to_string();
     let end_str = end.format("%H:%M").to_string();
 
-    // ✅ Email body
     let body = format!(
-        "📅 Meeting Invitation
-
-Title: {}
-Date: {}
-Start: {}
-End: {}
-
-You have been invited to a meeting.
-
--- Wayve Scheduler",
+        "📅 Meeting Invitation\n\nTitle: {}\nDate: {}\nStart: {}\nEnd: {}\n\n-- Wayve Scheduler",
         title, date, start_str, end_str
     );
 
-    // ✅ Send ONE email to all participants
     let to_list = valid_participants.join(",");
 
     let raw_message = format!(
         "From: {}\r\n\
-        To: {}\r\n\
-        Subject: Meeting: {}\r\n\
-        Content-Type: text/plain; charset=\"UTF-8\"\r\n\
-        \r\n\
-        {}",
+To: {}\r\n\
+Subject: Meeting: {}\r\n\
+Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}",
         sender_email, to_list, title, body
     );
 
-    // ✅ Encode for Gmail
     let encoded = URL_SAFE_NO_PAD.encode(raw_message);
 
-    // ✅ Send email
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .unwrap();
+        .map_err(|e| format!("HTTP client error: {:?}", e))?;
 
     let res = client
         .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
         .bearer_auth(access_token)
-        .json(&serde_json::json!({
-            "raw": encoded
-        }))
+        .json(&json!({ "raw": encoded }))
         .send()
-        .await;
+        .await
+        .map_err(|e| format!("HTTP send error: {:?}", e))?;
 
-    match res {
-        Ok(r) => {
-            if !r.status().is_success() {
-                let text = r.text().await.unwrap_or_default();
-                println!(
-                    "❌ Gmail send failed | user={} | title={} | error={}",
-                    user_id, title, text
-                );
-            } else {
-                println!("✅ Meeting emails sent successfully");
-            }
-        }
-        Err(e) => {
-            println!("❌ HTTP error sending email: {:?}", e);
-        }
+    if !res.status().is_success() {
+        let text = res.text().await.unwrap_or_default();
+        return Err(format!("Gmail failed: {}", text));
     }
+
+    println!("✅ Meeting emails sent successfully");
+
+    Ok(())
 }
 
 // ================= CREATE MEETING =================
+
+#[derive(Serialize)]
+struct MeetingResponse {
+    message: String,
+    meeting_id: i32,
+}
 
 #[post("/meetings")]
 pub async fn create_meeting(
     req: HttpRequest,
     pool: web::Data<PgPool>,
     data: web::Json<CreateMeeting>,
-) -> HttpResponse {
+) -> impl Responder {
     // ================= AUTH =================
     let user_id = match get_user_id(&req) {
         Ok(id) => id,
@@ -171,6 +156,18 @@ pub async fn create_meeting(
         return HttpResponse::BadRequest().body("At least one participant required");
     }
 
+    // ================= CLEAN PARTICIPANTS =================
+    let participants: Vec<String> = data
+        .participants
+        .iter()
+        .map(|e| e.trim().to_lowercase())
+        .filter(|e| e.contains("@") && e.contains("."))
+        .collect();
+
+    if participants.is_empty() {
+        return HttpResponse::BadRequest().body("Invalid participant emails");
+    }
+
     // ================= TIME =================
     let start_time: NaiveTime = minutes_to_time(data.start);
     let end_time: NaiveTime = minutes_to_time(data.end);
@@ -184,6 +181,12 @@ pub async fn create_meeting(
         Ok(d) => d,
         Err(_) => return HttpResponse::BadRequest().body("Invalid date"),
     };
+
+    // 🔥 Prevent past meetings
+    let now = Utc::now().naive_utc();
+    if date == now.date() && start_time <= now.time() {
+        return HttpResponse::BadRequest().body("Meeting cannot be in the past");
+    }
 
     // ================= TRANSACTION =================
     let mut tx = match pool.begin().await {
@@ -207,7 +210,7 @@ pub async fn create_meeting(
     .bind(start_time)
     .bind(end_time)
     .bind(user_id)
-    .fetch_one(&mut *tx) // ✅ FIXED (use tx)
+    .fetch_one(&mut *tx)
     .await
     {
         Ok(m) => m,
@@ -220,8 +223,7 @@ pub async fn create_meeting(
 
     let meeting_id: i32 = meeting.get("id");
 
-    // ================= INSERT PARTICIPANTS (BEST WAY) =================
-
+    // ================= INSERT PARTICIPANTS =================
     let insert_participants = sqlx::query(
         r#"
         INSERT INTO meeting_participants (meeting_id, email, user_id)
@@ -231,12 +233,13 @@ pub async fn create_meeting(
             u.id
         FROM UNNEST($2::text[]) AS v(email)
         LEFT JOIN users u 
-        ON LOWER(TRIM(u.email)) = LOWER(TRIM(v.email));
+        ON LOWER(TRIM(u.email)) = LOWER(TRIM(v.email))
+        ON CONFLICT DO NOTHING;
         "#,
     )
     .bind(meeting_id)
-    .bind(&data.participants)
-    .execute(&mut *tx) // ✅ inside transaction
+    .bind(&participants)
+    .execute(&mut *tx)
     .await;
 
     if let Err(e) = insert_participants {
@@ -253,31 +256,27 @@ pub async fn create_meeting(
 
     // ================= BACKGROUND EMAIL =================
     let pool_clone = pool.clone();
-    let participants = data.participants.clone();
-    let title = data.title.clone();
-    let date_clone = date;
-    let start_clone = start_time;
-    let end_clone = end_time;
-    let user_id_clone = user_id;
+
+    let email_req = MeetingEmailRequest {
+        user_id,
+        participants: participants.clone(),
+        title: data.title.clone(),
+        date,
+        start: start_time,
+        end: end_time,
+    };
 
     actix_web::rt::spawn(async move {
-        send_meeting_emails(
-            pool_clone.get_ref(),
-            user_id_clone,
-            participants,
-            title,
-            date_clone,
-            start_clone,
-            end_clone,
-        )
-        .await;
+        if let Err(e) = send_meeting_emails(pool_clone.get_ref(), email_req).await {
+            println!("❌ Email sending failed: {:?}", e);
+        }
     });
 
     // ================= RESPONSE =================
-    HttpResponse::Ok().json(json!({
-        "message": "Meeting created successfully",
-        "meeting_id": meeting_id
-    }))
+    HttpResponse::Ok().json(MeetingResponse {
+        message: "Meeting created successfully".into(),
+        meeting_id,
+    })
 }
 
 // ================= GET =================

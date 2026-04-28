@@ -21,6 +21,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
     depends_on:
       - postgres_db
     env_file:
@@ -50,6 +55,7 @@ services:
     depends_on:
       - frontend
       - actix_api
+    restart: always 
     ports:
       - "80:80"
     volumes:

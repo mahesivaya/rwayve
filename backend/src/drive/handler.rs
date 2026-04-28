@@ -1,12 +1,11 @@
 use crate::prelude::*;
 use actix_multipart::Multipart;
-use actix_web::{HttpResponse, Responder, get, post, web};
+use actix_web::{Error, HttpResponse, Responder, get, post, web};
 use chrono::NaiveDateTime;
 use futures_util::StreamExt;
 use sqlx::{FromRow, PgPool};
 use std::path::Path;
-use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use tokio::{fs, io::AsyncWriteExt};
 use uuid::Uuid;
 
 //
@@ -46,109 +45,85 @@ pub struct FileRecord {
 // 🔥 UPDATED UPLOAD FILE (FIXED USER_ID)
 //
 #[post("/files/upload")]
-pub async fn upload_file(mut payload: Multipart, pool: web::Data<PgPool>) -> impl Responder {
+pub async fn upload_file(
+    mut payload: Multipart,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, Error> {
     let upload_dir = "./uploads";
 
-    if let Err(e) = fs::create_dir_all(upload_dir).await {
+    fs::create_dir_all(upload_dir).await.map_err(|e| {
         println!("❌ Dir error: {:?}", e);
-        return HttpResponse::InternalServerError().finish();
-    }
+        actix_web::error::ErrorInternalServerError("Dir error")
+    })?;
 
     let mut user_id: i32 = 0;
 
     while let Some(item) = payload.next().await {
-        let mut field = match item {
-            Ok(f) => f,
-            Err(_) => return HttpResponse::BadRequest().body("Invalid multipart"),
-        };
+        let mut field = item.map_err(|_| actix_web::error::ErrorBadRequest("Invalid multipart"))?;
 
         let field_name = field.name().to_string();
 
-        //
-        // ✅ EXTRACT USER_ID
-        //
+        // ✅ USER_ID
         if field_name == "user_id" {
             let mut bytes = Vec::new();
 
             while let Some(chunk) = field.next().await {
-                let data = match chunk {
-                    Ok(d) => d,
-                    Err(_) => return HttpResponse::BadRequest().body("User ID read error"),
-                };
+                let data =
+                    chunk.map_err(|_| actix_web::error::ErrorBadRequest("User ID read error"))?;
                 bytes.extend_from_slice(&data);
             }
 
-            user_id = match String::from_utf8(bytes)
+            user_id = String::from_utf8(bytes)
                 .ok()
                 .and_then(|s| s.parse::<i32>().ok())
-            {
-                Some(id) => id,
-                None => return HttpResponse::BadRequest().body("Invalid user_id"),
-            };
+                .ok_or_else(|| actix_web::error::ErrorBadRequest("Invalid user_id"))?;
 
-            println!("👤 Upload user_id: {}", user_id);
             continue;
         }
 
-        //
-        // ✅ ONLY PROCESS FILES
-        //
+        // ✅ FILES ONLY
         if field_name != "files" {
             continue;
         }
 
         let content_disposition = field.content_disposition();
 
-        let raw_filename = match content_disposition.get_filename() {
-            Some(name) => name,
-            None => continue,
-        };
+        let raw_filename = content_disposition
+            .get_filename()
+            .ok_or_else(|| actix_web::error::ErrorBadRequest("Missing filename"))?;
 
-        //
-        // ✅ SANITIZE filename
-        //
-        let filename = raw_filename.replace("/", "").replace("\\", "");
+        // ✅ sanitize
+        let filename = raw_filename.replace(['/', '\\'], "");
 
         let file_id = Uuid::new_v4().to_string();
         let filepath = format!("{}/{}_{}", upload_dir, file_id, filename);
 
-        let mut f = match fs::File::create(&filepath).await {
-            Ok(file) => file,
-            Err(e) => {
-                println!("❌ File create error: {:?}", e);
-                return HttpResponse::InternalServerError().finish();
-            }
-        };
+        let mut f = fs::File::create(&filepath).await.map_err(|e| {
+            println!("❌ File create error: {:?}", e);
+            actix_web::error::ErrorInternalServerError("File create error")
+        })?;
 
         let mut size: i64 = 0;
 
         while let Some(chunk) = field.next().await {
-            let data = match chunk {
-                Ok(d) => d,
-                Err(_) => return HttpResponse::BadRequest().body("Chunk error"),
-            };
+            let data = chunk.map_err(|_| actix_web::error::ErrorBadRequest("Chunk error"))?;
 
             size += data.len() as i64;
 
-            if let Err(e) = f.write_all(&data).await {
+            f.write_all(&data).await.map_err(|e| {
                 println!("❌ Write error: {:?}", e);
-                return HttpResponse::InternalServerError().finish();
-            }
+                actix_web::error::ErrorInternalServerError("Write error")
+            })?;
         }
 
-        let file_type = filename.split('.').last().unwrap_or("").to_string();
+        // ✅ better file type extraction
+        let file_type = filename.rsplit('.').next().unwrap_or("").to_string();
 
-        //
-        // 🚨 ENSURE USER_ID EXISTS
-        //
         if user_id == 0 {
-            return HttpResponse::BadRequest().body("Missing user_id");
+            return Err(actix_web::error::ErrorBadRequest("Missing user_id"));
         }
 
-        //
-        // ✅ INSERT INTO DB
-        //
-        if let Err(e) = sqlx::query(
+        sqlx::query(
             r#"
             INSERT INTO files (name, file_path, size, file_type, user_id)
             VALUES ($1, $2, $3, $4, $5)
@@ -161,15 +136,13 @@ pub async fn upload_file(mut payload: Multipart, pool: web::Data<PgPool>) -> imp
         .bind(user_id)
         .execute(pool.get_ref())
         .await
-        {
+        .map_err(|e| {
             println!("❌ DB Insert Error: {:?}", e);
-            return HttpResponse::InternalServerError().finish();
-        }
-
-        println!("✅ File saved: {} for user {}", filename, user_id);
+            actix_web::error::ErrorInternalServerError("DB error")
+        })?;
     }
 
-    HttpResponse::Ok().body("Upload successful")
+    Ok(HttpResponse::Ok().body("Upload successful"))
 }
 
 //
@@ -199,7 +172,7 @@ pub async fn get_files(pool: web::Data<PgPool>, query: web::Query<FileQuery>) ->
                         .to_string_lossy()
                         .to_string();
 
-                    let file_type = file_name.split('.').last().unwrap_or("").to_string();
+                    let file_type = file_name.split('.').next_back().unwrap_or("").to_string();
 
                     FileResponse {
                         id: row.id,

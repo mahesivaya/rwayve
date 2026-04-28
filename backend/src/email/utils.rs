@@ -14,17 +14,17 @@ pub fn extract_body(payload: &Value) -> Option<String> {
             let mime = part["mimeType"].as_str().unwrap_or("");
 
             // 🔥 prefer HTML
-            if mime == "text/html" {
-                if let Some(data) = part["body"]["data"].as_str() {
-                    return Some(decode_base64(data));
-                }
+            if mime == "text/html"
+                && let Some(data) = part["body"]["data"].as_str()
+            {
+                return Some(decode_base64(data));
             }
 
             // fallback text
-            if mime == "text/plain" {
-                if let Some(data) = part["body"]["data"].as_str() {
-                    return Some(decode_base64(data));
-                }
+            if mime == "text/plain"
+                && let Some(data) = part["body"]["data"].as_str()
+            {
+                return Some(decode_base64(data));
             }
 
             // 🔁 recursive (VERY IMPORTANT)

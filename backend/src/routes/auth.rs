@@ -35,14 +35,14 @@ pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -
     log_auth("simple message");
     log_auth(format!("User registered: {}", data.email));
     if data.password != data.confirm_password {
-        log_auth(&format!(
+        log_auth(format!(
             "Register failed (password mismatch): {}",
             data.email
         ));
         return HttpResponse::BadRequest()
             .json(serde_json::json!({ "message": "Passwords do not match" }));
     }
-    log_auth(&format!("User registered successfully: {}", data.email));
+    log_auth(format!("User registered successfully: {}", data.email));
 
     // 🔥 HASH PASSWORD
     let hashed = match hash(&data.password, DEFAULT_COST) {

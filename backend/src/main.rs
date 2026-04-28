@@ -10,20 +10,23 @@ mod models;
 mod prelude;
 mod routes;
 mod scheduler;
+mod health;
 pub mod security;
 
 // ==============================
 // 🔹 USE INTERNAL MODULES
 // ==============================
+use crate::health::health as health_handler;
+
 use crate::logging::logger::init_logger;
 
-use crate::chat::{chat_ws, get_messages};
+use crate::chat::handler::{chat_ws, get_messages};
 
-use crate::drive::{get_files, upload_file};
+use crate::drive::handler::{get_files, upload_file};
 
-use crate::scheduler::scheduler::{create_meeting, delete_meeting, get_meetings, update_meeting};
+use crate::scheduler::handler::{create_meeting, delete_meeting, get_meetings, update_meeting};
 
-use crate::call::call::call_ws;
+use crate::call::handler::call_ws;
 
 use crate::email::handler::{get_me, gmail_login, oauth_callback, save_public_key, send};
 use crate::email::sync::sync_all;
@@ -66,7 +69,7 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
                 .service(get_files)
                 .service(send)
                 .service(get_me)
-                .service(save_public_key),
+                .service(save_public_key)
         )
         // 🔥 AUTH / GOOGLE
         .route("/gmail/login", web::get().to(gmail_login))
@@ -114,6 +117,7 @@ async fn main() -> std::io::Result<()> {
             .supports_credentials();
 
         App::new()
+            .service(health_handler)
             .wrap(cors)
             .app_data(web::Data::new(pool.clone()))
             .configure(app_routes)
