@@ -3,7 +3,13 @@ import { useEffect, useState } from "react";
 import SendEmail from "./SendEmail";
 import { decryptMessage } from "../crypto/crypto";
 import { loadPrivateKey } from "../crypto/keyStore";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import { apiFetch } from "../api";
 export default function Emails() {
+    const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
+    const { login } = useAuth();
     const [emails, setEmails] = useState([]);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
@@ -13,21 +19,32 @@ export default function Emails() {
     const [privateKey, setPrivateKey] = useState(null);
     const [showCompose, setShowCompose] = useState(false);
     const [minimized, setMinimized] = useState(false);
+    const API_BASE = import.meta.env.VITE_API_URL;
+    // 🔐 Load private key
     // 🔐 Load private key
     useEffect(() => {
-        (async () => {
-            const key = await loadPrivateKey();
-            if (key)
-                setPrivateKey(key);
-        })();
+        const initKey = async () => {
+            try {
+                const key = await loadPrivateKey();
+                if (key)
+                    setPrivateKey(key);
+            }
+            catch (err) {
+                console.error("❌ Failed to load private key:", err);
+            }
+        };
+        initKey();
     }, []);
+    // 📧 Fetch accounts (production-safe)
     const fetchAccounts = async () => {
-        const token = localStorage.getItem("token");
-        const res = await fetch("http://localhost:8080/api/accounts", {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        setAccounts(data);
+        try {
+            const res = await apiFetch("/api/accounts");
+            const data = await res.json();
+            setAccounts(data);
+        }
+        catch (err) {
+            console.error(err);
+        }
     };
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
