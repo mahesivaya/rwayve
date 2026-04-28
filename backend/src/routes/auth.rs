@@ -8,27 +8,6 @@ use bcrypt::{DEFAULT_COST, hash, verify};
 use chrono::{Duration as ChronoDuration, Utc};
 use jsonwebtoken::{EncodingKey, Header, encode};
 
-pub fn create_jwt(user_id: i32, email: String) -> String {
-    let expiration = Utc::now()
-        .checked_add_signed(ChronoDuration::hours(24))
-        .unwrap()
-        .timestamp() as usize;
-
-    let claims = Claims {
-        sub: user_id,
-        email,
-        exp: expiration,
-    };
-
-    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-
-    encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(secret.as_bytes()),
-    )
-    .unwrap()
-}
 
 #[post("/register")]
 pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -> HttpResponse {
@@ -60,38 +39,28 @@ pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -
         .fetch_one(pool.get_ref())
         .await;
 
-    match result {
-        Ok(row) => {
-            let user_id: i32 = row.get("id");
-
-            let claims = Claims {
-                sub: user_id,
-                email: data.email.clone(),
-                exp: (Utc::now() + ChronoDuration::hours(24)).timestamp() as usize,
-            };
-
-            let token = encode(
-                &Header::default(),
-                &claims,
-                &EncodingKey::from_secret("secret".as_ref()),
-            )
-            .unwrap();
-
-            HttpResponse::Ok().json(serde_json::json!({ "token": token }))
-        }
-
-        Err(e) => {
-            println!("DB ERROR: {:?}", e);
-
-            if e.to_string().contains("duplicate key") {
-                HttpResponse::BadRequest()
-                    .json(serde_json::json!({ "message": "User already exists" }))
-            } else {
-                HttpResponse::InternalServerError()
-                    .json(serde_json::json!({ "message": "Insert failed" }))
+        match result {
+            Ok(row) => {
+                let user_id: i32 = row.get("id");
+        
+                // ✅ ALWAYS use same JWT function
+                let token = create_jwt(user_id, data.email.clone());
+        
+                HttpResponse::Ok().json(serde_json::json!({ "token": token }))
+            }
+        
+            Err(e) => {
+                println!("DB ERROR: {:?}", e);
+        
+                if e.to_string().contains("duplicate key") {
+                    HttpResponse::BadRequest()
+                        .json(serde_json::json!({ "message": "User already exists" }))
+                } else {
+                    HttpResponse::InternalServerError()
+                        .json(serde_json::json!({ "message": "Insert failed" }))
+                }
             }
         }
-    }
 }
 
 #[post("/login")]

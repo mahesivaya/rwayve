@@ -95,11 +95,23 @@ fn start_sync_worker(pool: PgPool) {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    println!("🚀 Server starting...");
     init_logger();
     dotenv().ok();
 
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL missing");
-    let pool = PgPool::connect(&db_url).await.expect("DB failed");
+    let pool = loop {
+        match PgPool::connect(&db_url).await {
+            Ok(pool) => {
+                println!("✅ Connected to DB");
+                break pool;
+            }
+            Err(e) => {
+                println!("⏳ Waiting for DB... {:?}", e);
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+        }
+    };
     start_sync_worker(pool.clone());
 
     HttpServer::new(move || {

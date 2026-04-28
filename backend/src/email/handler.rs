@@ -74,7 +74,7 @@ pub async fn oauth_callback(
     };
 
     // 🔥 Decode JWT
-    let decoded = match crate::models::auth::decode_jwt(token) {
+    let decoded = match crate::security::jwt::decode_jwt(token) {
         Some(d) => d,
         None => return HttpResponse::Unauthorized().body("Invalid token"),
     };
@@ -257,7 +257,7 @@ async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     let token = auth_header.replace("Bearer ", "");
 
     // 🔥 3. Decode JWT
-    let decoded = match crate::models::auth::decode_jwt(&token) {
+    let decoded = match crate::security::jwt::decode_jwt(token) {
         Some(d) => d,
         None => {
             return HttpResponse::Unauthorized()
