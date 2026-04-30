@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { login } from "../api/Auth";
@@ -26,7 +27,7 @@ export default function Login() {
 
       navigate("/emails");
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       alert("Login failed");
     }
   };

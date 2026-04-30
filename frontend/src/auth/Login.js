@@ -1,4 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { logger } from "../utils/logger";
 import { useState } from "react";
 import { login } from "../api/Auth";
 import { useNavigate } from "react-router-dom";
@@ -21,7 +22,7 @@ export default function Login() {
             navigate("/emails");
         }
         catch (err) {
-            console.error(err);
+            logger.error(err);
             alert("Login failed");
         }
     };

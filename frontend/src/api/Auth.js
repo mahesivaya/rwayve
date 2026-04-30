@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 export async function register(email, password, confirm) {
     const res = await fetch("http://localhost:8080/api/register", {
         method: "POST",
@@ -32,7 +33,7 @@ export async function login(email, password) {
         return text ? JSON.parse(text) : {};
     }
     catch (err) {
-        console.error("login error:", err);
+        logger.error("login error:", err);
         throw err;
     }
 }

@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 import { useEffect, useState } from "react";
 import "./scheduler.css";
 import { getMeetings, createMeetingApi, updateMeetingApi, deleteMeetingApi } from "./SchedulerService";
@@ -45,7 +46,7 @@ export default function Scheduler() {
       setEditingEvent(null);
       fetchMeetings();
     } catch (err) {
-      console.log("❌ Delete error", err);
+      logger.log("❌ Delete error", err);
     }
   };
 
@@ -124,7 +125,7 @@ export default function Scheduler() {
       }
     }
   
-    console.log("🚀 sending participants:", finalParticipants);
+    logger.log("🚀 sending participants:", finalParticipants);
   
     const payload = {
       title,

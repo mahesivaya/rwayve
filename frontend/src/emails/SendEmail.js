@@ -1,4 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { logger } from "../utils/logger";
 import { useState, useEffect } from "react";
 import { encryptMessage } from "../crypto/crypto";
 export default function SendEmail() {
@@ -38,7 +39,7 @@ export default function SendEmail() {
                 const users = await checkRes.json();
                 // 👉 FIX: handle array response
                 const user = Array.isArray(users) ? users[0] : users;
-                console.log("USER RESPONSE:", user);
+                logger.log("USER RESPONSE:", user);
                 if (user && user.public_key) {
                     const parsedKey = typeof user.public_key === "string"
                         ? JSON.parse(user.public_key)
@@ -55,7 +56,7 @@ export default function SendEmail() {
                             });
                 }
             }
-            console.log("FINAL BODY:", finalBody);
+            logger.log("FINAL BODY:", finalBody);
             // 🔥 2. Send email
             const res = await fetch("http://localhost:8080/api/send", {
                 method: "POST",
@@ -80,7 +81,7 @@ export default function SendEmail() {
             setBody("");
         }
         catch (err) {
-            console.error(err);
+            logger.error(err);
             setStatus(err.message || "Failed to send email ❌");
         }
         setLoading(false);

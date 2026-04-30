@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 import { useState, useEffect } from "react";
 import { encryptMessage } from "../crypto/crypto";
 
@@ -50,7 +51,7 @@ export default function SendEmail() {
         // 👉 FIX: handle array response
         const user = Array.isArray(users) ? users[0] : users;
       
-        console.log("USER RESPONSE:", user);
+        logger.log("USER RESPONSE:", user);
       
         if (user && user.public_key) {
           const parsedKey =
@@ -80,7 +81,7 @@ export default function SendEmail() {
         }
       }
       
-      console.log("FINAL BODY:", finalBody);
+      logger.log("FINAL BODY:", finalBody);
 
       // 🔥 2. Send email
       const res = await fetch("http://localhost:8080/api/send", {
@@ -108,7 +109,7 @@ export default function SendEmail() {
       setSubject("");
       setBody("");
     } catch (err: any) {
-      console.error(err);
+      logger.error(err);
       setStatus(err.message || "Failed to send email ❌");
     }
 

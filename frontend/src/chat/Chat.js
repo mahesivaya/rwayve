@@ -1,4 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { logger } from "../utils/logger";
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
 export default function Chat() {
@@ -53,11 +54,11 @@ export default function Chat() {
                     setUsers(filtered);
                 }
                 catch {
-                    console.error("Users error:", text);
+                    logger.error("Users error:", text);
                 }
             }
             catch (err) {
-                console.error("Fetch users failed", err);
+                logger.error("Fetch users failed", err);
             }
         };
         if (user)
@@ -72,14 +73,14 @@ export default function Chat() {
         const ws = new WebSocket(`ws://localhost/ws/chat?user_id=${user.id}`);
         wsRef.current = ws;
         ws.onopen = () => {
-            console.log("✅ WS connected");
+            logger.log("✅ WS connected");
         };
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             setMessages((prev) => [...prev, msg]);
         };
         ws.onclose = () => {
-            console.log("❌ WS disconnected");
+            logger.log("❌ WS disconnected");
         };
         return () => {
             ws.close();
@@ -103,7 +104,7 @@ export default function Chat() {
             setSelectedUser(otherUser);
         }
         catch (err) {
-            console.error("Failed to load messages", err);
+            logger.error("Failed to load messages", err);
         }
     };
     // =============================

@@ -1,4 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+import { logger } from "../utils/logger";
 import { useEffect, useRef, useState } from "react";
 import SendEmail from "./SendEmail";
 import { decryptMessage } from "../crypto/crypto";
@@ -23,7 +24,7 @@ export default function Emails() {
                     setPrivateKey(key);
             }
             catch (err) {
-                console.error("❌ Failed to load private key:", err);
+                logger.error("❌ Failed to load private key:", err);
             }
         };
         initKey();
@@ -36,13 +37,13 @@ export default function Emails() {
             setAccounts(data);
         }
         catch (err) {
-            console.error(err);
+            logger.error(err);
         }
     };
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get("connected") === "true") {
-            console.log("🔄 Refreshing accounts after OAuth");
+            logger.log("🔄 Refreshing accounts after OAuth");
             fetchAccounts();
             // clean URL
             window.history.replaceState({}, document.title, "/emails");
@@ -110,7 +111,7 @@ export default function Emails() {
             }
         }
         catch (err) {
-            console.error("Decrypt failed", err);
+            logger.error("Decrypt failed", err);
             bodyText = "❌ Unable to decrypt";
         }
         setSelected({ ...email, body: bodyText });

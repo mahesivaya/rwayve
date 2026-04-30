@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
 
@@ -75,11 +76,11 @@ export default function Chat() {
 
           setUsers(filtered);
         } catch {
-          console.error("Users error:", text);
+          logger.error("Users error:", text);
         }
 
       } catch (err) {
-        console.error("Fetch users failed", err);
+        logger.error("Fetch users failed", err);
       }
     };
 
@@ -96,7 +97,7 @@ export default function Chat() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("✅ WS connected");
+      logger.log("✅ WS connected");
     };
 
     ws.onmessage = (event) => {
@@ -106,7 +107,7 @@ export default function Chat() {
     };
 
     ws.onclose = () => {
-      console.log("❌ WS disconnected");
+      logger.log("❌ WS disconnected");
     };
 
     return () => {
@@ -138,7 +139,7 @@ export default function Chat() {
       setSelectedUser(otherUser);
 
     } catch (err) {
-      console.error("Failed to load messages", err);
+      logger.error("Failed to load messages", err);
     }
   };
 

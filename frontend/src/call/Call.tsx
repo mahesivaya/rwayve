@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 import { useEffect, useRef, useState } from "react";
 
 const WS_URL = "/ws/call"; // adjust if needed
@@ -30,7 +31,7 @@ export default function Call() {
     };
 
     pc.ontrack = (event) => {
-      console.log("📡 Received remote stream", event.streams[0]);
+      logger.log("📡 Received remote stream", event.streams[0]);
       const audio = document.getElementById("remoteAudio") as HTMLAudioElement;
       if (audio) {
         audio.srcObject = event.streams[0];
@@ -47,7 +48,7 @@ export default function Call() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("✅ WS connected");
+      logger.log("✅ WS connected");
       setConnected(true);
     };
 
@@ -59,7 +60,7 @@ export default function Call() {
       try {
         // 🔥 OFFER
         if (data.type === "offer") {
-          console.log("📩 Received offer");
+          logger.log("📩 Received offer");
 
           await pc.setRemoteDescription({
             type: "offer",
@@ -79,7 +80,7 @@ export default function Call() {
 
         // 🔥 ANSWER
         else if (data.type === "answer") {
-          console.log("📩 Received answer");
+          logger.log("📩 Received answer");
 
           await pc.setRemoteDescription({
             type: "answer",
@@ -89,19 +90,19 @@ export default function Call() {
 
         // 🔥 ICE
         else if (data.type === "ice-candidate") {
-          console.log("❄️ Received ICE");
+          logger.log("❄️ Received ICE");
 
           if (data.candidate) {
             await pc.addIceCandidate(data.candidate);
           }
         }
       } catch (err) {
-        console.error("❌ WebRTC error", err);
+        logger.error("❌ WebRTC error", err);
       }
     };
 
     ws.onclose = () => {
-      console.log("❌ WS closed");
+      logger.log("❌ WS closed");
       setConnected(false);
     };
 
@@ -134,9 +135,9 @@ export default function Call() {
         })
       );
 
-      console.log("📤 Sent offer");
+      logger.log("📤 Sent offer");
     } catch (err) {
-      console.error("❌ startCall error", err);
+      logger.error("❌ startCall error", err);
     }
   };
 

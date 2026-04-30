@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 import { useEffect, useRef, useState } from "react";
 import SendEmail from "./SendEmail";
 import { decryptMessage } from "../crypto/crypto";
@@ -27,7 +28,7 @@ useEffect(() => {
       const key = await loadPrivateKey();
       if (key) setPrivateKey(key);
     } catch (err) {
-      console.error("❌ Failed to load private key:", err);
+      logger.error("❌ Failed to load private key:", err);
     }
   };
 
@@ -43,7 +44,7 @@ useEffect(() => {
       const data = await res.json();
       setAccounts(data);
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
   };
 
@@ -52,7 +53,7 @@ useEffect(() => {
     const params = new URLSearchParams(window.location.search);
   
     if (params.get("connected") === "true") {
-      console.log("🔄 Refreshing accounts after OAuth");
+      logger.log("🔄 Refreshing accounts after OAuth");
   
       fetchAccounts();
   
@@ -154,7 +155,7 @@ const connectGmail = () => {
         bodyText = decrypted;
       }
     } catch (err) {
-      console.error("Decrypt failed", err);
+      logger.error("Decrypt failed", err);
       bodyText = "❌ Unable to decrypt";
     }
 

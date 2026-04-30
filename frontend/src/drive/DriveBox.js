@@ -1,4 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { logger } from "../utils/logger";
 import { useEffect, useState } from "react";
 import "./drive.css";
 import { useAuth } from "../auth/AuthContext";
@@ -21,12 +22,12 @@ export default function Drive() {
                 throw new Error("Failed to fetch files");
             }
             const data = await res.json();
-            console.log("🔥 API DATA:", data);
-            console.log("👤 USER ID:", user.id);
+            logger.log("🔥 API DATA:", data);
+            logger.log("👤 USER ID:", user.id);
             setUploadedFiles(Array.isArray(data) ? data : []);
         }
         catch (err) {
-            console.error("❌ Fetch error:", err);
+            logger.error("❌ Fetch error:", err);
         }
         finally {
             setLoading(false);
@@ -82,12 +83,12 @@ export default function Drive() {
             });
             if (!res.ok)
                 throw new Error("Upload failed");
-            console.log("✅ Upload success");
+            logger.log("✅ Upload success");
             setFiles([]);
             fetchFiles(); // refresh list
         }
         catch (err) {
-            console.error("❌ Upload error:", err);
+            logger.error("❌ Upload error:", err);
             alert("Upload failed");
         }
         finally {

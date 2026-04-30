@@ -1,4 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { logger } from "../utils/logger";
 import { useEffect, useState } from "react";
 import "./scheduler.css";
 import { getMeetings, createMeetingApi, updateMeetingApi, deleteMeetingApi } from "./SchedulerService";
@@ -36,7 +37,7 @@ export default function Scheduler() {
             fetchMeetings();
         }
         catch (err) {
-            console.log("❌ Delete error", err);
+            logger.log("❌ Delete error", err);
         }
     };
     const slots = Array.from({ length: 48 }, (_, i) => i);
@@ -99,7 +100,7 @@ export default function Scheduler() {
                 finalParticipants.push(email);
             }
         }
-        console.log("🚀 sending participants:", finalParticipants);
+        logger.log("🚀 sending participants:", finalParticipants);
         const payload = {
             title,
             date: selectedDate,
