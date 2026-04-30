@@ -10,8 +10,8 @@ mod models;
 mod prelude;
 mod routes;
 mod scheduler;
-mod health;
 pub mod security;
+mod middleware;
 
 // ==============================
 // 🔹 USE INTERNAL MODULES
