@@ -1,5 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { logger } from "../utils/logger";
+const API_BASE = import.meta.env.VITE_API_URL;
 import { useEffect, useRef, useState } from "react";
 import SendEmail from "./SendEmail";
 import { decryptMessage } from "../crypto/crypto";
@@ -56,7 +57,7 @@ export default function Emails() {
     useEffect(() => {
         const fetchEmails = async () => {
             const token = localStorage.getItem("token");
-            let url = "http://localhost:8080/api/emails";
+            let url = `${API_BASE}/api/emails`;
             if (activeAccount !== null) {
                 url += `?account_id=${activeAccount}`;
             }
@@ -77,7 +78,7 @@ export default function Emails() {
         const last = emails[emails.length - 1];
         const before = Math.floor(new Date(last.created_at).getTime() / 1000);
         const before_id = last.id;
-        let url = `http://localhost:8080/api/emails?before=${before}&before_id=${before_id}`;
+        let url = `${API_BASE}/api/emails?before=${before}&before_id=${before_id}`;
         if (activeAccount !== null) {
             url += `&account_id=${activeAccount}`;
         }
@@ -97,7 +98,7 @@ export default function Emails() {
             return;
         }
         window.location.href =
-            `http://localhost:8080/gmail/login?token=${token}`;
+            `${API_BASE}/gmail/login?token=${token}`;
     };
     // 🔓 Open email
     const openEmail = async (email) => {

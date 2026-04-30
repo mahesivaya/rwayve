@@ -1,6 +1,7 @@
 import { logger } from "../utils/logger";
+const API_BASE = import.meta.env.VITE_API_URL;
 export async function register(email, password, confirm) {
-    const res = await fetch("http://localhost:8080/api/register", {
+    const res = await fetch(`${API_BASE}/api/register`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -21,7 +22,7 @@ export async function register(email, password, confirm) {
 }
 export async function login(email, password) {
     try {
-        const res = await fetch("http://localhost:8080/api/login", {
+        const res = await fetch(`${API_BASE}/api/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password }),

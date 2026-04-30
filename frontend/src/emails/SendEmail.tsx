@@ -1,4 +1,6 @@
 import { logger } from "../utils/logger";
+const API_BASE = import.meta.env.VITE_API_URL;
+
 import { useState, useEffect } from "react";
 import { encryptMessage } from "../crypto/crypto";
 
@@ -35,7 +37,7 @@ export default function SendEmail() {
     try {
       // 🔥 1. Check if receiver is Wayve user
       const checkRes = await fetch(
-        `http://localhost:8080/api/users?email=${to}`,
+        `${API_BASE}/api/users?email=${to}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -84,7 +86,7 @@ export default function SendEmail() {
       logger.log("FINAL BODY:", finalBody);
 
       // 🔥 2. Send email
-      const res = await fetch("http://localhost:8080/api/send", {
+      const res = await fetch(`${API_BASE}/api/send`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

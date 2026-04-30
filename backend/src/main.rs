@@ -16,7 +16,10 @@ pub mod security;
 // ==============================
 // 🔹 USE INTERNAL MODULES
 // ==============================
-use crate::health::health as health_handler;
+use crate::middleware::logger::LoggerMiddleware;
+use crate::middleware::auth::AuthMiddleware;
+use crate::middleware::metrics::MetricsMiddleware;
+use crate::middleware::rate_limit::RateLimitMiddleware;
 
 use crate::logging::logger::init_logger;
 
@@ -129,8 +132,10 @@ async fn main() -> std::io::Result<()> {
             .supports_credentials();
 
         App::new()
-            .service(health_handler)
-            .wrap(cors)
+            .wrap(LoggerMiddleware)        // logging
+            .wrap(MetricsMiddleware)       // performance
+            .wrap(RateLimitMiddleware)     // protection
+            .wrap(AuthMiddleware)          // security
             .app_data(web::Data::new(pool.clone()))
             .configure(app_routes)
     })

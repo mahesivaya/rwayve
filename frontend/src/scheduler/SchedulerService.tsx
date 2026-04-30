@@ -1,4 +1,4 @@
-const BASE_URL = "http://localhost:8080";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem("token");
@@ -11,7 +11,7 @@ const getAuthHeaders = () => {
 
 // ================= FETCH =================
 export const getMeetings = async () => {
-  const res = await fetch(`${BASE_URL}/api/meetings`, {
+  const res = await fetch(`${API_BASE}/api/meetings`, {
     headers: {
       Authorization: `Bearer ${localStorage.getItem("token")}`,
     },
@@ -32,7 +32,7 @@ export const createMeetingApi = async (data: {
   end: number;
   participants: string[]; // ✅ REQUIRED
 }) => {
-  const res = await fetch(`${BASE_URL}/api/meetings`, {
+  const res = await fetch(`${API_BASE}/api/meetings`, {
     method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify({
@@ -60,7 +60,7 @@ export const updateMeetingApi = async (
     participants: string[];
   }
 ) => {
-  const res = await fetch(`${BASE_URL}/api/meetings/${id}`, {
+  const res = await fetch(`${API_BASE}/api/meetings/${id}`, {
     method: "PUT",
     headers: getAuthHeaders(),
     body: JSON.stringify({
@@ -80,7 +80,7 @@ export const updateMeetingApi = async (
 
 // ================= DELETE =================
 export const deleteMeetingApi = async (id: number) => {
-  const res = await fetch(`${BASE_URL}/api/meetings/${id}`, {
+  const res = await fetch(`${API_BASE}/api/meetings/${id}`, {
     method: "DELETE",
     headers: getAuthHeaders(),
   });

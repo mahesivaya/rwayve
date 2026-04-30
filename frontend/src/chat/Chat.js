@@ -1,5 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { logger } from "../utils/logger";
+const API_BASE = import.meta.env.VITE_API_URL;
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
 export default function Chat() {
@@ -41,7 +42,7 @@ export default function Chat() {
         const fetchUsers = async () => {
             const token = localStorage.getItem("token");
             try {
-                const res = await fetch("http://localhost:8080/api/users/all", {
+                const res = await fetch(`${API_BASE}/api/users/all`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
@@ -94,7 +95,7 @@ export default function Chat() {
             return;
         const token = localStorage.getItem("token");
         try {
-            const res = await fetch(`http://localhost:8080/api/messages?user1=${user.id}&user2=${otherUser.id}`, {
+            const res = await fetch(`${API_BASE}/api/messages?user1=${user.id}&user2=${otherUser.id}`, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
