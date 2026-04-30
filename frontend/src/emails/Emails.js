@@ -1,15 +1,10 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SendEmail from "./SendEmail";
 import { decryptMessage } from "../crypto/crypto";
 import { loadPrivateKey } from "../crypto/keyStore";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
 import { apiFetch } from "../api";
 export default function Emails() {
-    const [searchParams] = useSearchParams();
-    const navigate = useNavigate();
-    const { login } = useAuth();
     const [emails, setEmails] = useState([]);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
@@ -18,9 +13,7 @@ export default function Emails() {
     const [selected, setSelected] = useState(null);
     const [privateKey, setPrivateKey] = useState(null);
     const [showCompose, setShowCompose] = useState(false);
-    const [minimized, setMinimized] = useState(false);
-    const API_BASE = import.meta.env.VITE_API_URL;
-    // 🔐 Load private key
+    const clickTimerRef = useRef(null);
     // 🔐 Load private key
     useEffect(() => {
         const initKey = async () => {
@@ -57,13 +50,6 @@ export default function Emails() {
     }, []);
     useEffect(() => {
         fetchAccounts();
-    }, []);
-    useEffect(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get("connected") === "true") {
-            window.history.replaceState({}, document.title, "/emails");
-            fetchAccounts(); // 🔥 refresh
-        }
     }, []);
     // 📥 Fetch emails
     useEffect(() => {
@@ -144,22 +130,51 @@ export default function Emails() {
                                     borderRadius: 6,
                                     border: "1px solid #ddd"
                                 }, children: "\u2795 Add Account" })] }), _jsxs("div", { style: { padding: 10, display: "flex", flexDirection: "column" }, children: [_jsx("button", { onClick: () => {
+                                    if (activeAccount === null)
+                                        return;
                                     setActiveAccount(null);
                                     setEmails([]);
                                     setHasMore(true);
+                                }, onDoubleClick: (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                 }, style: {
                                     marginBottom: 5, // 🔥 vertical spacing
                                     textAlign: "left",
-                                    background: activeAccount === null ? "#ddd" : "white"
+                                    background: activeAccount === null ? "#ddd" : "white",
+                                    userSelect: "none"
                                 }, children: "All" }), accounts.map((acc) => (_jsx("button", { onClick: () => {
+                                    if (activeAccount === acc.id)
+                                        return;
                                     setActiveAccount(acc.id);
                                     setEmails([]);
                                     setHasMore(true);
+                                }, onDoubleClick: (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                 }, style: {
                                     marginBottom: 5, // 🔥 vertical spacing
                                     textAlign: "left",
-                                    background: activeAccount === acc.id ? "#ddd" : "white"
-                                }, children: acc.email }, acc.id)))] }), _jsxs("div", { style: { overflowY: "auto", height: "80%" }, children: [emails.map((email) => (_jsxs("div", { style: { padding: 10, cursor: "pointer" }, onClick: () => openEmail(email), children: [_jsx("strong", { children: email.sender }), _jsx("div", { children: email.subject }), email.body?.startsWith("WAYVE_SECURE_V1") && (_jsx("span", { children: "\uD83D\uDD10" }))] }, `${email.account_id}-${email.gmail_id || email.id}-${email.created_at}`))), hasMore && (_jsx("button", { onClick: loadMore, disabled: loadingMore, children: loadingMore ? "Loading..." : "Load More" }))] })] }), _jsx("div", { style: { flex: 1, padding: 20 }, children: selected ? (_jsxs(_Fragment, { children: [_jsx("h2", { children: selected.subject }), selected.body?.startsWith("WAYVE_SECURE_V1") ? (_jsx("p", { children: selected.body })) : (_jsx("div", { dangerouslySetInnerHTML: { __html: selected.body } }))] })) : (_jsx("p", { children: "Select an email" })) }), showCompose && (_jsxs("div", { style: {
+                                    background: activeAccount === acc.id ? "#ddd" : "white",
+                                    userSelect: "none"
+                                }, children: acc.email }, acc.id)))] }), _jsxs("div", { style: { overflowY: "auto", height: "80%" }, children: [emails.map((email) => (_jsxs("div", { style: { padding: 10, cursor: "pointer", userSelect: "none" }, onClick: (e) => {
+                                    e.preventDefault();
+                                    if (clickTimerRef.current !== null) {
+                                        window.clearTimeout(clickTimerRef.current);
+                                        clickTimerRef.current = null;
+                                    }
+                                    clickTimerRef.current = window.setTimeout(() => {
+                                        clickTimerRef.current = null;
+                                        openEmail(email);
+                                    }, 220);
+                                }, onDoubleClick: (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (clickTimerRef.current !== null) {
+                                        window.clearTimeout(clickTimerRef.current);
+                                        clickTimerRef.current = null;
+                                    }
+                                }, children: [_jsx("strong", { children: email.sender }), _jsx("div", { children: email.subject }), email.body?.startsWith("WAYVE_SECURE_V1") && (_jsx("span", { children: "\uD83D\uDD10" }))] }, `${email.account_id}-${email.gmail_id || email.id}-${email.created_at}`))), hasMore && (_jsx("button", { onClick: loadMore, disabled: loadingMore, children: loadingMore ? "Loading..." : "Load More" }))] })] }), _jsx("div", { style: { flex: 1, padding: 20 }, children: selected ? (_jsxs(_Fragment, { children: [_jsx("h2", { children: selected.subject }), selected.body?.startsWith("WAYVE_SECURE_V1") ? (_jsx("p", { children: selected.body })) : (_jsx("div", { dangerouslySetInnerHTML: { __html: selected.body } }))] })) : (_jsx("p", { children: "Select an email" })) }), showCompose && (_jsxs("div", { style: {
                     position: "fixed",
                     bottom: 20,
                     right: 20,

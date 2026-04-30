@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS emails (
     sender TEXT,
     receiver TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
-    body_encrypted TEXT NOT NULL,
-    body_iv TEXT NOT NULL,
+    body_encrypted TEXT,
+    body_iv TEXT,
     body_cached TEXT,
     body_cached_at TIMESTAMP,
     UNIQUE(account_id, gmail_id)
@@ -119,6 +119,9 @@ ON messages (sender_id, receiver_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_emails_account_created
 ON emails (account_id, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_emails_pending_body
+ON emails (account_id, id) WHERE body_encrypted = '';
 
 CREATE INDEX IF NOT EXISTS idx_messages_users
 ON messages (sender_id, receiver_id);

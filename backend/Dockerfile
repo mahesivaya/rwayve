@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release
+# RUN cargo build --release
 
 COPY . .
 
@@ -21,7 +21,5 @@ COPY . .
 # 🔥 CLIPPY STRICT (fail build if lint fails)
 # 🔥 LINT CHECK (fail if issues)
 # RUN cargo clippy --all-targets --all-features -- -D warnings
-
-
 RUN cargo build --release
 CMD ["./target/release/rwayve"]
