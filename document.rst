@@ -166,3 +166,108 @@ cargo fmt
 cargo clippy -- -D warnings
 cargo check
 
+cargo install cargo-modules
+cargo modules structure
+cargo modules structure --no-fns
+cargo modules structure --no-fns --no-types --no-traits
+cargo modules structure --focus-on email
+cargo modules structure --focus-on chat
+cargo modules structure --max-depth 2
+cargo modules structure --no-fns --max-depth 3
+
+
+Wayve/
+└── 📂 backend/
+    ├── 📂 src/
+    │   ├── 📂 call/
+    │   │   └── 📂 handlers/
+    │   │       └── 📄 fn call_ws          # WebSocket signaling for calls
+    │   ├── 📂 chat/
+    │   │   └── 📂 handlers/
+    │   │       ├── 📄 fn chat_ws          # Real-time chat messaging
+    │   │       ├── 📄 fn get_messages     # History retrieval
+    │   │       └── 📄 ChatSession         # Session state management
+    │   ├── 📂 drive/
+    │   │   └── 📂 handlers/
+    │   │       ├── 📄 fn upload_file
+    │   │       └── 📄 fn get_files
+    │   ├── 📂 email/
+    │   │   ├── 📁 auth/
+    │   │   │   └── 📄 refresh_access_token
+    │   │   ├── 📁 handlers/
+    │   │   │   ├── 📄 gmail_login         # OAuth Initiation
+    │   │   │   ├── 📄 oauth_callback      # Token exchange
+    │   │   │   ├── 📄 send                # Outbound mail
+    │   │   │   ├── 📄 get_me              # Profile info
+    │   │   │   └── 📄 save_public_key     # End-to-end encryption setup
+    │   │   ├── 📁 sync/
+    │   │   │   ├── 📄 sync_all            # Full mailbox synchronization
+    │   │   │   ├── 📄 process_batch       # Background processing logic
+    │   │   │   └── 📄 fetch_ids/details   # IMAP/API fetching logic
+    │   │   └── 📁 utils/
+    │   │       ├── 📄 extract_body
+    │   │       └── 📄 decode_base64       # MIME handling
+    │   ├── 📂 routes/                     # API Endpoint definitions
+    │   │   ├── 📄 account / auth
+    │   │   └── 📄 email / user
+    │   ├── 📂 security/
+    │   │   ├── 📄 encryption              # Likely PGP or AES logic
+    │   │   └── 📄 jwt                     # Session token management
+    │   ├── 📂 scheduler/
+    │   │   └── 📄 handler                 # Cron/Task scheduling
+    │   ├── 📄 main.rs                     # Entry point & Server setup
+    │   └── 📄 cargo.toml                  # Dependencies
+    └── ...
+
+
+├── 📂 frontend/
+│   ├── 📂 src/
+│   │   ├── 📂 api/
+│   │   ├── 📂 assets/
+│   │   ├── 📂 auth/
+│   │   ├── 📂 call/
+│   │   ├── 📂 chat/
+│   │   ├── 📂 components/
+│   │   ├── 📂 crypto/
+│   │   ├── 📂 drive/
+│   │   ├── 📂 emails/
+│   │   ├── 📂 home/
+│   │   ├── 📂 pages/
+│   │   ├── 📂 scheduler/
+│   │   ├── 📂 security/
+│   │   ├── 📄 api.ts
+│   │   ├── 📄 App.tsx
+│   │   └── 📄 config.ts
+│   └── ...
+├── 📂 nginx/
+│   └── 📄 nginx.conf
+├── 📄 docker-compose.yml
+└── 📄 init.sql
+
+
+modules/
+  email/
+    api/
+    service/
+    repo/
+    integration/
+
+  chat/
+    websocket/
+    service/
+    repo/
+
+  drive/
+  scheduler/
+
+
+email/
+├── api/
+│   └── email_api.rs
+├── services/
+│   ├── email_service.rs
+│   └── email_sync_service.rs
+├── repositories/
+│   └── email_repo.rs
+├── integrations/
+│   └── gmail_client.rs

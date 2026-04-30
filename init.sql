@@ -37,8 +37,12 @@ CREATE TABLE IF NOT EXISTS emails (
     created_at TIMESTAMP DEFAULT NOW(),
     body_encrypted TEXT NOT NULL,
     body_iv TEXT NOT NULL,
+    body_cached TEXT,
+    body_cached_at TIMESTAMP,
     UNIQUE(account_id, gmail_id)
 );
+
+
 
 
 -- 1. Remove old wrong constraint (if exists)

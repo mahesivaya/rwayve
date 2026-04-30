@@ -1,17 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SendEmail from "./SendEmail";
 import { decryptMessage } from "../crypto/crypto";
 import { loadPrivateKey } from "../crypto/keyStore";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
 import { apiFetch } from "../api";
 
 
 export default function Emails() {
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const { login } = useAuth();
-
   const [emails, setEmails] = useState<any[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -22,11 +16,10 @@ export default function Emails() {
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
 
   const [showCompose, setShowCompose] = useState(false);
-  const [minimized, setMinimized] = useState(false);
-  const API_BASE = import.meta.env.VITE_API_URL;
+
+  const clickTimerRef = useRef<number | null>(null);
   
 
-  // 🔐 Load private key
   // 🔐 Load private key
 useEffect(() => {
   const initKey = async () => {
@@ -70,16 +63,6 @@ useEffect(() => {
   
   useEffect(() => {
     fetchAccounts();
-  }, []);
-
-
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-  
-    if (urlParams.get("connected") === "true") {
-      window.history.replaceState({}, document.title, "/emails");
-      fetchAccounts(); // 🔥 refresh
-    }
   }, []);
 
 
@@ -224,14 +207,20 @@ const connectGmail = () => {
   {/* ALL */}
   <button
     onClick={() => {
+      if (activeAccount === null) return;
       setActiveAccount(null);
       setEmails([]);
       setHasMore(true);
     }}
+    onDoubleClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    }}
     style={{
       marginBottom: 5,                 // 🔥 vertical spacing
       textAlign: "left",
-      background: activeAccount === null ? "#ddd" : "white"
+      background: activeAccount === null ? "#ddd" : "white",
+      userSelect: "none"
     }}
   >
     All
@@ -242,14 +231,20 @@ const connectGmail = () => {
     <button
       key={acc.id}
       onClick={() => {
+        if (activeAccount === acc.id) return;
         setActiveAccount(acc.id);
         setEmails([]);
         setHasMore(true);
       }}
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       style={{
         marginBottom: 5,               // 🔥 vertical spacing
         textAlign: "left",
-        background: activeAccount === acc.id ? "#ddd" : "white"
+        background: activeAccount === acc.id ? "#ddd" : "white",
+        userSelect: "none"
       }}
     >
       {acc.email}
@@ -263,8 +258,26 @@ const connectGmail = () => {
           {emails.map((email) => (
             <div
             key={`${email.account_id}-${email.gmail_id || email.id}-${email.created_at}`}
-              style={{ padding: 10, cursor: "pointer" }}
-              onClick={() => openEmail(email)}
+              style={{ padding: 10, cursor: "pointer", userSelect: "none" }}
+              onClick={(e) => {
+                e.preventDefault();
+                if (clickTimerRef.current !== null) {
+                  window.clearTimeout(clickTimerRef.current);
+                  clickTimerRef.current = null;
+                }
+                clickTimerRef.current = window.setTimeout(() => {
+                  clickTimerRef.current = null;
+                  openEmail(email);
+                }, 220);
+              }}
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (clickTimerRef.current !== null) {
+                  window.clearTimeout(clickTimerRef.current);
+                  clickTimerRef.current = null;
+                }
+              }}
             >
               <strong>{email.sender}</strong>
               <div>{email.subject}</div>
