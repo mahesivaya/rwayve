@@ -1,9 +1,11 @@
 use crate::prelude::*;
 
 use crate::email::oauth::HTTP_CLIENT;
-use crate::email::oauth::load_google_secrets;
-use crate::security::jwt::get_user_id_from_request;
+use crate::email::oauth::{load_google_secrets, refresh_access_token};
+use crate::email::utils::extract_body;
 use crate::models::email_request::SendEmailRequest;
+use crate::security::encryption::{decrypt, encrypt};
+use crate::security::jwt::get_user_id_from_request;
 use actix_web::HttpRequest;
 use base64::Engine;
 
@@ -294,6 +296,116 @@ async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
             HttpResponse::InternalServerError().finish()
         }
     }
+}
+
+#[get("/emails/{id}/body")]
+pub async fn get_email_body(
+    req: HttpRequest,
+    path: web::Path<i32>,
+    pool: web::Data<PgPool>,
+) -> impl Responder {
+    let user_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let email_id = path.into_inner();
+
+    let row = sqlx::query(
+        r#"
+        SELECT e.id, e.gmail_id, e.body_encrypted, e.body_iv,
+               a.id AS account_id, a.refresh_token
+        FROM emails e
+        JOIN email_accounts a ON e.account_id = a.id
+        WHERE e.id = $1 AND a.user_id = $2
+        "#,
+    )
+    .bind(email_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    let row = match row {
+        Ok(Some(r)) => r,
+        Ok(None) => return HttpResponse::NotFound().finish(),
+        Err(e) => {
+            println!("get_email_body DB error: {:?}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    let body_encrypted: String = row.get("body_encrypted");
+    let body_iv: String = row.get("body_iv");
+
+    // Cached path: body already fetched.
+    if !body_encrypted.is_empty() {
+        return match decrypt(&body_iv, &body_encrypted) {
+            Ok(body) => HttpResponse::Ok().json(serde_json::json!({ "body": body })),
+            Err(e) => {
+                println!("get_email_body decrypt error: {:?}", e);
+                HttpResponse::InternalServerError().finish()
+            }
+        };
+    }
+
+    // On-demand path: fetch from Gmail, encrypt, persist.
+    let gmail_id: String = row.get("gmail_id");
+    let account_id: i32 = row.get("account_id");
+    let refresh_token: String = row.get("refresh_token");
+
+    let secrets = load_google_secrets();
+    let client_id = secrets["web"]["client_id"].as_str().unwrap_or("").to_string();
+    let client_secret = secrets["web"]["client_secret"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+
+    let token = match refresh_access_token(&client_id, &client_secret, &refresh_token).await {
+        Ok(t) => t,
+        Err(e) => {
+            println!("get_email_body token refresh error: {:?}", e);
+            return HttpResponse::BadGateway().finish();
+        }
+    };
+
+    let _ = sqlx::query("UPDATE email_accounts SET access_token = $1 WHERE id = $2")
+        .bind(&token)
+        .bind(account_id)
+        .execute(pool.get_ref())
+        .await;
+
+    let url = format!(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full",
+        gmail_id
+    );
+
+    let res: Value = match HTTP_CLIENT.get(&url).bearer_auth(&token).send().await {
+        Ok(r) => match r.json().await {
+            Ok(v) => v,
+            Err(e) => {
+                println!("get_email_body Gmail JSON error: {:?}", e);
+                return HttpResponse::BadGateway().finish();
+            }
+        },
+        Err(e) => {
+            println!("get_email_body Gmail request error: {:?}", e);
+            return HttpResponse::BadGateway().finish();
+        }
+    };
+
+    let body = extract_body(&res["payload"])
+        .unwrap_or_else(|| res["snippet"].as_str().unwrap_or("").to_string());
+
+    if let Ok((iv, encrypted)) = encrypt(&body) {
+        let _ = sqlx::query("UPDATE emails SET body_encrypted = $1, body_iv = $2 WHERE id = $3")
+            .bind(&encrypted)
+            .bind(&iv)
+            .bind(email_id)
+            .execute(pool.get_ref())
+            .await;
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({ "body": body }))
 }
 
 #[post("/save-public-key")]

@@ -1,17 +1,15 @@
 use crate::prelude::*;
 
 use crate::email::oauth::{HTTP_CLIENT, load_google_secrets, refresh_access_token};
-use crate::email::utils::extract_body;
-use crate::security::encryption::encrypt;
 
 use serde_json::Value;
 
-pub async fn fetch_email_detail(
-    token: &str,
-    msg_id: &str,
-) -> Result<(String, String, String, String, String)> {
+// (msg_id, sender, receiver, subject) — body is fetched later by body_worker
+pub type EmailHeader = (String, String, String, String);
+
+pub async fn fetch_headers_only(token: &str, msg_id: &str) -> Result<EmailHeader> {
     let url = format!(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full",
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject",
         msg_id
     );
 
@@ -23,18 +21,8 @@ pub async fn fetch_email_detail(
         .json()
         .await?;
 
-    let payload = &res["payload"];
-
-    // ✅ ONLY THIS (no override later)
     let (sender, receiver, subject) = extract_headers(&res);
-
-    // optional snippet fallback
-    let _snippet = res["snippet"].as_str().unwrap_or("").to_string();
-
-    let body =
-        extract_body(payload).unwrap_or_else(|| res["snippet"].as_str().unwrap_or("").to_string());
-    println!("📧 {} | {} | {}", sender, receiver, subject);
-    Ok((msg_id.to_string(), sender, receiver, subject, body))
+    Ok((msg_id.to_string(), sender, receiver, subject))
 }
 
 pub async fn sync_all(pool: &PgPool) -> Result<()> {
@@ -61,7 +49,6 @@ pub async fn sync_all(pool: &PgPool) -> Result<()> {
         let client_secret = client_secret.to_string();
 
         let handle = tokio::spawn(async move {
-            // 🔁 refresh token
             let token = match refresh_access_token(&client_id, &client_secret, &refresh_token).await
             {
                 Ok(t) => t,
@@ -70,16 +57,14 @@ pub async fn sync_all(pool: &PgPool) -> Result<()> {
                 }
             };
 
-            // save token
             let _ = sqlx::query("UPDATE email_accounts SET access_token=$1 WHERE id=$2")
                 .bind(&token)
                 .bind(account_id)
                 .execute(&pool)
                 .await;
 
-            // sync
-            if let Err(_e) = sync_account(&pool, account_id, &token, last_sync).await {
-                println!("Sync error {}: {}", account_id, _e);
+            if let Err(e) = sync_account(&pool, account_id, &token, last_sync).await {
+                println!("Sync error {}: {}", account_id, e);
             }
         });
 
@@ -98,7 +83,6 @@ pub async fn fetch_ids(token: &str, last_sync: Option<i64>) -> Result<Vec<String
     let mut page_token: Option<String> = None;
 
     let query = if let Some(ts) = last_sync {
-        // subtract 1 hour buffer (important)
         let safe_ts = ts - 3600;
         format!("&q=after:{}", safe_ts)
     } else {
@@ -140,21 +124,17 @@ pub async fn fetch_ids(token: &str, last_sync: Option<i64>) -> Result<Vec<String
     Ok(ids)
 }
 
-// Extract Headers inside deep dive.
-
 pub fn extract_headers(res: &Value) -> (String, String, String) {
     let mut sender: Option<String> = None;
     let mut receiver: Option<String> = None;
     let mut subject: Option<String> = None;
 
-    // 🔁 recursive function to walk through payload
     fn walk_parts(
         node: &Value,
         sender: &mut Option<String>,
         receiver: &mut Option<String>,
         subject: &mut Option<String>,
     ) {
-        // 1. Check headers at current level
         if let Some(headers) = node["headers"].as_array() {
             for h in headers {
                 let name = h["name"].as_str().unwrap_or("");
@@ -175,7 +155,6 @@ pub fn extract_headers(res: &Value) -> (String, String, String) {
             }
         }
 
-        // 2. Traverse deeper if parts exist
         if let Some(parts) = node["parts"].as_array() {
             for part in parts {
                 walk_parts(part, sender, receiver, subject);
@@ -183,20 +162,14 @@ pub fn extract_headers(res: &Value) -> (String, String, String) {
         }
     }
 
-    // 🚀 Start from payload root
     walk_parts(&res["payload"], &mut sender, &mut receiver, &mut subject);
 
-    // 🛡️ Fallback defaults
     let sender = sender.unwrap_or_else(|| "Unknown".to_string());
     let receiver = receiver.unwrap_or_else(|| "Unknown".to_string());
     let subject = subject.unwrap_or_else(|| "(No Subject)".to_string());
 
     (sender, receiver, subject)
 }
-
-//////////////////////////////////////////////////
-// SYNC ACCOUNT
-//////////////////////////////////////////////////
 
 pub async fn sync_account(
     pool: &PgPool,
@@ -210,22 +183,17 @@ pub async fn sync_account(
 
     for id in ids {
         let token = token.to_string();
+        tasks.push(async move { fetch_headers_only(&token, &id).await });
 
-        // ✅ ONLY call fetch (no parsing here)
-        tasks.push(async move { fetch_email_detail(&token, &id).await });
-
-        // ✅ Process batch when limit reached
         if tasks.len() >= MAX_EMAIL_CONCURRENCY {
             process_batch(pool, account_id, &mut tasks).await?;
         }
     }
 
-    // ✅ Process remaining tasks
     while !tasks.is_empty() {
         process_batch(pool, account_id, &mut tasks).await?;
     }
 
-    // ✅ Update last_sync AFTER successful sync
     let now = chrono::Utc::now().timestamp();
 
     sqlx::query("UPDATE email_accounts SET last_sync = $1 WHERE id = $2")
@@ -237,20 +205,15 @@ pub async fn sync_account(
     Ok(())
 }
 
-//////////////////////////////////////////////////
-// BATCH INSERT
-//////////////////////////////////////////////////
-
 pub async fn process_batch<F>(
     pool: &PgPool,
     account_id: i32,
     tasks: &mut FuturesUnordered<F>,
 ) -> anyhow::Result<()>
 where
-    F: std::future::Future<Output = anyhow::Result<(String, String, String, String, String)>>,
+    F: std::future::Future<Output = anyhow::Result<EmailHeader>>,
 {
-    // ✅ Collect batch
-    let mut batch: Vec<(String, String, String, String, String)> = vec![];
+    let mut batch: Vec<EmailHeader> = vec![];
 
     for _ in 0..BATCH_SIZE {
         if let Some(res) = tasks.next().await {
@@ -266,14 +229,13 @@ where
         return Ok(());
     }
 
-    // ✅ Build dynamic query
+    // Insert headers with empty body sentinel — body_worker will fill these in.
     let mut query = String::from(
         "INSERT INTO emails(gmail_id, sender, receiver, subject, body_encrypted, body_iv, account_id) VALUES ",
     );
 
     for (i, _) in batch.iter().enumerate() {
         let idx = i * 7;
-
         query.push_str(&format!(
             "(${}, ${}, ${}, ${}, ${}, ${}, ${}),",
             idx + 1,
@@ -286,26 +248,22 @@ where
         ));
     }
 
-    query.pop(); // remove trailing comma
+    query.pop();
     query.push_str(" ON CONFLICT (account_id, gmail_id) DO NOTHING");
 
-    // ✅ Bind values safely (correct types)
     let mut q = sqlx::query(&query);
 
-    for (gmail_id, sender, receiver, subject, body) in batch.iter() {
-        let (iv, encrypted_body) = encrypt(body)?;
-
+    for (gmail_id, sender, receiver, subject) in batch.iter() {
         q = q
             .bind(gmail_id)
             .bind(sender)
             .bind(receiver)
             .bind(subject)
-            .bind(encrypted_body) // 🔒 encrypted
-            .bind(iv) // 🔑 IV
+            .bind("") // body_encrypted — empty until body_worker fills it
+            .bind("") // body_iv
             .bind(account_id);
     }
 
-    // ✅ Execute ONCE
     q.execute(pool).await?;
 
     Ok(())

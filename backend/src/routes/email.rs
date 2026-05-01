@@ -27,12 +27,12 @@ pub async fn get_emails(
     // 🔥 Build query dynamically
     let mut qb = QueryBuilder::new(
         r#"
-        SELECT e.id, e.subject, e.sender, e.receiver,
-               e.body_encrypted, e.body_iv,
+        SELECT e.id, e.gmail_id, e.subject, e.sender, e.receiver,
+               (e.body_encrypted <> '') AS has_body,
                e.account_id, e.created_at
         FROM emails e
         JOIN email_accounts a ON e.account_id = a.id
-        WHERE a.user_id = 
+        WHERE a.user_id =
         "#,
     );
 
@@ -66,11 +66,11 @@ pub async fn get_emails(
                 .map(|row| {
                     serde_json::json!({
                         "id": row.get::<i32,_>("id"),
+                        "gmail_id": row.get::<String,_>("gmail_id"),
                         "subject": row.get::<Option<String>,_>("subject"),
                         "sender": row.get::<Option<String>,_>("sender"),
                         "receiver": row.get::<Option<String>,_>("receiver"),
-                        "body_encrypted": row.get::<String,_>("body_encrypted"),
-                        "body_iv": row.get::<String,_>("body_iv"),
+                        "has_body": row.get::<bool,_>("has_body"),
                         "account_id": row.get::<Option<i32>,_>("account_id"),
                         "created_at": row.get::<Option<NaiveDateTime>,_>("created_at"),
                     })

@@ -271,3 +271,50 @@ email/
 │   └── email_repo.rs
 ├── integrations/
 │   └── gmail_client.rs
+
+
+
+Make body_encrypted/body_iv nullable in init.sql + provide migration SQL
+
+Refactor sync.rs to fetch headers only (format=metadata)
+
+Create body_worker.rs that fills missing bodies in the background
+
+Add GET /api/emails/{id}/body handler (on-demand body fetch + AES decrypt)
+
+Update routes/email.rs list response (drop body, add has_body)
+
+Wire body worker + new endpoint in main.rs
+
+Update frontend Emails.tsx to fetch body on click
+
+Run cargo check and tsc to verify everything compiles
+
+
+
+
+File	Change
+init.sql	Added idx_emails_pending_body partial index for body_encrypted = ''
+backend/src/email/sync.rs	Replaced fetch_email_detail with fetch_headers_only using format=metadata. Inserts rows with body_encrypted='' sentinel.
+backend/src/email/body_worker.rs	NEW — background worker, 40 concurrent fetches per account, 200/account/iteration, idle 5s when nothing pending
+backend/src/email/handler.rs	Added GET /api/emails/{id}/body — auth + ownership → return cached AES-decrypted body, or fetch from Gmail on-demand and persist
+backend/src/email/mod.rs	Exposed body_worker
+backend/src/routes/email.rs	Dropped body_encrypted/body_iv from list, added has_body and gmail_id
+backend/src/main.rs	Registered get_email_body + start_body_worker(pool)
+frontend/src/emails/Emails.tsx	openEmail now fetches /api/emails/:id/body, shows "Loading…" state, then runs WAYVE_SECURE_V1 RSA decrypt as before
+What you need to do before this works
+Wipe existing email bodies (you said wipe and re-sync):
+
+
+UPDATE emails SET body_encrypted = '', body_iv = '';
+UPDATE email_accounts SET last_sync = NULL;
+The first line marks every existing email as "needs body fetched" so the body worker picks them up. The second forces the header sync to re-walk all message IDs (cheap; metadata-only).
+
+Apply the new partial index — running init.sql is idempotent thanks to IF NOT EXISTS, but psql -f init.sql may complain about earlier non-IF-NOT-EXISTS lines. Just run the new index manually:
+
+
+CREATE INDEX IF NOT EXISTS idx_emails_pending_body
+ON emails (account_id, id) WHERE body_encrypted = '';
+Restart the backend so the body worker spawns and the new route registers.
+
+After that, click any email — you'll get either an instant decrypt (if the worker already filled it) or a brief "Loading…" while the on-demand fetch runs. Background worker chews through the rest at ~40 concurrent fetches per account.

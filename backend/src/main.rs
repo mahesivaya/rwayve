@@ -16,10 +16,10 @@ mod middleware;
 // ==============================
 // 🔹 USE INTERNAL MODULES
 // ==============================
-use crate::middleware::logger::LoggerMiddleware;
-use crate::middleware::auth::AuthMiddleware;
-use crate::middleware::metrics::MetricsMiddleware;
-use crate::middleware::rate_limit::RateLimitMiddleware;
+// use crate::middleware::logger::LoggerMiddleware;
+// use crate::middleware::auth::AuthMiddleware;
+// use crate::middleware::metrics::MetricsMiddleware;
+// use crate::middleware::rate_limit::RateLimitMiddleware;
 
 use crate::logging::logger::init_logger;
 
@@ -31,7 +31,10 @@ use crate::scheduler::handler::{create_meeting, delete_meeting, get_meetings, up
 
 use crate::call::handler::call_ws;
 
-use crate::email::handler::{get_me, gmail_login, oauth_callback, save_public_key, send};
+use crate::email::body_worker::start_body_worker;
+use crate::email::handler::{
+    get_email_body, get_me, gmail_login, oauth_callback, save_public_key, send,
+};
 use crate::email::sync::sync_all;
 
 use crate::routes::account::get_accounts;
@@ -60,6 +63,7 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
                 .service(register)
                 .service(login)
                 .service(get_emails)
+                .service(get_email_body)
                 .service(get_accounts)
                 .service(get_messages)
                 .service(get_user_by_email)
@@ -116,6 +120,7 @@ async fn main() -> std::io::Result<()> {
         }
     };
     start_sync_worker(pool.clone());
+    start_body_worker(pool.clone());
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -132,10 +137,11 @@ async fn main() -> std::io::Result<()> {
             .supports_credentials();
 
         App::new()
-            .wrap(LoggerMiddleware)        // logging
-            .wrap(MetricsMiddleware)       // performance
-            .wrap(RateLimitMiddleware)     // protection
-            .wrap(AuthMiddleware)          // security
+            .wrap(cors)
+            // .wrap(LoggerMiddleware)        // logging
+            // .wrap(MetricsMiddleware)       // performance
+            // .wrap(RateLimitMiddleware)     // protection
+            // .wrap(AuthMiddleware)          // security
             .app_data(web::Data::new(pool.clone()))
             .configure(app_routes)
     })

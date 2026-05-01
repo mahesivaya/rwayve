@@ -138,30 +138,43 @@ const connectGmail = () => {
 };
 
 
-  // 🔓 Open email
+  // 🔓 Open email — fetches body on demand from /api/emails/{id}/body
   const openEmail = async (email: any) => {
-    let bodyText = email.body;
+    setSelected({ ...email, body: null, loading: true });
+
+    const token = localStorage.getItem("token");
 
     try {
-      if (privateKey && email.body?.startsWith("WAYVE_SECURE_V1")) {
-        let raw = email.body.replace("WAYVE_SECURE_V1", "").trim();
-        const payload = JSON.parse(raw);
+      const res = await fetch(`${API_BASE}/api/emails/${email.id}/body`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-        const decrypted = await decryptMessage(
-          new Uint8Array(payload.data),
-          new Uint8Array(payload.key),
-          new Uint8Array(payload.iv),
-          privateKey
-        );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        bodyText = decrypted;
+      const data = await res.json();
+      let bodyText: string = data.body ?? "";
+
+      if (privateKey && bodyText.startsWith("WAYVE_SECURE_V1")) {
+        try {
+          const raw = bodyText.replace("WAYVE_SECURE_V1", "").trim();
+          const payload = JSON.parse(raw);
+          bodyText = await decryptMessage(
+            new Uint8Array(payload.data),
+            new Uint8Array(payload.key),
+            new Uint8Array(payload.iv),
+            privateKey
+          );
+        } catch (err) {
+          logger.error("Decrypt failed", err);
+          bodyText = "❌ Unable to decrypt";
+        }
       }
-    } catch (err) {
-      logger.error("Decrypt failed", err);
-      bodyText = "❌ Unable to decrypt";
-    }
 
-    setSelected({ ...email, body: bodyText });
+      setSelected({ ...email, body: bodyText, loading: false });
+    } catch (err) {
+      logger.error("Failed to load email body", err);
+      setSelected({ ...email, body: "❌ Unable to load email", loading: false });
+    }
   };
 
   return (
@@ -284,10 +297,6 @@ const connectGmail = () => {
             >
               <strong>{email.sender}</strong>
               <div>{email.subject}</div>
-
-              {email.body?.startsWith("WAYVE_SECURE_V1") && (
-                <span>🔐</span>
-              )}
             </div>
           ))}
           {hasMore && (
@@ -304,10 +313,12 @@ const connectGmail = () => {
           <>
             <h2>{selected.subject}</h2>
 
-            {selected.body?.startsWith("WAYVE_SECURE_V1") ? (
+            {selected.loading ? (
+              <p>Loading…</p>
+            ) : selected.body?.startsWith?.("WAYVE_SECURE_V1") ? (
               <p>{selected.body}</p>
             ) : (
-              <div dangerouslySetInnerHTML={{ __html: selected.body }} />
+              <div dangerouslySetInnerHTML={{ __html: selected.body || "" }} />
             )}
           </>
         ) : (
