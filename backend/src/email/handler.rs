@@ -6,8 +6,12 @@ use crate::email::utils::extract_body;
 use crate::models::email_request::SendEmailRequest;
 use crate::security::encryption::{decrypt, encrypt};
 use crate::security::jwt::get_user_id_from_request;
-use actix_web::HttpRequest;
 use base64::Engine;
+use sqlx::Row;
+use actix_web::{get, web, HttpResponse, Responder};
+use sqlx::PgPool;
+
+
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {
@@ -296,6 +300,56 @@ async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
             HttpResponse::InternalServerError().finish()
         }
     }
+}
+
+
+#[get("/emails/{id}")]
+pub async fn get_email_by_id(
+    pool: web::Data<PgPool>,
+    path: web::Path<i32>,
+) -> impl Responder {
+    let email_id = path.into_inner();
+
+    let result = sqlx::query(
+        r#"
+        SELECT id, subject, sender, receiver, body_encrypted, body_iv
+        FROM emails
+        WHERE id = $1
+        "#
+    )
+    .bind(email_id) // ✅ CORRECT
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(Some(row)) => {
+            let body_iv: String = row.get("body_iv");
+            let body_encrypted: String = row.get("body_encrypted");
+
+            let body = match crate::security::encryption::decrypt(
+                &body_iv,
+                &body_encrypted,
+            ) {
+                Ok(text) => text,
+                Err(_) => "Failed to decrypt".to_string(),
+            };
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "id": row.get::<i32, _>("id"),
+                "subject": row.get::<String, _>("subject"),
+                "sender": row.get::<String, _>("sender"),
+                "receiver": row.get::<String, _>("receiver"),
+                "body": body
+            }))
+        }
+
+        Ok(None) => HttpResponse::NotFound().body("Email not found"),
+
+        Err(e) => {
+            println!("❌ DB error: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+            }
+        }
 }
 
 #[get("/emails/{id}/body")]

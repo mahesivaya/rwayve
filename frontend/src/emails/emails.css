@@ -6,11 +6,10 @@ body {
   font-family: monospace;
 }
 
-/* ================= MAIN ================= */
+/* ================= MAIN (FIXED HEIGHT ISSUE) ================= */
 .main {
   display: flex;
-  flex: 1;
-  height: 100%;
+  height: 100vh; /* 🔥 IMPORTANT FIX */
   overflow: hidden;
 }
 
@@ -39,7 +38,6 @@ body {
   background: #1669c1;
 }
 
-
 .add-email-btn {
   padding: 10px;
   border-radius: 8px;
@@ -54,38 +52,41 @@ body {
   background: #f3f4f6;
 }
 
-/* ================= MAIL LIST ================= */
-.mail-list {
+/* ================= FILTERS ================= */
+.mail-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin-top: 10px;
 }
 
-.mail-section-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: #6b7280;
-  margin: 12px 0 6px;
-}
-
-.mail-item {
+.filter-btn {
+  width: 100%;
   padding: 10px 12px;
   border-radius: 8px;
+  border: 1px solid transparent;
+  background: #ffffff;
+  color: #111827;
   cursor: pointer;
-  margin-bottom: 4px;
+  text-align: left;
   font-size: 14px;
-  color: #374151;
+  transition: 0.15s;
 }
 
-.mail-item:hover {
+/* Hover */
+.filter-btn:hover {
   background: #f3f4f6;
 }
 
-.mail-item.active {
+/* ACTIVE */
+.filter-btn.active {
   background: #e8f0fe;
   color: #1a73e8;
-  font-weight: 500;
+  border-left: 4px solid #1a73e8; /* 🔥 Gmail feel */
+  font-weight: 600;
 }
 
-/* ================= EMAIL LIST ================= */
+/* ================= EMAIL LIST (MIDDLE PANEL) ================= */
 .email-list {
   width: 340px;
   background: #ffffff;
@@ -93,12 +94,12 @@ body {
   overflow-y: auto;
 }
 
-/* EMAIL ITEM */
-/* EMAIL ITEM (compact) */
+/* ================= EMAIL ITEM ================= */
 .email-item {
   padding: 10px 12px;
   border-bottom: 1px solid #e5e7eb;
   cursor: pointer;
+  transition: 0.1s;
 }
 
 /* Hover */
@@ -139,7 +140,17 @@ body {
   color: #111827;
 }
 
-/* ================= EMAIL DETAIL ================= */
+/* Preview (🔥 ADD THIS) */
+.email-preview {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ================= EMAIL DETAIL (RIGHT PANEL) ================= */
 .email-detail {
   flex: 1;
   padding: 24px;
@@ -152,6 +163,7 @@ body {
   margin-top: 16px;
   line-height: 1.6;
   color: #111827;
+  white-space: pre-wrap;
 }
 
 /* ================= SCROLLBAR ================= */
@@ -164,40 +176,4 @@ body {
 .email-detail::-webkit-scrollbar-thumb {
   background: #d1d5db;
   border-radius: 6px;
-}
-
-
-/* ================= FILTER BUTTONS ================= */
-.mail-filters {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 15px;
-}
-
-/* BUTTON */
-.filter-btn {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
-  color: #111827;
-  cursor: pointer;
-  text-align: left;
-  font-size: 14px;
-  transition: 0.2s;
-}
-
-/* Hover */
-.filter-btn:hover {
-  background: #f3f4f6;
-}
-
-/* ✅ ACTIVE */
-.filter-btn.active {
-  background: #e8f0fe;
-  color: #1a73e8;
-  border-color: #1a73e8;
-  font-weight: 600;
 }

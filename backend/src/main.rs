@@ -33,7 +33,9 @@ use crate::call::handler::call_ws;
 
 use crate::email::body_worker::start_body_worker;
 use crate::email::handler::{
-    get_email_body, get_me, gmail_login, oauth_callback, save_public_key, send,
+    get_email_body, get_me, gmail_login,
+    oauth_callback, save_public_key, send,
+    get_email_by_id
 };
 use crate::email::sync::sync_all;
 
@@ -64,6 +66,7 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
                 .service(login)
                 .service(get_emails)
                 .service(get_email_body)
+                .service(get_email_by_id)
                 .service(get_accounts)
                 .service(get_messages)
                 .service(get_user_by_email)

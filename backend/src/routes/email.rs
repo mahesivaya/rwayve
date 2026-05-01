@@ -9,6 +9,7 @@ pub struct EmailQuery {
     pub account_id: Option<i32>,
     pub before: Option<i64>,
     pub before_id: Option<i32>,
+    pub folder: Option<String>,
 }
 
 #[get("/emails")]
@@ -42,6 +43,19 @@ pub async fn get_emails(
     if let Some(account_id) = query.account_id {
         qb.push(" AND a.id = ");
         qb.push_bind(account_id);
+    }
+
+    // ✅ Folder filter (FIX)
+    if let Some(folder) = &query.folder {
+        match folder.as_str() {
+            "inbox" => {
+                qb.push(" AND e.receiver LIKE '%' || a.email || '%' ");
+            }
+            "sent" => {
+                qb.push(" AND e.sender LIKE '%' || a.email || '%' ");
+            }
+            _ => {}
+        }
     }
 
     // ✅ Pagination filter

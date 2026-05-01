@@ -1,388 +1,205 @@
-import { logger } from "../utils/logger";
+import { useEffect, useRef, useState } from "react";
+import "./emails.css";
+
 const API_BASE = import.meta.env.VITE_API_URL;
 
-import { useEffect, useRef, useState } from "react";
-import SendEmail from "./SendEmail";
-import { decryptMessage } from "../crypto/crypto";
-import { loadPrivateKey } from "../crypto/keyStore";
-import { apiFetch } from "../api";
-
-
 export default function Emails() {
-  const [emails, setEmails] = useState<any[]>([]);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [emails, setEmails] = useState<any[]>([]);
+  const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
+
   const [activeAccount, setActiveAccount] = useState<number | null>(null);
+  const [activeFolder, setActiveFolder] = useState<"inbox" | "sent">("inbox");
 
-  const [selected, setSelected] = useState<any>(null);
-  const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const [showCompose, setShowCompose] = useState(false);
+  const emailCache = useRef<{ [key: number]: any }>({});
 
-  const clickTimerRef = useRef<number | null>(null);
-  
+  // ================= FETCH ACCOUNTS =================
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      const token = localStorage.getItem("token");
 
-  // 🔐 Load private key
-useEffect(() => {
-  const initKey = async () => {
-    try {
-      const key = await loadPrivateKey();
-      if (key) setPrivateKey(key);
-    } catch (err) {
-      logger.error("❌ Failed to load private key:", err);
-    }
-  };
+      const res = await fetch(`${API_BASE}/api/accounts`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-  initKey();
-}, []);
-
-
-
-  // 📧 Fetch accounts (production-safe)
-  const fetchAccounts = async () => {
-    try {
-      const res = await apiFetch("/api/accounts");
       const data = await res.json();
       setAccounts(data);
-    } catch (err) {
-      logger.error(err);
-    }
-  };
+    };
 
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-  
-    if (params.get("connected") === "true") {
-      logger.log("🔄 Refreshing accounts after OAuth");
-  
-      fetchAccounts();
-  
-      // clean URL
-      window.history.replaceState({}, document.title, "/emails");
-    }
-  }, []);
-  
-  useEffect(() => {
     fetchAccounts();
   }, []);
 
-
-  // 📥 Fetch emails
+  // ================= FETCH EMAILS =================
   useEffect(() => {
     const fetchEmails = async () => {
       const token = localStorage.getItem("token");
-  
-      let url = `${API_BASE}/api/emails`;
-  
+
+      let url = `${API_BASE}/api/emails?folder=${activeFolder}`;
+
       if (activeAccount !== null) {
-        url += `?account_id=${activeAccount}`;
+        url += `&account_id=${activeAccount}`;
       }
-  
+
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-  
+
       const data = await res.json();
-  
+
       setEmails(data);
-      setHasMore(data.length === 50); // pagination check
+      setHasMore(data.length === 50);
+      setSelectedEmail(null);
     };
-  
+
     fetchEmails();
-  }, [activeAccount]);
+  }, [activeAccount, activeFolder]);
 
-
+  // ================= LOAD MORE =================
   const loadMore = async () => {
-    if (emails.length === 0 || !hasMore) return;
-  
+    if (!hasMore || emails.length === 0) return;
+
     setLoadingMore(true);
-  
+
     const token = localStorage.getItem("token");
-  
     const last = emails[emails.length - 1];
-  
+
     const before = Math.floor(new Date(last.created_at).getTime() / 1000);
     const before_id = last.id;
-  
-    let url = `${API_BASE}/api/emails?before=${before}&before_id=${before_id}`;
-  
+
+    let url = `${API_BASE}/api/emails?folder=${activeFolder}&before=${before}&before_id=${before_id}`;
+
     if (activeAccount !== null) {
       url += `&account_id=${activeAccount}`;
     }
-  
+
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
-  
+
     const data = await res.json();
-  
+
     setEmails((prev) => [...prev, ...data]);
     setHasMore(data.length === 50);
     setLoadingMore(false);
   };
 
-
-
-// Connect to gmail
-const connectGmail = () => {
-  const token = localStorage.getItem("token");
-  if (!token) {
-    alert("Login required ❌");
-    return;
-  }
-
-  window.location.href =
-    `${API_BASE}/gmail/login?token=${token}`;
-};
-
-
-  // 🔓 Open email — fetches body on demand from /api/emails/{id}/body
+  // ================= OPEN EMAIL =================
   const openEmail = async (email: any) => {
-    setSelected({ ...email, body: null, loading: true });
+    if (emailCache.current[email.id]) {
+      setSelectedEmail(emailCache.current[email.id]);
+      return;
+    }
 
     const token = localStorage.getItem("token");
 
-    try {
-      const res = await fetch(`${API_BASE}/api/emails/${email.id}/body`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+    const res = await fetch(`${API_BASE}/api/emails/${email.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
 
-      const data = await res.json();
-      let bodyText: string = data.body ?? "";
-
-      if (privateKey && bodyText.startsWith("WAYVE_SECURE_V1")) {
-        try {
-          const raw = bodyText.replace("WAYVE_SECURE_V1", "").trim();
-          const payload = JSON.parse(raw);
-          bodyText = await decryptMessage(
-            new Uint8Array(payload.data),
-            new Uint8Array(payload.key),
-            new Uint8Array(payload.iv),
-            privateKey
-          );
-        } catch (err) {
-          logger.error("Decrypt failed", err);
-          bodyText = "❌ Unable to decrypt";
-        }
-      }
-
-      setSelected({ ...email, body: bodyText, loading: false });
-    } catch (err) {
-      logger.error("Failed to load email body", err);
-      setSelected({ ...email, body: "❌ Unable to load email", loading: false });
-    }
+    emailCache.current[email.id] = data;
+    setSelectedEmail(data);
   };
 
+  // ================= UI =================
   return (
-    <div style={{ display: "flex", height: "100%" }}>
+    <div className="main">
 
-      {/* LEFT PANEL */}
-      <div style={{ width: "35%", borderRight: "1px solid #ddd" }}>
+      {/* ================= SIDEBAR ================= */}
+      <div className="sidebar">
+        <button className="compose-btn">Compose</button>
 
-        {/* 🔥 TOP ACTIONS */}
-        <div style={{ padding: 10 }}>
+        <button
+          className="add-email-btn"
+          onClick={() => setActiveAccount(null)}
+        >
+          🌐 All
+        </button>
 
-  {/* PRIMARY */}
-  <button
-    onClick={() => setShowCompose(true)}
-    style={{
-      width: "100%",
-      background: "#007bff",
-      color: "white",
-      padding: "10px",
-      borderRadius: 6,
-      border: "none",
-      marginBottom: 10
-    }}
-  >
-    + Compose
-  </button>
+        <div className="mail-section-title">Accounts</div>
 
-  {/* SECONDARY */}
-  <button
-    onClick={connectGmail}
-    style={{
-      width: "100%",
-      background: "#f5f5f5",
-      padding: "10px",
-      borderRadius: 6,
-      border: "1px solid #ddd"
-    }}
-  >
-    ➕ Add Account
-  </button>
-
-</div>
-
-<div style={{ padding: 10, display: "flex", flexDirection: "column" }}>
-  
-  {/* ALL */}
-  <button
-    onClick={() => {
-      if (activeAccount === null) return;
-      setActiveAccount(null);
-      setEmails([]);
-      setHasMore(true);
-    }}
-    onDoubleClick={(e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    }}
-    style={{
-      marginBottom: 5,                 // 🔥 vertical spacing
-      textAlign: "left",
-      background: activeAccount === null ? "#ddd" : "white",
-      userSelect: "none"
-    }}
-  >
-    All
-  </button>
-
-  {/* ACCOUNTS */}
-  {accounts.map((acc) => (
-    <button
-      key={acc.id}
-      onClick={() => {
-        if (activeAccount === acc.id) return;
-        setActiveAccount(acc.id);
-        setEmails([]);
-        setHasMore(true);
-      }}
-      onDoubleClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-      style={{
-        marginBottom: 5,               // 🔥 vertical spacing
-        textAlign: "left",
-        background: activeAccount === acc.id ? "#ddd" : "white",
-        userSelect: "none"
-      }}
-    >
-      {acc.email}
-    </button>
-  ))}
-
-</div>
-
-        {/* 🔥 EMAIL LIST */}
-        <div style={{ overflowY: "auto", height: "80%" }}>
-          {emails.map((email) => (
-            <div
-            key={`${email.account_id}-${email.gmail_id || email.id}-${email.created_at}`}
-              style={{ padding: 10, cursor: "pointer", userSelect: "none" }}
-              onClick={(e) => {
-                e.preventDefault();
-                if (clickTimerRef.current !== null) {
-                  window.clearTimeout(clickTimerRef.current);
-                  clickTimerRef.current = null;
-                }
-                clickTimerRef.current = window.setTimeout(() => {
-                  clickTimerRef.current = null;
-                  openEmail(email);
-                }, 220);
-              }}
-              onDoubleClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (clickTimerRef.current !== null) {
-                  window.clearTimeout(clickTimerRef.current);
-                  clickTimerRef.current = null;
-                }
-              }}
-            >
-              <strong>{email.sender}</strong>
-              <div>{email.subject}</div>
-            </div>
-          ))}
-          {hasMore && (
-          <button onClick={loadMore} disabled={loadingMore}>
-            {loadingMore ? "Loading..." : "Load More"}
+        {accounts.map((acc) => (
+          <button
+            key={acc.id}
+            className={`filter-btn ${activeAccount === acc.id ? "active" : ""}`}
+            onClick={() => setActiveAccount(acc.id)}
+          >
+            {acc.email}
           </button>
-        )}
+        ))}
+
+        <div className="mail-section-title">Folders</div>
+
+        <div className="mail-filters">
+          <button
+            className={`filter-btn ${activeFolder === "inbox" ? "active" : ""}`}
+            onClick={() => setActiveFolder("inbox")}
+          >
+            📥 Inbox
+          </button>
+
+          <button
+            className={`filter-btn ${activeFolder === "sent" ? "active" : ""}`}
+            onClick={() => setActiveFolder("sent")}
+          >
+            📤 Sent
+          </button>
         </div>
       </div>
 
-      {/* RIGHT PANEL */}
-      <div style={{ flex: 1, padding: 20 }}>
-        {selected ? (
-          <>
-            <h2>{selected.subject}</h2>
+      {/* ================= EMAIL LIST ================= */}
+      <div className="email-list">
+        {emails.map((email) => (
+          <div
+            key={email.id}
+            className={`email-item ${
+              selectedEmail?.id === email.id ? "active" : ""
+            }`}
+            onClick={() => openEmail(email)}
+          >
+            <div className="email-top">
+              <span className="email-sender">{email.sender}</span>
+              <span className="email-time">
+                {new Date(email.created_at).toLocaleTimeString()}
+              </span>
+            </div>
 
-            {selected.loading ? (
-              <p>Loading…</p>
-            ) : selected.body?.startsWith?.("WAYVE_SECURE_V1") ? (
-              <p>{selected.body}</p>
-            ) : (
-              <div dangerouslySetInnerHTML={{ __html: selected.body || "" }} />
-            )}
-          </>
-        ) : (
-          <p>Select an email</p>
+            <div className="email-subject">{email.subject}</div>
+
+            <div className="email-preview">
+              {email.preview || ""}
+            </div>
+          </div>
+        ))}
+
+        {hasMore && (
+          <button className="add-email-btn" onClick={loadMore}>
+            {loadingMore ? "Loading..." : "Load More"}
+          </button>
         )}
       </div>
 
+      {/* ================= EMAIL DETAIL ================= */}
+      <div className="email-detail">
+        {!selectedEmail ? (
+          <p>Select an email</p>
+        ) : (
+          <>
+            <h2>{selectedEmail.subject}</h2>
 
+            <p><b>From:</b> {selectedEmail.sender}</p>
+            <p><b>To:</b> {selectedEmail.receiver}</p>
 
-      {/* 🔥 COMPOSE MODAL */}
-      {showCompose && (
-  <div style={{
-    position: "fixed",
-    bottom: 20,
-    right: 20,
-    width: 400,
-    height: 500,
-    background: "white",
-    boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
-    borderRadius: 8,
-    display: "flex",
-    flexDirection: "column",
-    zIndex: 1000
-  }}>
-
-    {/* HEADER */}
-    <div style={{
-      background: "#007bff",
-      color: "white",
-      padding: "10px",
-      borderTopLeftRadius: 8,
-      borderTopRightRadius: 8,
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center"
-    }}>
-      <span>New Message</span>
-      <button
-        onClick={() => setShowCompose(false)}
-        style={{
-          background: "transparent",
-          border: "none",
-          color: "white",
-          fontSize: 16,
-          cursor: "pointer"
-        }}
-      >
-        ✕
-      </button>
-    </div>
-
-    {/* BODY */}
-    <div style={{
-      flex: 1,
-      overflow: "auto",
-      padding: 10
-    }}>
-      <SendEmail />
-    </div>
-
-  </div>
-)}
-
-      
+            <div className="email-body">
+              {selectedEmail.body}
+            </div>
+          </>
+        )}
+      </div>
 
     </div>
   );
