@@ -117,6 +117,9 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX idx_messages_conversation 
 ON messages (sender_id, receiver_id, created_at DESC);
 
+CREATE INDEX idx_emails_pagination 
+ON emails (account_id, created_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_emails_account_created
 ON emails (account_id, created_at DESC, id DESC);
 
@@ -145,3 +148,18 @@ ON meeting_participants(meeting_id);
 
 CREATE INDEX idx_accounts_user
 ON email_accounts (user_id);
+
+CREATE INDEX idx_emails_account 
+ON emails (account_id);
+
+CREATE UNIQUE INDEX idx_emails_unique 
+ON emails (account_id, gmail_id);
+
+CREATE INDEX idx_messages_reverse 
+ON messages (receiver_id, sender_id, created_at DESC);
+
+CREATE INDEX idx_messages_unread 
+ON messages (receiver_id, status);
+
+CREATE INDEX idx_files_user 
+ON files (user_id, created_at DESC);
