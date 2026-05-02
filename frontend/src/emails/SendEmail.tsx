@@ -4,8 +4,13 @@ const API_BASE = import.meta.env.VITE_API_URL;
 import { useState, useEffect } from "react";
 import { encryptMessage } from "../crypto/crypto";
 
-export default function SendEmail() {
-  const [accountId] = useState(1);
+type SendEmailProps = {
+  accountId: number;
+  onClose?: () => void;
+  onSent?: () => void;
+};
+
+export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps) {
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -110,6 +115,8 @@ export default function SendEmail() {
       setTo("");
       setSubject("");
       setBody("");
+      onSent?.();
+      setTimeout(() => onClose?.(), 800);
     } catch (err: any) {
       logger.error(err);
       setStatus(err.message || "Failed to send email ❌");
@@ -125,7 +132,24 @@ export default function SendEmail() {
       gap: "10px"
     }}>
   
-      <h3 style={{ marginBottom: 5 }}>Compose Email</h3>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h3 style={{ margin: 0 }}>Compose Email</h3>
+        {onClose && (
+          <button
+            onClick={onClose}
+            style={{
+              background: "transparent",
+              border: "none",
+              fontSize: 18,
+              cursor: "pointer",
+              color: "#6b7280"
+            }}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        )}
+      </div>
   
       <input
         placeholder="To"

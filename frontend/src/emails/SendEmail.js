@@ -3,8 +3,7 @@ import { logger } from "../utils/logger";
 const API_BASE = import.meta.env.VITE_API_URL;
 import { useState, useEffect } from "react";
 import { encryptMessage } from "../crypto/crypto";
-export default function SendEmail() {
-    const [accountId] = useState(1);
+export default function SendEmail({ accountId, onClose, onSent }) {
     const [to, setTo] = useState("");
     const [subject, setSubject] = useState("");
     const [body, setBody] = useState("");
@@ -80,6 +79,8 @@ export default function SendEmail() {
             setTo("");
             setSubject("");
             setBody("");
+            onSent?.();
+            setTimeout(() => onClose?.(), 800);
         }
         catch (err) {
             logger.error(err);
@@ -91,7 +92,13 @@ export default function SendEmail() {
             display: "flex",
             flexDirection: "column",
             gap: "10px"
-        }, children: [_jsx("h3", { style: { marginBottom: 5 }, children: "Compose Email" }), _jsx("input", { placeholder: "To", value: to, onChange: (e) => setTo(e.target.value), style: {
+        }, children: [_jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [_jsx("h3", { style: { margin: 0 }, children: "Compose Email" }), onClose && (_jsx("button", { onClick: onClose, style: {
+                            background: "transparent",
+                            border: "none",
+                            fontSize: 18,
+                            cursor: "pointer",
+                            color: "#6b7280"
+                        }, "aria-label": "Close", children: "\u2715" }))] }), _jsx("input", { placeholder: "To", value: to, onChange: (e) => setTo(e.target.value), style: {
                     padding: "8px",
                     borderRadius: 5,
                     border: "1px solid #ccc"

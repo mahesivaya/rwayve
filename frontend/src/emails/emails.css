@@ -7,9 +7,13 @@ body {
 }
 
 /* ================= MAIN (FIXED HEIGHT ISSUE) ================= */
+/* Use 100% (not 100vh) — Layout's .content already constrains us to
+   viewport-minus-header. 100vh here makes the panel taller than its
+   parent and pushes sticky footers (Load More) below the fold. */
 .main {
   display: flex;
-  height: 100vh; /* 🔥 IMPORTANT FIX */
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -92,6 +96,10 @@ body {
   background: #ffffff;
   border-right: 1px solid #e5e7eb;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
 }
 
 /* ================= EMAIL ITEM ================= */

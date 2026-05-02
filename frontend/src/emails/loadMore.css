@@ -1,0 +1,36 @@
+/* ================= LOAD MORE BUTTON =================
+   Lives at the bottom of the .email-list scroll container.
+   For sticky positioning to work, .email-list must have a
+   bounded height (it does — see emails.css). */
+
+.load-more-wrap {
+  position: sticky;
+  bottom: 0;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  padding: 8px;
+  margin-top: auto;
+  z-index: 2;
+}
+
+.load-more-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  background: #1a73e8;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background: #1669c1;
+}
+
+.load-more-btn:disabled {
+  background: #9ca3af;
+  cursor: default;
+}
