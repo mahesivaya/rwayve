@@ -118,6 +118,7 @@ export default function Scheduler() {
       start: fromTime(m.start_time),
       end: fromTime(m.end_time),
       participants: m.participants ?? [],
+      zoom_join_url: m.zoom_join_url ?? null,
     }));
 
     setEvents(formatted);
@@ -593,6 +594,19 @@ export default function Scheduler() {
                   }}
                 />
               </div>
+
+              {editingEvent?.zoom_join_url && (
+                <div className="form-group">
+                  <label>Zoom link</label>
+                  <a
+                    href={editingEvent.zoom_join_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {editingEvent.zoom_join_url}
+                  </a>
+                </div>
+              )}
 
             </div>
 

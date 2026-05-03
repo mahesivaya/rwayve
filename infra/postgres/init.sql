@@ -58,12 +58,15 @@ CREATE TABLE IF NOT EXISTS meetings (
     date DATE NOT NULL,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
+    zoom_join_url TEXT,
 
     CONSTRAINT fk_user_meetings
     FOREIGN KEY (user_id)
     REFERENCES users(id)
     ON DELETE CASCADE
 );
+
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS zoom_join_url TEXT;
 
 CREATE TABLE meeting_participants (
     id SERIAL PRIMARY KEY,

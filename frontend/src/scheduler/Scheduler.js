@@ -96,6 +96,7 @@ export default function Scheduler() {
             start: fromTime(m.start_time),
             end: fromTime(m.end_time),
             participants: m.participants ?? [],
+            zoom_join_url: m.zoom_join_url ?? null,
         }));
         setEvents(formatted);
     };
@@ -274,5 +275,5 @@ export default function Scheduler() {
                                                 else {
                                                     setEnd(v);
                                                 }
-                                            } })] })] }), _jsxs("div", { className: "modal-actions", children: [editingEvent && (_jsx("button", { className: "delete-btn", onClick: deleteMeeting, children: "Delete" })), _jsx("button", { onClick: saveMeeting, children: editingEvent ? "Update" : "Save" }), _jsx("button", { onClick: () => setShowModal(false), children: "Cancel" })] })] }) }))] }));
+                                            } })] }), editingEvent?.zoom_join_url && (_jsxs("div", { className: "form-group", children: [_jsx("label", { children: "Zoom link" }), _jsx("a", { href: editingEvent.zoom_join_url, target: "_blank", rel: "noopener noreferrer", children: editingEvent.zoom_join_url })] }))] }), _jsxs("div", { className: "modal-actions", children: [editingEvent && (_jsx("button", { className: "delete-btn", onClick: deleteMeeting, children: "Delete" })), _jsx("button", { onClick: saveMeeting, children: editingEvent ? "Update" : "Save" }), _jsx("button", { onClick: () => setShowModal(false), children: "Cancel" })] })] }) }))] }));
 }

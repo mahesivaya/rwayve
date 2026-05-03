@@ -105,6 +105,11 @@ export default function Chat() {
     ws.onmessage = (event) => {
       const msg: Message = JSON.parse(event.data);
 
+      // Echoes of our own sends are already shown optimistically — skip them
+      // (they also tend to arrive with a missing/renamed timestamp, which
+      // rendered as "Invalid Date").
+      if (msg.sender_id === user.id) return;
+
       setMessages((prev) => [...prev, msg]);
     };
 
@@ -243,6 +248,12 @@ export default function Chat() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
               style={{ flex: 1, marginRight: 10 }}
               placeholder="Type message..."
             />

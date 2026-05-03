@@ -318,3 +318,11 @@ ON emails (account_id, id) WHERE body_encrypted = '';
 Restart the backend so the body worker spawns and the new route registers.
 
 After that, click any email — you'll get either an instant decrypt (if the worker already filled it) or a brief "Loading…" while the on-demand fetch runs. Background worker chews through the rest at ~40 concurrent fetches per account.
+
+
+
+Zoom:
+Account ID: JG1En7IbQiqv3MdugcE8ww
+Client ID: 2AA4vlpNS4Cshw2huqUTQ
+Client Secret: 0pzG2mxPa3ydbgmZGmKK1rNL1YtxuiK1
+Secret Token: AxcmVknsROGL4A8l1kEegw

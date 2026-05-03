@@ -1,5 +1,6 @@
 use crate::models::scheduler::{CreateMeeting, Meeting};
 use crate::prelude::*;
+use crate::scheduler::zoom::create_zoom_meeting;
 use actix_web::{HttpRequest, HttpResponse, delete, post, put, web};
 use base64::Engine;
 use chrono::{TimeZone, Utc};
@@ -50,6 +51,7 @@ pub struct MeetingEmailRequest {
     pub start: NaiveTime,
     pub end: NaiveTime,
     pub kind: MeetingEmailKind,
+    pub zoom_join_url: Option<String>,
 }
 
 // ================= MAIN FUNCTION =================
@@ -62,6 +64,7 @@ pub async fn send_meeting_emails(pool: &PgPool, req: MeetingEmailRequest) -> Res
         start,
         end,
         kind,
+        zoom_join_url,
     } = req;
 
     let row = sqlx::query(
@@ -104,9 +107,14 @@ pub async fn send_meeting_emails(pool: &PgPool, req: MeetingEmailRequest) -> Res
         MeetingEmailKind::Cancel => ("❌ Meeting Cancelled", "Cancelled"),
     };
 
+    let zoom_line = match &zoom_join_url {
+        Some(url) if !url.is_empty() => format!("\nZoom: {}", url),
+        _ => String::new(),
+    };
+
     let body = format!(
-        "{}\n\nTitle: {}\nDate: {}\nStart: {}\nEnd: {}\n\n-- Wayve Scheduler",
-        header, title, date, start_str, end_str
+        "{}\n\nTitle: {}\nDate: {}\nStart: {}\nEnd: {}{}\n\n-- Wayve Scheduler",
+        header, title, date, start_str, end_str, zoom_line
     );
 
     let to_list = valid_participants.join(",");
@@ -218,6 +226,18 @@ pub async fn create_meeting(
         return HttpResponse::BadRequest().body("Meeting cannot be in the past");
     }
 
+    // ================= ZOOM MEETING =================
+    // Tolerant: if Zoom is misconfigured or fails, still create the meeting
+    // without a join link rather than blocking the user.
+    let duration_min = (end_time - start_time).num_minutes();
+    let zoom_join_url = match create_zoom_meeting(&data.title, meeting_utc, duration_min).await {
+        Ok(url) => Some(url),
+        Err(e) => {
+            println!("⚠️ Zoom meeting creation failed: {}", e);
+            None
+        }
+    };
+
     // ================= TRANSACTION =================
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
@@ -230,8 +250,8 @@ pub async fn create_meeting(
     // ================= INSERT MEETING =================
     let meeting = match sqlx::query(
         r#"
-        INSERT INTO meetings (title, date, start_time, end_time, user_id)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO meetings (title, date, start_time, end_time, user_id, zoom_join_url)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
         "#,
     )
@@ -240,6 +260,7 @@ pub async fn create_meeting(
     .bind(start_time)
     .bind(end_time)
     .bind(user_id)
+    .bind(&zoom_join_url)
     .fetch_one(&mut *tx)
     .await
     {
@@ -295,6 +316,7 @@ pub async fn create_meeting(
         start: start_time,
         end: end_time,
         kind: MeetingEmailKind::Invite,
+        zoom_join_url: zoom_join_url.clone(),
     };
 
     actix_web::rt::spawn(async move {
@@ -326,6 +348,7 @@ pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResp
             m.date,
             m.start_time,
             m.end_time,
+            m.zoom_join_url,
             COALESCE(
                 ARRAY_AGG(mp.email) FILTER (WHERE mp.email IS NOT NULL),
                 ARRAY[]::text[]
@@ -387,7 +410,7 @@ pub async fn update_meeting(
 
     // ================= LOAD EXISTING (for change detection) =================
     let existing = match sqlx::query(
-        "SELECT title, date, start_time, end_time FROM meetings WHERE id = $1",
+        "SELECT title, date, start_time, end_time, zoom_join_url FROM meetings WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool.get_ref())
@@ -398,6 +421,7 @@ pub async fn update_meeting(
             row.get::<NaiveDate, _>("date"),
             row.get::<NaiveTime, _>("start_time"),
             row.get::<NaiveTime, _>("end_time"),
+            row.get::<Option<String>, _>("zoom_join_url"),
         )),
         Ok(None) => None,
         Err(e) => {
@@ -481,11 +505,12 @@ pub async fn update_meeting(
     // ================= NOTIFY ON CONTENT CHANGES =================
     // Email participants only when title/date/start/end actually changed —
     // a participant-list-only edit should not spam everyone.
-    let content_changed = match &existing {
-        Some((t, d, s, e)) => {
-            t != &data.title || d != &date || s != &start_time || e != &end_time
-        }
-        None => false,
+    let (content_changed, existing_zoom_url) = match &existing {
+        Some((t, d, s, e, z)) => (
+            t != &data.title || d != &date || s != &start_time || e != &end_time,
+            z.clone(),
+        ),
+        None => (false, None),
     };
 
     if content_changed {
@@ -506,6 +531,7 @@ pub async fn update_meeting(
                 start: start_time,
                 end: end_time,
                 kind: MeetingEmailKind::Update,
+                zoom_join_url: existing_zoom_url,
             };
             actix_web::rt::spawn(async move {
                 if let Err(e) = send_meeting_emails(pool_clone.get_ref(), email_req).await {
@@ -536,7 +562,7 @@ pub async fn delete_meeting(
 
     // Snapshot meeting + participants before deletion so we can email them.
     let meeting_row = sqlx::query(
-        "SELECT title, date, start_time, end_time FROM meetings WHERE id = $1",
+        "SELECT title, date, start_time, end_time, zoom_join_url FROM meetings WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool.get_ref())
@@ -548,6 +574,7 @@ pub async fn delete_meeting(
             row.get::<NaiveDate, _>("date"),
             row.get::<NaiveTime, _>("start_time"),
             row.get::<NaiveTime, _>("end_time"),
+            row.get::<Option<String>, _>("zoom_join_url"),
         )),
         Ok(None) => None,
         Err(e) => {
@@ -577,7 +604,7 @@ pub async fn delete_meeting(
 
     match result {
         Ok(_) => {
-            if let Some((title, date, start_time, end_time)) = snapshot {
+            if let Some((title, date, start_time, end_time, zoom_join_url)) = snapshot {
                 if !participants.is_empty() {
                     let pool_clone = pool.clone();
                     let email_req = MeetingEmailRequest {
@@ -588,6 +615,7 @@ pub async fn delete_meeting(
                         start: start_time,
                         end: end_time,
                         kind: MeetingEmailKind::Cancel,
+                        zoom_join_url,
                     };
                     actix_web::rt::spawn(async move {
                         if let Err(e) = send_meeting_emails(pool_clone.get_ref(), email_req).await {
