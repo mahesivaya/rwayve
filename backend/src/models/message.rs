@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use chrono::{DateTime, Utc};
 use sqlx::Type;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Type)]
@@ -16,6 +17,7 @@ pub struct Message {
     pub receiver_id: i32,
     pub content: String,
     pub status: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
 }
 //
 #[derive(Serialize)]

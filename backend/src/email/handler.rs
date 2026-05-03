@@ -47,7 +47,8 @@ pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> imp
     let scope = "https://www.googleapis.com/auth/userinfo.email \
                  https://www.googleapis.com/auth/gmail.send \
                  https://www.googleapis.com/auth/gmail.modify \
-                 https://www.googleapis.com/auth/gmail.readonly";
+                 https://www.googleapis.com/auth/gmail.readonly \
+                 https://www.googleapis.com/auth/calendar.readonly";
     let url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth\
         ?client_id={}\
@@ -133,7 +134,7 @@ pub async fn oauth_callback(
     let email = user_info["email"].as_str().unwrap_or("");
 
     // 💾 SAVE TO DB FIRST ✅
-    match sqlx::query(
+    let account_id: i32 = match sqlx::query(
         r#"
         INSERT INTO email_accounts
         (email, user_id, access_token, refresh_token, token_expiry, is_active)
@@ -146,6 +147,7 @@ pub async fn oauth_callback(
                 NULLIF(EXCLUDED.refresh_token, ''),
                 email_accounts.refresh_token
             )
+        RETURNING id
         "#,
     )
     .bind(email)
@@ -153,15 +155,36 @@ pub async fn oauth_callback(
     .bind(access_token)
     .bind(refresh_token)
     .bind(expiry)
-    .execute(pool.get_ref())
+    .fetch_one(pool.get_ref())
     .await
     {
-        Ok(_) => println!("✅ Account saved"),
+        Ok(row) => {
+            println!("✅ Account saved");
+            row.get("id")
+        }
         Err(e) => {
             println!("❌ DB ERROR: {}", e);
             return HttpResponse::InternalServerError().body("Failed to save account");
         }
-    }
+    };
+
+    // 📅 Import Google Calendar events in the background — best-effort, do not
+    // block redirect if calendar scope was denied or API call fails.
+    let pool_clone = pool.clone();
+    let token_clone = access_token.to_string();
+    actix_web::rt::spawn(async move {
+        match crate::scheduler::google_calendar::import_upcoming_events(
+            pool_clone.get_ref(),
+            user_id,
+            account_id,
+            &token_clone,
+        )
+        .await
+        {
+            Ok(n) => println!("✅ Imported {} calendar events", n),
+            Err(e) => println!("⚠️ Calendar import failed: {}", e),
+        }
+    });
 
     println!("🚀 Redirecting to frontend...");
 

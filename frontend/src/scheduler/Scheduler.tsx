@@ -119,6 +119,7 @@ export default function Scheduler() {
       end: fromTime(m.end_time),
       participants: m.participants ?? [],
       zoom_join_url: m.zoom_join_url ?? null,
+      source: m.source ?? "wayve",
     }));
 
     setEvents(formatted);
@@ -326,7 +327,7 @@ export default function Scheduler() {
               {slotEvents.map((e) => (
                 <div
                   key={e.id}
-                  className="event"
+                  className={`event${e.source === "google" ? " from-google" : ""}`}
                   onClick={(ev) => {
                     ev.stopPropagation();
                     openEdit(e);
@@ -414,7 +415,7 @@ export default function Scheduler() {
                   {slotEvents.map((e) => (
                     <div
                       key={e.id}
-                      className="event"
+                      className={`event${e.source === "google" ? " from-google" : ""}`}
                       onClick={(ev) => {
                         ev.stopPropagation();
                         openEdit(e);
@@ -465,7 +466,7 @@ export default function Scheduler() {
                         .map((e) => (
                           <div
                             key={e.id}
-                            className="event"
+                            className={`event${e.source === "google" ? " from-google" : ""}`}
                             onClick={(ev) => {
                               ev.stopPropagation();
                               openEdit(e);

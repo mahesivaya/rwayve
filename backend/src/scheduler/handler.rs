@@ -349,6 +349,7 @@ pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResp
             m.start_time,
             m.end_time,
             m.zoom_join_url,
+            m.source,
             COALESCE(
                 ARRAY_AGG(mp.email) FILTER (WHERE mp.email IS NOT NULL),
                 ARRAY[]::text[]

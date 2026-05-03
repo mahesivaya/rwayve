@@ -97,6 +97,7 @@ export default function Scheduler() {
             end: fromTime(m.end_time),
             participants: m.participants ?? [],
             zoom_join_url: m.zoom_join_url ?? null,
+            source: m.source ?? "wayve",
         }));
         setEvents(formatted);
     };
@@ -207,7 +208,7 @@ export default function Scheduler() {
                                     const slotEvents = events.filter((e) => e.date === dayDate &&
                                         e.start >= mins &&
                                         e.start < mins + 30);
-                                    return (_jsxs("div", { className: "time-row", onClick: () => openCreate(dayDate, timeLabel), children: [_jsx("div", { className: "time-label", children: timeLabel }), _jsx("div", { className: "time-events", children: slotEvents.map((e) => (_jsx("div", { className: "event", onClick: (ev) => {
+                                    return (_jsxs("div", { className: "time-row", onClick: () => openCreate(dayDate, timeLabel), children: [_jsx("div", { className: "time-label", children: timeLabel }), _jsx("div", { className: "time-events", children: slotEvents.map((e) => (_jsx("div", { className: `event${e.source === "google" ? " from-google" : ""}`, onClick: (ev) => {
                                                         ev.stopPropagation();
                                                         openEdit(e);
                                                     }, children: e.title }, e.id))) })] }, slot));
@@ -232,7 +233,7 @@ export default function Scheduler() {
                                                 const slotEvents = events.filter((e) => e.date === dayDate &&
                                                     e.start >= mins &&
                                                     e.start < mins + 30);
-                                                return (_jsx("div", { className: "week-cell", onClick: () => openCreate(dayDate, slotTime), children: slotEvents.map((e) => (_jsx("div", { className: "event", onClick: (ev) => {
+                                                return (_jsx("div", { className: "week-cell", onClick: () => openCreate(dayDate, slotTime), children: slotEvents.map((e) => (_jsx("div", { className: `event${e.source === "google" ? " from-google" : ""}`, onClick: (ev) => {
                                                             ev.stopPropagation();
                                                             openEdit(e);
                                                         }, children: e.title }, e.id))) }, i));
@@ -244,7 +245,7 @@ export default function Scheduler() {
                                         return (_jsxs("div", { className: `day-cell${isToday ? " is-today" : ""}`, onClick: () => openDay(cellDate), children: [_jsx("div", { className: "date", children: i + 1 }), _jsx("div", { className: "events", children: events
                                                         .filter((e) => e.date === dayDate)
                                                         .sort((a, b) => a.start - b.start)
-                                                        .map((e) => (_jsxs("div", { className: "event", onClick: (ev) => {
+                                                        .map((e) => (_jsxs("div", { className: `event${e.source === "google" ? " from-google" : ""}`, onClick: (ev) => {
                                                             ev.stopPropagation();
                                                             openEdit(e);
                                                         }, children: [_jsxs("span", { className: "event-time", children: [Math.floor(e.start / 60), ":", (e.start % 60).toString().padStart(2, "0")] }), _jsx("span", { className: "event-title", children: e.title })] }, e.id))) })] }, i));

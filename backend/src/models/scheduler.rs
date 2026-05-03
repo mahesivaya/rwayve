@@ -10,6 +10,7 @@ pub struct Meeting {
     pub end_time: NaiveTime,
     pub participants: Vec<String>,
     pub zoom_join_url: Option<String>,
+    pub source: String,
 }
 
 // ================= INPUT =================

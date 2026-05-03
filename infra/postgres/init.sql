@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS meetings (
 );
 
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS zoom_join_url TEXT;
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'wayve';
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS google_event_id TEXT;
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS account_id INTEGER;
+CREATE UNIQUE INDEX IF NOT EXISTS meetings_google_event_uniq
+  ON meetings(user_id, google_event_id) WHERE google_event_id IS NOT NULL;
 
 CREATE TABLE meeting_participants (
     id SERIAL PRIMARY KEY,

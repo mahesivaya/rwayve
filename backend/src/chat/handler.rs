@@ -134,10 +134,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                     let fut = async move {
                         sqlx::query(
                             r#"
-                            INSERT INTO messages 
+                            INSERT INTO messages
                             (sender_id, receiver_id, content_encrypted, content_iv, status)
                             VALUES ($1, $2, $3, $4, 'sent')
-                            RETURNING id
+                            RETURNING id, created_at
                             "#,
                         )
                         .bind(sender_id)
@@ -154,13 +154,20 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                         move |res, _act, ctx: &mut WebsocketContext<Self>| {
                             if let Ok(row) = res {
                                 let message_id: i32 = row.get("id");
+                                let created_naive: chrono::NaiveDateTime =
+                                    row.get("created_at");
+                                let created_at = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                    created_naive,
+                                    chrono::Utc,
+                                );
 
                                 let msg_json = serde_json::json!({
                                     "message_id": message_id,
                                     "sender_id": sender_id,
                                     "receiver_id": receiver_id,
                                     "content": content,
-                                    "status": "sent"
+                                    "status": "sent",
+                                    "created_at": created_at.to_rfc3339()
                                 })
                                 .to_string();
 
@@ -252,12 +259,19 @@ pub async fn get_messages(
                         }
                     };
 
+                    let created_naive: chrono::NaiveDateTime = row.get("created_at");
+                    let created_at = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                        created_naive,
+                        chrono::Utc,
+                    );
+
                     Message {
                         message_id: Some(row.get("id")),
                         sender_id: row.get("sender_id"),
                         receiver_id: row.get("receiver_id"),
                         content,
                         status: Some(row.get::<String, _>("status")),
+                        created_at: Some(created_at),
                     }
                 })
                 .collect();
