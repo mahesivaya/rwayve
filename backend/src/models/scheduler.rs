@@ -8,6 +8,7 @@ pub struct Meeting {
     pub date: NaiveDate,
     pub start_time: NaiveTime,
     pub end_time: NaiveTime,
+    pub participants: Vec<String>,
 }
 
 // ================= INPUT =================
@@ -18,4 +19,7 @@ pub struct CreateMeeting {
     pub start: i32,
     pub end: i32,
     pub participants: Vec<String>,
+    /// IANA timezone of the client (e.g. "Asia/Kolkata"). Used to interpret
+    /// `date` + `start` as a wall-clock time in that zone for the past check.
+    pub tz: Option<String>,
 }

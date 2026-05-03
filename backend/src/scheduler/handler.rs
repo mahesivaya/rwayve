@@ -2,11 +2,13 @@ use crate::models::scheduler::{CreateMeeting, Meeting};
 use crate::prelude::*;
 use actix_web::{HttpRequest, HttpResponse, delete, post, put, web};
 use base64::Engine;
-use chrono::Utc;
+use chrono::{TimeZone, Utc};
+use chrono_tz::Tz;
 use serde_json::json;
+use std::str::FromStr;
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use sqlx::{PgPool, Row};
 
 // ================= HELPER =================
@@ -33,6 +35,13 @@ fn get_user_id(req: &HttpRequest) -> Result<i32, HttpResponse> {
 }
 
 // ================= REQUEST STRUCT =================
+#[derive(Clone, Copy)]
+pub enum MeetingEmailKind {
+    Invite,
+    Update,
+    Cancel,
+}
+
 pub struct MeetingEmailRequest {
     pub user_id: i32,
     pub participants: Vec<String>,
@@ -40,6 +49,7 @@ pub struct MeetingEmailRequest {
     pub date: NaiveDate,
     pub start: NaiveTime,
     pub end: NaiveTime,
+    pub kind: MeetingEmailKind,
 }
 
 // ================= MAIN FUNCTION =================
@@ -51,6 +61,7 @@ pub async fn send_meeting_emails(pool: &PgPool, req: MeetingEmailRequest) -> Res
         date,
         start,
         end,
+        kind,
     } = req;
 
     let row = sqlx::query(
@@ -87,9 +98,15 @@ pub async fn send_meeting_emails(pool: &PgPool, req: MeetingEmailRequest) -> Res
     let start_str = start.format("%H:%M").to_string();
     let end_str = end.format("%H:%M").to_string();
 
+    let (header, subject_prefix) = match kind {
+        MeetingEmailKind::Invite => ("📅 Meeting Invitation", "Meeting"),
+        MeetingEmailKind::Update => ("✏️ Meeting Updated", "Updated"),
+        MeetingEmailKind::Cancel => ("❌ Meeting Cancelled", "Cancelled"),
+    };
+
     let body = format!(
-        "📅 Meeting Invitation\n\nTitle: {}\nDate: {}\nStart: {}\nEnd: {}\n\n-- Wayve Scheduler",
-        title, date, start_str, end_str
+        "{}\n\nTitle: {}\nDate: {}\nStart: {}\nEnd: {}\n\n-- Wayve Scheduler",
+        header, title, date, start_str, end_str
     );
 
     let to_list = valid_participants.join(",");
@@ -97,9 +114,9 @@ pub async fn send_meeting_emails(pool: &PgPool, req: MeetingEmailRequest) -> Res
     let raw_message = format!(
         "From: {}\r\n\
 To: {}\r\n\
-Subject: Meeting: {}\r\n\
+Subject: {}: {}\r\n\
 Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}",
-        sender_email, to_list, title, body
+        sender_email, to_list, subject_prefix, title, body
     );
 
     let encoded = URL_SAFE_NO_PAD.encode(raw_message);
@@ -182,9 +199,22 @@ pub async fn create_meeting(
         Err(_) => return HttpResponse::BadRequest().body("Invalid date"),
     };
 
-    // 🔥 Prevent past meetings
-    let now = Utc::now().naive_utc();
-    if date == now.date() && start_time <= now.time() {
+    // Prevent past meetings — interpret date+start as wall-clock time in the
+    // client's IANA timezone. Default to UTC if the client didn't send one
+    // (or sent something unparseable) — UTC is a neutral fallback that won't
+    // spuriously reject future meetings the way a hardcoded NY zone did.
+    let tz: Tz = data
+        .tz
+        .as_deref()
+        .and_then(|s| Tz::from_str(s).ok())
+        .unwrap_or(Tz::UTC);
+
+    let naive = NaiveDateTime::new(date, start_time);
+    let meeting_utc = match tz.from_local_datetime(&naive).single() {
+        Some(dt) => dt.with_timezone(&Utc),
+        None => return HttpResponse::BadRequest().body("Invalid date/time"),
+    };
+    if meeting_utc <= Utc::now() {
         return HttpResponse::BadRequest().body("Meeting cannot be in the past");
     }
 
@@ -264,6 +294,7 @@ pub async fn create_meeting(
         date,
         start: start_time,
         end: end_time,
+        kind: MeetingEmailKind::Invite,
     };
 
     actix_web::rt::spawn(async move {
@@ -289,10 +320,21 @@ pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResp
 
     let result = sqlx::query_as::<_, Meeting>(
         r#"
-        SELECT id, title, date, start_time, end_time
-        FROM meetings
-        WHERE user_id = $1
-        ORDER BY date, start_time
+        SELECT
+            m.id,
+            m.title,
+            m.date,
+            m.start_time,
+            m.end_time,
+            COALESCE(
+                ARRAY_AGG(mp.email) FILTER (WHERE mp.email IS NOT NULL),
+                ARRAY[]::text[]
+            ) AS participants
+        FROM meetings m
+        LEFT JOIN meeting_participants mp ON mp.meeting_id = m.id
+        WHERE m.user_id = $1
+        GROUP BY m.id
+        ORDER BY m.date, m.start_time
         "#,
     )
     .bind(user_id)
@@ -310,10 +352,16 @@ pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResp
 
 #[put("/meetings/{id}")]
 pub async fn update_meeting(
+    req: HttpRequest,
     path: web::Path<i32>,
     data: web::Json<CreateMeeting>,
     pool: web::Data<PgPool>,
 ) -> HttpResponse {
+    let user_id = match get_user_id(&req) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
     let id = path.into_inner();
 
     // ================= VALIDATION =================
@@ -337,6 +385,27 @@ pub async fn update_meeting(
         return HttpResponse::BadRequest().body("Invalid time range");
     }
 
+    // ================= LOAD EXISTING (for change detection) =================
+    let existing = match sqlx::query(
+        "SELECT title, date, start_time, end_time FROM meetings WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool.get_ref())
+    .await
+    {
+        Ok(Some(row)) => Some((
+            row.get::<String, _>("title"),
+            row.get::<NaiveDate, _>("date"),
+            row.get::<NaiveTime, _>("start_time"),
+            row.get::<NaiveTime, _>("end_time"),
+        )),
+        Ok(None) => None,
+        Err(e) => {
+            println!("❌ Load existing meeting error: {:?}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
     // ================= TRANSACTION =================
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
@@ -349,8 +418,8 @@ pub async fn update_meeting(
     // ================= UPDATE MEETING =================
     let update = sqlx::query(
         r#"
-        UPDATE meetings 
-        SET title=$1, date=$2, start_time=$3, end_time=$4 
+        UPDATE meetings
+        SET title=$1, date=$2, start_time=$3, end_time=$4
         WHERE id=$5
         "#,
     )
@@ -383,12 +452,12 @@ pub async fn update_meeting(
     let insert = sqlx::query(
         r#"
         INSERT INTO meeting_participants (meeting_id, email, user_id)
-        SELECT 
+        SELECT
             $1,
             v.email,
             u.id
         FROM UNNEST($2::text[]) AS v(email)
-        LEFT JOIN users u 
+        LEFT JOIN users u
         ON LOWER(TRIM(u.email)) = LOWER(TRIM(v.email))
         "#,
     )
@@ -409,6 +478,43 @@ pub async fn update_meeting(
         return HttpResponse::InternalServerError().finish();
     }
 
+    // ================= NOTIFY ON CONTENT CHANGES =================
+    // Email participants only when title/date/start/end actually changed —
+    // a participant-list-only edit should not spam everyone.
+    let content_changed = match &existing {
+        Some((t, d, s, e)) => {
+            t != &data.title || d != &date || s != &start_time || e != &end_time
+        }
+        None => false,
+    };
+
+    if content_changed {
+        let participants: Vec<String> = data
+            .participants
+            .iter()
+            .map(|e| e.trim().to_lowercase())
+            .filter(|e| e.contains("@") && e.contains("."))
+            .collect();
+
+        if !participants.is_empty() {
+            let pool_clone = pool.clone();
+            let email_req = MeetingEmailRequest {
+                user_id,
+                participants,
+                title: data.title.clone(),
+                date,
+                start: start_time,
+                end: end_time,
+                kind: MeetingEmailKind::Update,
+            };
+            actix_web::rt::spawn(async move {
+                if let Err(e) = send_meeting_emails(pool_clone.get_ref(), email_req).await {
+                    println!("❌ Update email failed: {:?}", e);
+                }
+            });
+        }
+    }
+
     // ================= RESPONSE =================
     HttpResponse::Ok().json(json!({
         "message": "Meeting updated successfully"
@@ -416,8 +522,53 @@ pub async fn update_meeting(
 }
 
 #[delete("/meetings/{id}")]
-pub async fn delete_meeting(path: web::Path<i32>, pool: web::Data<PgPool>) -> HttpResponse {
+pub async fn delete_meeting(
+    req: HttpRequest,
+    path: web::Path<i32>,
+    pool: web::Data<PgPool>,
+) -> HttpResponse {
+    let user_id = match get_user_id(&req) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
     let id = path.into_inner();
+
+    // Snapshot meeting + participants before deletion so we can email them.
+    let meeting_row = sqlx::query(
+        "SELECT title, date, start_time, end_time FROM meetings WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    let snapshot = match meeting_row {
+        Ok(Some(row)) => Some((
+            row.get::<String, _>("title"),
+            row.get::<NaiveDate, _>("date"),
+            row.get::<NaiveTime, _>("start_time"),
+            row.get::<NaiveTime, _>("end_time"),
+        )),
+        Ok(None) => None,
+        Err(e) => {
+            println!("❌ Load meeting (delete) error: {:?}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    let participants: Vec<String> = match sqlx::query(
+        "SELECT email FROM meeting_participants WHERE meeting_id = $1",
+    )
+    .bind(id)
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => rows.into_iter().map(|r| r.get::<String, _>("email")).collect(),
+        Err(e) => {
+            println!("❌ Load participants (delete) error: {:?}", e);
+            Vec::new()
+        }
+    };
 
     let result = sqlx::query("DELETE FROM meetings WHERE id = $1")
         .bind(id)
@@ -425,9 +576,30 @@ pub async fn delete_meeting(path: web::Path<i32>, pool: web::Data<PgPool>) -> Ht
         .await;
 
     match result {
-        Ok(_) => HttpResponse::Ok().json(json!({
-            "message": "Meeting deleted"
-        })),
+        Ok(_) => {
+            if let Some((title, date, start_time, end_time)) = snapshot {
+                if !participants.is_empty() {
+                    let pool_clone = pool.clone();
+                    let email_req = MeetingEmailRequest {
+                        user_id,
+                        participants,
+                        title,
+                        date,
+                        start: start_time,
+                        end: end_time,
+                        kind: MeetingEmailKind::Cancel,
+                    };
+                    actix_web::rt::spawn(async move {
+                        if let Err(e) = send_meeting_emails(pool_clone.get_ref(), email_req).await {
+                            println!("❌ Cancel email failed: {:?}", e);
+                        }
+                    });
+                }
+            }
+            HttpResponse::Ok().json(json!({
+                "message": "Meeting deleted"
+            }))
+        }
         Err(e) => {
             println!("❌ Delete error FULL: {:#?}", e);
             HttpResponse::InternalServerError().body("Failed to delete meeting")

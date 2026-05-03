@@ -24,6 +24,9 @@ export const getMeetings = async () => {
   return res.json();
 };
 
+const browserTz = () =>
+  Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
 // ================= CREATE =================
 export const createMeetingApi = async (data: {
   title: string;
@@ -38,6 +41,7 @@ export const createMeetingApi = async (data: {
     body: JSON.stringify({
       ...data,
       participants: data.participants ?? [], // ✅ safety
+      tz: browserTz(),
     }),
   });
 
@@ -66,6 +70,7 @@ export const updateMeetingApi = async (
     body: JSON.stringify({
       ...data,
       participants: data.participants ?? [], // safety
+      tz: browserTz(),
     }),
   });
 

@@ -18,6 +18,7 @@ export const getMeetings = async () => {
     }
     return res.json();
 };
+const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 // ================= CREATE =================
 export const createMeetingApi = async (data) => {
     const res = await fetch(`${API_BASE}/api/meetings`, {
@@ -26,6 +27,7 @@ export const createMeetingApi = async (data) => {
         body: JSON.stringify({
             ...data,
             participants: data.participants ?? [], // ✅ safety
+            tz: browserTz(),
         }),
     });
     if (!res.ok) {
@@ -42,6 +44,7 @@ export const updateMeetingApi = async (id, data) => {
         body: JSON.stringify({
             ...data,
             participants: data.participants ?? [], // safety
+            tz: browserTz(),
         }),
     });
     if (!res.ok) {
