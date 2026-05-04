@@ -1,11 +1,10 @@
 use crate::prelude::*;
 
-use crate::security::jwt::create_jwt;
 use crate::models::auth::{LoginInput, LoginResponse, RegisterInput};
 use crate::models::message::MessageResponse;
 use crate::models::user::User;
+use crate::security::jwt::create_jwt;
 use bcrypt::{DEFAULT_COST, hash, verify};
-
 
 #[post("/register")]
 pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -> HttpResponse {
@@ -37,28 +36,28 @@ pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -
         .fetch_one(pool.get_ref())
         .await;
 
-        match result {
-            Ok(row) => {
-                let user_id: i32 = row.get("id");
-        
-                // ✅ ALWAYS use same JWT function
-                let token = create_jwt(user_id, data.email.clone());
-        
-                HttpResponse::Ok().json(serde_json::json!({ "token": token }))
-            }
-        
-            Err(e) => {
-                println!("DB ERROR: {:?}", e);
-        
-                if e.to_string().contains("duplicate key") {
-                    HttpResponse::BadRequest()
-                        .json(serde_json::json!({ "message": "User already exists" }))
-                } else {
-                    HttpResponse::InternalServerError()
-                        .json(serde_json::json!({ "message": "Insert failed" }))
-                }
+    match result {
+        Ok(row) => {
+            let user_id: i32 = row.get("id");
+
+            // ✅ ALWAYS use same JWT function
+            let token = create_jwt(user_id, data.email.clone());
+
+            HttpResponse::Ok().json(serde_json::json!({ "token": token }))
+        }
+
+        Err(e) => {
+            println!("DB ERROR: {:?}", e);
+
+            if e.to_string().contains("duplicate key") {
+                HttpResponse::BadRequest()
+                    .json(serde_json::json!({ "message": "User already exists" }))
+            } else {
+                HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "message": "Insert failed" }))
             }
         }
+    }
 }
 
 #[post("/login")]

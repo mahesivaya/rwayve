@@ -2,9 +2,9 @@ use crate::cache::Cache;
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
 
-use actix_web::{get, web, HttpRequest, HttpResponse, Responder};
+use actix_web::{HttpRequest, HttpResponse, Responder, get, web};
 use serde_json::Value;
-use sqlx::{PgPool, Row, QueryBuilder};
+use sqlx::{PgPool, QueryBuilder, Row};
 
 #[derive(Deserialize)]
 pub struct EmailQuery {
@@ -33,10 +33,19 @@ pub async fn get_emails(
     let cache_key = format!(
         "emails:list:u={}:a={}:f={}:bf={}:bid={}",
         user_id,
-        query.account_id.map(|i| i.to_string()).unwrap_or_else(|| "all".into()),
+        query
+            .account_id
+            .map(|i| i.to_string())
+            .unwrap_or_else(|| "all".into()),
         query.folder.as_deref().unwrap_or("all"),
-        query.before.map(|i| i.to_string()).unwrap_or_else(|| "_".into()),
-        query.before_id.map(|i| i.to_string()).unwrap_or_else(|| "_".into()),
+        query
+            .before
+            .map(|i| i.to_string())
+            .unwrap_or_else(|| "_".into()),
+        query
+            .before_id
+            .map(|i| i.to_string())
+            .unwrap_or_else(|| "_".into()),
     );
 
     if let Some(c) = cache.get_ref().as_ref() {

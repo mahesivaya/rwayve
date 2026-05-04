@@ -1,9 +1,6 @@
-use chrono::{Utc, Duration as ChronoDuration};
-use jsonwebtoken::{
-    encode, decode,
-    Header, EncodingKey, DecodingKey, Validation, Algorithm
-};
-use serde::{Serialize, Deserialize};
+use chrono::{Duration as ChronoDuration, Utc};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {

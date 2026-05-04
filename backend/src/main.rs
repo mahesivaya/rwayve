@@ -7,12 +7,12 @@ mod chat;
 mod drive;
 mod email;
 mod logging;
+mod middleware;
 mod models;
 mod prelude;
 mod routes;
 mod scheduler;
 pub mod security;
-mod middleware;
 
 // ==============================
 // 🔹 USE INTERNAL MODULES
@@ -34,9 +34,7 @@ use crate::call::handler::call_ws;
 
 use crate::email::body_worker::start_body_worker;
 use crate::email::handler::{
-    get_email_body, get_me, gmail_login,
-    oauth_callback, save_public_key, send,
-    get_email_by_id
+    get_email_body, get_email_by_id, get_me, gmail_login, oauth_callback, save_public_key, send,
 };
 use crate::email::sync::sync_all;
 
@@ -81,7 +79,7 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
                 .service(get_files)
                 .service(send)
                 .service(get_me)
-                .service(save_public_key)
+                .service(save_public_key),
         )
         // 🔥 AUTH / GOOGLE
         .route("/gmail/login", web::get().to(gmail_login))

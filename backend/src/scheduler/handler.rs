@@ -584,19 +584,21 @@ pub async fn delete_meeting(
         }
     };
 
-    let participants: Vec<String> = match sqlx::query(
-        "SELECT email FROM meeting_participants WHERE meeting_id = $1",
-    )
-    .bind(id)
-    .fetch_all(pool.get_ref())
-    .await
-    {
-        Ok(rows) => rows.into_iter().map(|r| r.get::<String, _>("email")).collect(),
-        Err(e) => {
-            println!("❌ Load participants (delete) error: {:?}", e);
-            Vec::new()
-        }
-    };
+    let participants: Vec<String> =
+        match sqlx::query("SELECT email FROM meeting_participants WHERE meeting_id = $1")
+            .bind(id)
+            .fetch_all(pool.get_ref())
+            .await
+        {
+            Ok(rows) => rows
+                .into_iter()
+                .map(|r| r.get::<String, _>("email"))
+                .collect(),
+            Err(e) => {
+                println!("❌ Load participants (delete) error: {:?}", e);
+                Vec::new()
+            }
+        };
 
     let result = sqlx::query("DELETE FROM meetings WHERE id = $1")
         .bind(id)

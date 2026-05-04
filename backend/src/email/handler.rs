@@ -6,12 +6,10 @@ use crate::email::utils::extract_body;
 use crate::models::email_request::SendEmailRequest;
 use crate::security::encryption::{decrypt, encrypt};
 use crate::security::jwt::get_user_id_from_request;
+use actix_web::{HttpResponse, Responder, get, web};
 use base64::Engine;
-use sqlx::Row;
-use actix_web::{get, web, HttpResponse, Responder};
 use sqlx::PgPool;
-
-
+use sqlx::Row;
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {
@@ -325,12 +323,8 @@ async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     }
 }
 
-
 #[get("/emails/{id}")]
-pub async fn get_email_by_id(
-    pool: web::Data<PgPool>,
-    path: web::Path<i32>,
-) -> impl Responder {
+pub async fn get_email_by_id(pool: web::Data<PgPool>, path: web::Path<i32>) -> impl Responder {
     let email_id = path.into_inner();
 
     let result = sqlx::query(
@@ -338,7 +332,7 @@ pub async fn get_email_by_id(
         SELECT id, subject, sender, receiver, body_encrypted, body_iv
         FROM emails
         WHERE id = $1
-        "#
+        "#,
     )
     .bind(email_id) // ✅ CORRECT
     .fetch_optional(pool.get_ref())
@@ -349,10 +343,7 @@ pub async fn get_email_by_id(
             let body_iv: String = row.get("body_iv");
             let body_encrypted: String = row.get("body_encrypted");
 
-            let body = match crate::security::encryption::decrypt(
-                &body_iv,
-                &body_encrypted,
-            ) {
+            let body = match crate::security::encryption::decrypt(&body_iv, &body_encrypted) {
                 Ok(text) => text,
                 Err(_) => "Failed to decrypt".to_string(),
             };
@@ -371,8 +362,8 @@ pub async fn get_email_by_id(
         Err(e) => {
             println!("❌ DB error: {:?}", e);
             HttpResponse::InternalServerError().finish()
-            }
         }
+    }
 }
 
 #[get("/emails/{id}/body")]
@@ -431,7 +422,10 @@ pub async fn get_email_body(
     let refresh_token: String = row.get("refresh_token");
 
     let secrets = load_google_secrets();
-    let client_id = secrets["web"]["client_id"].as_str().unwrap_or("").to_string();
+    let client_id = secrets["web"]["client_id"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     let client_secret = secrets["web"]["client_secret"]
         .as_str()
         .unwrap_or("")

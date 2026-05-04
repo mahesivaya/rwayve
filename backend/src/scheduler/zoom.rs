@@ -18,8 +18,7 @@ struct MeetingResp {
 async fn fetch_access_token() -> Result<String, String> {
     let account_id =
         env::var("ZOOM_ACCOUNT_ID").map_err(|_| "ZOOM_ACCOUNT_ID not set".to_string())?;
-    let client_id =
-        env::var("ZOOM_CLIENT_ID").map_err(|_| "ZOOM_CLIENT_ID not set".to_string())?;
+    let client_id = env::var("ZOOM_CLIENT_ID").map_err(|_| "ZOOM_CLIENT_ID not set".to_string())?;
     let client_secret =
         env::var("ZOOM_CLIENT_SECRET").map_err(|_| "ZOOM_CLIENT_SECRET not set".to_string())?;
 

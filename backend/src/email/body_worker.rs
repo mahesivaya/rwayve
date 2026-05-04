@@ -53,7 +53,10 @@ async fn run_iteration(pool: &PgPool) -> Result<usize> {
     }
 
     let secrets = load_google_secrets();
-    let client_id = secrets["web"]["client_id"].as_str().unwrap_or("").to_string();
+    let client_id = secrets["web"]["client_id"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     let client_secret = secrets["web"]["client_secret"]
         .as_str()
         .unwrap_or("")
@@ -68,7 +71,14 @@ async fn run_iteration(pool: &PgPool) -> Result<usize> {
         let refresh_token: String = row.get("refresh_token");
 
         handles.push(tokio::spawn(async move {
-            process_account(&pool, account_id, &client_id, &client_secret, &refresh_token).await
+            process_account(
+                &pool,
+                account_id,
+                &client_id,
+                &client_secret,
+                &refresh_token,
+            )
+            .await
         }));
     }
 
@@ -129,9 +139,9 @@ async fn process_account(
         id: i32,
         gmail_id: String,
     ) {
-        tasks.push(Box::pin(async move {
-            fetch_one(&token, id, &gmail_id).await
-        }));
+        tasks.push(Box::pin(
+            async move { fetch_one(&token, id, &gmail_id).await },
+        ));
     }
 
     // Prime the pump with up to BODY_CONCURRENCY in-flight requests.

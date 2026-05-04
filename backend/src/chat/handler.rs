@@ -159,12 +159,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                         move |res, _act, ctx: &mut WebsocketContext<Self>| {
                             if let Ok(row) = res {
                                 let message_id: i32 = row.get("id");
-                                let created_naive: chrono::NaiveDateTime =
-                                    row.get("created_at");
-                                let created_at = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                                    created_naive,
-                                    chrono::Utc,
-                                );
+                                let created_naive: chrono::NaiveDateTime = row.get("created_at");
+                                let created_at =
+                                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                        created_naive,
+                                        chrono::Utc,
+                                    );
 
                                 let msg_json = serde_json::json!({
                                     "message_id": message_id,

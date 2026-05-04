@@ -3,8 +3,7 @@ use chrono_tz::America::New_York;
 use serde_json::Value;
 use sqlx::PgPool;
 
-const CAL_URL: &str =
-    "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+const CAL_URL: &str = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 
 pub async fn import_upcoming_events(
     pool: &PgPool,
