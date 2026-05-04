@@ -231,8 +231,9 @@ pub async fn get_messages(
 ) -> impl Responder {
     let cache_key = chat_history_key(query.user1, query.user2);
 
-    if let Some(c) = cache.get_ref().as_ref() {
-        if let Some(cached) = c.get_json::<Vec<Message>>(&cache_key).await {
+    if let Some(c) = cache.get_ref().as_ref()
+        && let Some(cached) = c.get_json::<Vec<Message>>(&cache_key).await
+        {
             // Still flip unread → read on every fetch so the sender sees the
             // status change even on cache hits.
             let _ = sqlx::query(
@@ -244,7 +245,6 @@ pub async fn get_messages(
             .await;
             return HttpResponse::Ok().json(cached);
         }
-    }
 
     // Two ordered scans (each index-served by idx_messages_conversation /
     // idx_messages_reverse) merged via UNION ALL, then a final 50-row cap.

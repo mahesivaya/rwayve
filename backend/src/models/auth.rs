@@ -1,12 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Claims {
-    pub sub: i32, // user_id
-    pub email: String,
-    pub exp: usize,
-}
-
 #[derive(Deserialize, Serialize)]
 pub struct RegisterInput {
     pub email: String,
