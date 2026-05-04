@@ -233,18 +233,18 @@ pub async fn get_messages(
 
     if let Some(c) = cache.get_ref().as_ref()
         && let Some(cached) = c.get_json::<Vec<Message>>(&cache_key).await
-        {
-            // Still flip unread → read on every fetch so the sender sees the
-            // status change even on cache hits.
-            let _ = sqlx::query(
-                "UPDATE messages SET status = 'read' WHERE receiver_id = $1 AND sender_id = $2",
-            )
-            .bind(query.user1)
-            .bind(query.user2)
-            .execute(pool.get_ref())
-            .await;
-            return HttpResponse::Ok().json(cached);
-        }
+    {
+        // Still flip unread → read on every fetch so the sender sees the
+        // status change even on cache hits.
+        let _ = sqlx::query(
+            "UPDATE messages SET status = 'read' WHERE receiver_id = $1 AND sender_id = $2",
+        )
+        .bind(query.user1)
+        .bind(query.user2)
+        .execute(pool.get_ref())
+        .await;
+        return HttpResponse::Ok().json(cached);
+    }
 
     // Two ordered scans (each index-served by idx_messages_conversation /
     // idx_messages_reverse) merged via UNION ALL, then a final 50-row cap.
