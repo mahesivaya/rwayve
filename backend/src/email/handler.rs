@@ -24,8 +24,12 @@ pub struct LoginQuery {
 
 pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> impl Responder {
     let secrets = load_google_secrets();
-    let client_id = secrets["web"]["client_id"].as_str().unwrap();
-    let redirect_uri = secrets["web"]["redirect_uris"][0].as_str().unwrap();
+    let client_id = secrets["web"]["client_id"]
+        .as_str()
+        .expect("client_id missing in google secrets");
+    let redirect_uri = secrets["web"]["redirect_uris"][0]
+        .as_str()
+        .expect("redirect_uris missing in google secrets");
 
     let token = if let Some(t) = &query.token {
         t.clone()
@@ -79,21 +83,24 @@ pub async fn oauth_callback(
     };
 
     // 🔥 Decode JWT
-    let decoded = match crate::security::jwt::decode_jwt(&token) {
+    let decoded = match crate::security::jwt::decode_jwt(token) {
         Some(d) => d,
         None => return HttpResponse::Unauthorized().body("Invalid token"),
     };
 
     let user_id = decoded.sub;
 
-    let client_id = secrets["web"]["client_id"].as_str().unwrap().to_string();
+    let client_id = secrets["web"]["client_id"]
+        .as_str()
+        .expect("client_id missing in google secrets")
+        .to_string();
     let client_secret = secrets["web"]["client_secret"]
         .as_str()
-        .unwrap()
+        .expect("client_secret missing in google secrets")
         .to_string();
     let redirect_uri = secrets["web"]["redirect_uris"][0]
         .as_str()
-        .unwrap()
+        .expect("redirect_uris missing in google secrets")
         .to_string();
 
     // 🔁 exchange code → tokens

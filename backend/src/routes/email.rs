@@ -48,10 +48,10 @@ pub async fn get_emails(
             .unwrap_or_else(|| "_".into()),
     );
 
-    if let Some(c) = cache.get_ref().as_ref() {
-        if let Some(cached) = c.get_json::<Value>(&cache_key).await {
-            return HttpResponse::Ok().json(cached);
-        }
+    if let Some(c) = cache.get_ref().as_ref()
+        && let Some(cached) = c.get_json::<Value>(&cache_key).await
+    {
+        return HttpResponse::Ok().json(cached);
     }
 
     // 🔥 Build query dynamically

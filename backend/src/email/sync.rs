@@ -33,8 +33,12 @@ pub async fn sync_all(pool: &PgPool) -> Result<()> {
     .await?;
 
     let secrets = load_google_secrets();
-    let client_id = secrets["web"]["client_id"].as_str().unwrap();
-    let client_secret = secrets["web"]["client_secret"].as_str().unwrap();
+    let client_id = secrets["web"]["client_id"]
+        .as_str()
+        .expect("client_id missing in google secrets");
+    let client_secret = secrets["web"]["client_secret"]
+        .as_str()
+        .expect("client_secret missing in google secrets");
 
     let mut handles = vec![];
 

@@ -124,7 +124,7 @@ async fn main() -> std::io::Result<()> {
     init_logger();
     dotenv().ok();
 
-    let db_url = env::var("DATABASE_URL").expect("DATABASE_URL missing");
+    let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| panic!("DATABASE_URL missing"));
     let pool = loop {
         match PgPoolOptions::new()
             .max_connections(10)

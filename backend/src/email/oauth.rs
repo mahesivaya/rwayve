@@ -1,7 +1,8 @@
 use crate::prelude::*;
 
 pub fn load_google_secrets() -> serde_json::Value {
-    let data = fs::read_to_string("client_secret.json").expect("Failed to read client_secret.json");
+    let data = fs::read_to_string("client_secret.json")
+        .unwrap_or_else(|e| panic!("Failed to read client_secret.json: {e}"));
 
     serde_json::from_str(&data).unwrap()
 }

@@ -29,7 +29,7 @@ pub fn create_jwt(user_id: i32, email: String) -> String {
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
     )
-    .expect("JWT encode failed")
+    .unwrap_or_else(|e| panic!("JWT encode failed: {e}"))
 }
 
 // 🔥 DECODE JWT

@@ -101,7 +101,7 @@ pub async fn import_upcoming_events(
         let end_time = if end_dt.date_naive() == date {
             end_dt.time()
         } else {
-            chrono::NaiveTime::from_hms_opt(23, 59, 0).unwrap()
+            chrono::NaiveTime::from_hms_opt(23, 59, 0).expect("23:59:00 is a valid time")
         };
 
         if end_time <= start_time {

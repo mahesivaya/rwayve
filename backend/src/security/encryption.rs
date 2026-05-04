@@ -54,9 +54,8 @@ pub fn decrypt(nonce_b64: &str, cipher_b64: &str) -> Result<String, String> {
 }
 
 fn get_key() -> [u8; 32] {
-    std::env::var("AES_KEY")
-        .expect("AES_KEY not set")
-        .as_bytes()
+    let key = std::env::var("AES_KEY").unwrap_or_else(|_| panic!("AES_KEY not set"));
+    key.as_bytes()
         .try_into()
-        .expect("AES_KEY must be 32 bytes")
+        .unwrap_or_else(|_| panic!("AES_KEY must be 32 bytes"))
 }

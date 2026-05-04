@@ -168,9 +168,8 @@ pub async fn get_files(pool: web::Data<PgPool>, query: web::Query<FileQuery>) ->
                 .map(|row| {
                     let file_name = Path::new(&row.file_path)
                         .file_name()
-                        .unwrap()
-                        .to_string_lossy()
-                        .to_string();
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default();
 
                     let file_type = file_name.split('.').next_back().unwrap_or("").to_string();
 

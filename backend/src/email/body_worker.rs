@@ -7,6 +7,8 @@ use crate::security::encryption::encrypt;
 use serde_json::Value;
 use tokio::time::{Duration, sleep};
 
+type FetchTask = std::pin::Pin<Box<dyn std::future::Future<Output = Result<(i32, String)>> + Send>>;
+
 const BODY_CONCURRENCY: usize = 40;
 const BODY_BATCH_SIZE: i64 = 200;
 const ACCOUNTS_PER_ITERATION: i64 = 10;
@@ -132,9 +134,7 @@ async fn process_account(
     let mut count = 0;
 
     fn spawn_fetch(
-        tasks: &mut FuturesUnordered<
-            std::pin::Pin<Box<dyn std::future::Future<Output = Result<(i32, String)>> + Send>>,
-        >,
+        tasks: &mut FuturesUnordered<FetchTask>,
         token: String,
         id: i32,
         gmail_id: String,

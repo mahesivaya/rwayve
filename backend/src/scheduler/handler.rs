@@ -16,8 +16,7 @@ use sqlx::{PgPool, Row};
 fn minutes_to_time(mins: i32) -> NaiveTime {
     let h = mins / 60;
     let m = mins % 60;
-    NaiveTime::from_hms_opt(h as u32, m as u32, 0)
-        .unwrap_or_else(|| NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+    NaiveTime::from_hms_opt(h as u32, m as u32, 0).unwrap_or_default()
 }
 
 // ================= EXTRACT USER =================
@@ -29,7 +28,7 @@ fn get_user_id(req: &HttpRequest) -> Result<i32, HttpResponse> {
         .and_then(|s| s.strip_prefix("Bearer "))
         .ok_or_else(|| HttpResponse::Unauthorized().body("Missing token"))?;
 
-    let decoded = crate::security::jwt::decode_jwt(&token)
+    let decoded = crate::security::jwt::decode_jwt(token)
         .ok_or_else(|| HttpResponse::Unauthorized().body("Invalid token"))?;
 
     Ok(decoded.sub)
@@ -607,25 +606,25 @@ pub async fn delete_meeting(
 
     match result {
         Ok(_) => {
-            if let Some((title, date, start_time, end_time, zoom_join_url)) = snapshot {
-                if !participants.is_empty() {
-                    let pool_clone = pool.clone();
-                    let email_req = MeetingEmailRequest {
-                        user_id,
-                        participants,
-                        title,
-                        date,
-                        start: start_time,
-                        end: end_time,
-                        kind: MeetingEmailKind::Cancel,
-                        zoom_join_url,
-                    };
-                    actix_web::rt::spawn(async move {
-                        if let Err(e) = send_meeting_emails(pool_clone.get_ref(), email_req).await {
-                            println!("❌ Cancel email failed: {:?}", e);
-                        }
-                    });
-                }
+            if let Some((title, date, start_time, end_time, zoom_join_url)) = snapshot
+                && !participants.is_empty()
+            {
+                let pool_clone = pool.clone();
+                let email_req = MeetingEmailRequest {
+                    user_id,
+                    participants,
+                    title,
+                    date,
+                    start: start_time,
+                    end: end_time,
+                    kind: MeetingEmailKind::Cancel,
+                    zoom_join_url,
+                };
+                actix_web::rt::spawn(async move {
+                    if let Err(e) = send_meeting_emails(pool_clone.get_ref(), email_req).await {
+                        println!("❌ Cancel email failed: {:?}", e);
+                    }
+                });
             }
             HttpResponse::Ok().json(json!({
                 "message": "Meeting deleted"
