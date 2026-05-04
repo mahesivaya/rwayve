@@ -1,3 +1,4 @@
+use crate::cache::{Cache, chat_history_key};
 use crate::models::message::{ChatMessage, Message, MessageStatus};
 use crate::prelude::*;
 use crate::security::encryption::{decrypt, encrypt};
@@ -30,6 +31,7 @@ pub struct WsMessage(pub String);
 pub struct ChatSession {
     pub pool: PgPool,
     pub user_id: i32,
+    pub cache: Option<Cache>,
 }
 
 // ================= WS ENTRY =================
@@ -38,6 +40,7 @@ pub async fn chat_ws(
     req: HttpRequest,
     stream: web::Payload,
     pool: web::Data<PgPool>,
+    cache: web::Data<Option<Cache>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let user_id = req
         .query_string()
@@ -50,6 +53,7 @@ pub async fn chat_ws(
         ChatSession {
             pool: pool.get_ref().clone(),
             user_id,
+            cache: cache.get_ref().clone(),
         },
         &req,
         stream,
@@ -119,6 +123,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                     // ================= NORMAL MESSAGE =================
 
                     let pool = self.pool.clone();
+                    let cache = self.cache.clone();
                     let sender_id = data.sender_id;
                     let receiver_id = data.receiver_id;
                     let content = data.content.clone();
@@ -188,6 +193,15 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
 
                                 // SEND BACK TO SENDER
                                 ctx.text(msg_json);
+
+                                // BUST CACHE for this conversation so the next
+                                // history fetch sees the new message immediately.
+                                if let Some(c) = cache.clone() {
+                                    let key = chat_history_key(sender_id, receiver_id);
+                                    actix_web::rt::spawn(async move {
+                                        c.del(&key).await;
+                                    });
+                                }
                             }
                         },
                     ));
@@ -212,16 +226,49 @@ pub struct QueryParams {
 #[get("/messages")]
 pub async fn get_messages(
     pool: web::Data<PgPool>,
+    cache: web::Data<Option<Cache>>,
     query: web::Query<QueryParams>,
 ) -> impl Responder {
+    let cache_key = chat_history_key(query.user1, query.user2);
+
+    if let Some(c) = cache.get_ref().as_ref() {
+        if let Some(cached) = c.get_json::<Vec<Message>>(&cache_key).await {
+            // Still flip unread → read on every fetch so the sender sees the
+            // status change even on cache hits.
+            let _ = sqlx::query(
+                "UPDATE messages SET status = 'read' WHERE receiver_id = $1 AND sender_id = $2",
+            )
+            .bind(query.user1)
+            .bind(query.user2)
+            .execute(pool.get_ref())
+            .await;
+            return HttpResponse::Ok().json(cached);
+        }
+    }
+
+    // Two ordered scans (each index-served by idx_messages_conversation /
+    // idx_messages_reverse) merged via UNION ALL, then a final 50-row cap.
+    // Faster than a single OR-predicate which forces a bitmap scan + sort.
     let result = sqlx::query(
         r#"
         SELECT id, sender_id, receiver_id, content_encrypted, content_iv, status::TEXT AS status, created_at
-        FROM messages
-        WHERE 
-            (sender_id = $1 AND receiver_id = $2)
-            OR
-            (sender_id = $2 AND receiver_id = $1)
+        FROM (
+            (
+                SELECT id, sender_id, receiver_id, content_encrypted, content_iv, status, created_at
+                FROM messages
+                WHERE sender_id = $1 AND receiver_id = $2
+                ORDER BY created_at DESC
+                LIMIT 50
+            )
+            UNION ALL
+            (
+                SELECT id, sender_id, receiver_id, content_encrypted, content_iv, status, created_at
+                FROM messages
+                WHERE sender_id = $2 AND receiver_id = $1
+                ORDER BY created_at DESC
+                LIMIT 50
+            )
+        ) AS m
         ORDER BY created_at DESC
         LIMIT 50
         "#
@@ -277,6 +324,10 @@ pub async fn get_messages(
                 .collect();
 
             messages.reverse();
+
+            if let Some(c) = cache.get_ref().as_ref() {
+                c.set_json_with_ttl(&cache_key, &messages, 60).await;
+            }
 
             HttpResponse::Ok().json(messages)
         }

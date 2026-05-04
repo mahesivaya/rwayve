@@ -1,6 +1,7 @@
 // ==============================
 // 🔹 INTERNAL MODULES (declare first)
 // ==============================
+mod cache;
 mod call;
 mod chat;
 mod drive;
@@ -52,6 +53,7 @@ use actix_files::Files;
 use actix_web::{App, HttpServer, web};
 pub use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use tokio::time::{Duration, sleep};
 
 use dotenvy::dotenv;
@@ -93,12 +95,27 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
 
 fn start_sync_worker(pool: PgPool) {
     tokio::spawn(async move {
+        let mut interval = Duration::from_secs(30);
+
         loop {
-            println!("Sync loop");
-            if let Err(e) = sync_all(&pool).await {
-                println!("sync error {:?}", e);
+            println!("🔄 [SYNC] Starting sync cycle");
+
+            match sync_all(&pool).await {
+                Ok(_) => {
+                    println!("✅ [SYNC] Success");
+                    interval = Duration::from_secs(30); // reset interval
+                }
+                Err(e) => {
+                    println!("❌ [SYNC] Error: {:?}", e);
+
+                    // exponential backoff (max 5 min)
+                    interval = std::cmp::min(interval * 2, Duration::from_secs(300));
+
+                    println!("⏳ [SYNC] Backing off for {:?}", interval);
+                }
             }
-            sleep(Duration::from_secs(30)).await;
+
+            sleep(interval).await;
         }
     });
 }
@@ -111,19 +128,35 @@ async fn main() -> std::io::Result<()> {
 
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL missing");
     let pool = loop {
-        match PgPool::connect(&db_url).await {
+        match PgPoolOptions::new()
+            .max_connections(10)
+            .connect(&db_url)
+            .await
+        {
             Ok(pool) => {
                 println!("✅ Connected to DB");
                 break pool;
             }
             Err(e) => {
-                println!("⏳ Waiting for DB... {:?}", e);
+                println!("⏳ Waiting for DB.. please wait... {:?}", e);
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
         }
     };
+
     start_sync_worker(pool.clone());
     start_body_worker(pool.clone());
+
+    let redis_cache = match crate::cache::Cache::connect().await {
+        Ok(c) => {
+            println!("✅ Connected to Redis");
+            Some(c)
+        }
+        Err(e) => {
+            println!("⚠️ Redis unavailable, caching disabled: {:?}", e);
+            None
+        }
+    };
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -146,6 +179,7 @@ async fn main() -> std::io::Result<()> {
             // .wrap(RateLimitMiddleware)     // protection
             // .wrap(AuthMiddleware)          // security
             .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(redis_cache.clone()))
             .configure(app_routes)
     })
     .bind(("0.0.0.0", 8080))?

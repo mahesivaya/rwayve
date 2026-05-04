@@ -1,7 +1,9 @@
+use crate::cache::Cache;
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
 
 use actix_web::{get, web, HttpRequest, HttpResponse, Responder};
+use serde_json::Value;
 use sqlx::{PgPool, Row, QueryBuilder};
 
 #[derive(Deserialize)]
@@ -16,6 +18,7 @@ pub struct EmailQuery {
 pub async fn get_emails(
     req: HttpRequest,
     pool: web::Data<PgPool>,
+    cache: web::Data<Option<Cache>>,
     query: web::Query<EmailQuery>,
 ) -> impl Responder {
     let user_id = match get_user_id_from_request(&req) {
@@ -24,6 +27,23 @@ pub async fn get_emails(
     };
 
     let limit = 50;
+
+    // Build a stable cache key from the query shape so different filters/pages
+    // get distinct entries.
+    let cache_key = format!(
+        "emails:list:u={}:a={}:f={}:bf={}:bid={}",
+        user_id,
+        query.account_id.map(|i| i.to_string()).unwrap_or_else(|| "all".into()),
+        query.folder.as_deref().unwrap_or("all"),
+        query.before.map(|i| i.to_string()).unwrap_or_else(|| "_".into()),
+        query.before_id.map(|i| i.to_string()).unwrap_or_else(|| "_".into()),
+    );
+
+    if let Some(c) = cache.get_ref().as_ref() {
+        if let Some(cached) = c.get_json::<Value>(&cache_key).await {
+            return HttpResponse::Ok().json(cached);
+        }
+    }
 
     // 🔥 Build query dynamically
     let mut qb = QueryBuilder::new(
@@ -75,7 +95,7 @@ pub async fn get_emails(
 
     match result {
         Ok(rows) => {
-            let emails: Vec<_> = rows
+            let emails: Vec<Value> = rows
                 .into_iter()
                 .map(|row| {
                     serde_json::json!({
@@ -90,6 +110,10 @@ pub async fn get_emails(
                     })
                 })
                 .collect();
+
+            if let Some(c) = cache.get_ref().as_ref() {
+                c.set_json_with_ttl(&cache_key, &emails, 30).await;
+            }
 
             HttpResponse::Ok().json(emails)
         }

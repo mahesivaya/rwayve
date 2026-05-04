@@ -326,3 +326,141 @@ Account ID: JG1En7IbQiqv3MdugcE8ww
 Client ID: 2AA4vlpNS4Cshw2huqUTQ
 Client Secret: 0pzG2mxPa3ydbgmZGmKK1rNL1YtxuiK1
 Secret Token: AxcmVknsROGL4A8l1kEegw
+
+
+
+show all files and folders in tree structure:
+tree -L 2
+Show only folders:
+tree -L 2 -d
+
+flake.nix code:
+{
+  description = "Wayve Fullstack App (Rust + React + Postgres)";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    # Rust overlay (latest toolchain)
+    rust-overlay.url = "github:oxalica/rust-overlay";
+
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs = { self, nixpkgs, rust-overlay, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        overlays = [ rust-overlay.overlay ];
+
+        pkgs = import nixpkgs {
+          inherit system overlays;
+        };
+
+        rustToolchain = pkgs.rust-bin.stable.latest.default;
+
+      in
+      {
+        # ===============================
+        # 🧪 DEV ENVIRONMENT
+        # ===============================
+        devShells.default = pkgs.mkShell {
+          buildInputs = [
+            rustToolchain
+
+            # Rust tooling
+            pkgs.cargo
+            pkgs.clippy
+            pkgs.rustfmt
+
+            # Node (React/Vite frontend)
+            pkgs.nodejs_20
+            pkgs.pnpm
+
+            # DB + native deps
+            pkgs.postgresql
+            pkgs.openssl
+            pkgs.pkg-config
+
+            # Optional but useful
+            pkgs.git
+            pkgs.curl
+            pkgs.docker-compose
+          ];
+
+          # 🔥 ENV for SQLx + OpenSSL
+          shellHook = ''
+            export DATABASE_URL=postgres://postgres:postgres@localhost:5432/wayve
+            export OPENSSL_DIR=${pkgs.openssl.dev}
+            export OPENSSL_LIB_DIR=${pkgs.openssl.out}/lib
+            export OPENSSL_INCLUDE_DIR=${pkgs.openssl.dev}/include
+
+            echo "🚀 Wayve Dev Environment Ready"
+            echo "Rust: $(rustc --version)"
+            echo "Node: $(node --version)"
+          '';
+        };
+
+        # ===============================
+        # 🏗️ BUILD RUST BACKEND
+        # ===============================
+        packages.backend = pkgs.rustPlatform.buildRustPackage {
+          pname = "wayve-backend";
+          version = "0.1.0";
+
+          src = ./backend;
+
+          cargoLock = {
+            lockFile = ./backend/Cargo.lock;
+          };
+
+          buildInputs = [
+            pkgs.openssl
+            pkgs.pkg-config
+          ];
+        };
+
+        # ===============================
+        # 🌐 BUILD REACT FRONTEND
+        # ===============================
+        packages.frontend = pkgs.stdenv.mkDerivation {
+          pname = "wayve-frontend";
+          version = "0.1.0";
+
+          src = ./frontend;
+
+          buildInputs = [
+            pkgs.nodejs_20
+            pkgs.pnpm
+          ];
+
+          buildPhase = ''
+            pnpm install
+            pnpm build
+          '';
+
+          installPhase = ''
+            mkdir -p $out
+            cp -r dist/* $out/
+          '';
+        };
+
+        # ===============================
+        # 🔥 DEFAULT PACKAGE
+        # ===============================
+        packages.default = self.packages.${system}.backend;
+
+      });
+}
+
+
+
+
+
+AES_KEY=12345678901234567890123456789012
+DATABASE_URL=postgres://wayve_user:wayve_password@postgres_db:5432/wayve_db
+
+
+git add .
+git commit -m "release: v0.1.0"
+git tag v0.1.0
+git push origin main --tags

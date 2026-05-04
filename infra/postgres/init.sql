@@ -122,11 +122,14 @@ CREATE TABLE IF NOT EXISTS files (
 
 -- 🔥 INDEXES
 
-CREATE INDEX idx_messages_conversation 
+CREATE INDEX IF NOT EXISTS idx_messages_conversation
 ON messages (sender_id, receiver_id, created_at DESC);
 
-CREATE INDEX idx_emails_pagination 
-ON emails (account_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_reverse
+ON messages (receiver_id, sender_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_unread
+ON messages (receiver_id, status);
 
 CREATE INDEX IF NOT EXISTS idx_emails_account_created
 ON emails (account_id, created_at DESC, id DESC);
@@ -134,40 +137,17 @@ ON emails (account_id, created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_emails_pending_body
 ON emails (account_id, id) WHERE body_encrypted = '';
 
-CREATE INDEX IF NOT EXISTS idx_messages_users
-ON messages (sender_id, receiver_id);
+CREATE INDEX IF NOT EXISTS idx_meetings_user_date
+ON meetings (user_id, date, start_time);
 
-CREATE INDEX IF NOT EXISTS idx_messages_id
-ON messages (id ASC);
-
-CREATE INDEX IF NOT EXISTS idx_meetings_date
-ON meetings (date);
-
-CREATE INDEX idx_files_user_id ON files(user_id);
-
-CREATE INDEX idx_email_accounts_user_id
-ON email_accounts(user_id);
-
-CREATE UNIQUE INDEX unique_user_email_idx
-ON email_accounts (user_id, LOWER(email));
-
-CREATE INDEX idx_meeting_participants_meeting_id
+CREATE INDEX IF NOT EXISTS idx_meeting_participants_meeting_id
 ON meeting_participants(meeting_id);
 
-CREATE INDEX idx_accounts_user
-ON email_accounts (user_id);
+CREATE INDEX IF NOT EXISTS idx_email_accounts_user_id
+ON email_accounts(user_id);
 
-CREATE INDEX idx_emails_account 
-ON emails (account_id);
+CREATE UNIQUE INDEX IF NOT EXISTS unique_user_email_idx
+ON email_accounts (user_id, LOWER(email));
 
-CREATE UNIQUE INDEX idx_emails_unique 
-ON emails (account_id, gmail_id);
-
-CREATE INDEX idx_messages_reverse 
-ON messages (receiver_id, sender_id, created_at DESC);
-
-CREATE INDEX idx_messages_unread 
-ON messages (receiver_id, status);
-
-CREATE INDEX idx_files_user 
+CREATE INDEX IF NOT EXISTS idx_files_user
 ON files (user_id, created_at DESC);
