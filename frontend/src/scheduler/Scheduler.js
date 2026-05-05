@@ -186,7 +186,7 @@ export default function Scheduler() {
         newDate.setMonth(newDate.getMonth() + offset);
         setCurrentDate(newDate);
     };
-    return (_jsxs("div", { className: "scheduler", children: [_jsxs("div", { className: "sidebar", children: [_jsxs("div", { className: "mini-header", children: [_jsx("button", { onClick: () => changeMonth(-1), children: "\u25C0" }), _jsx("span", { children: currentDate.toLocaleDateString("en-US", {
+    return (_jsxs("div", { className: "scheduler", children: [_jsxs("div", { className: "scheduler-sidebar", children: [_jsxs("div", { className: "mini-header", children: [_jsx("button", { onClick: () => changeMonth(-1), children: "\u25C0" }), _jsx("span", { children: currentDate.toLocaleDateString("en-US", {
                                     month: "long",
                                     year: "numeric",
                                 }) }), _jsx("button", { onClick: () => changeMonth(1), children: "\u25B6" })] }), _jsx("div", { className: "mini-calendar", children: [...Array(daysInMonth)].map((_, i) => {

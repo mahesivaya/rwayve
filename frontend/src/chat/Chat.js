@@ -143,7 +143,7 @@ export default function Chat() {
                             padding: 10,
                             cursor: "pointer",
                             borderBottom: "1px solid #eee",
-                            background: selectedUser?.id === u.id ? "#f0f0f0" : "white",
+                            background: selectedUser?.id === u.id ? "#f0f0f0" : "lightsteelblue",
                         }, onClick: () => loadMessages(u), children: u.email }, u.id)))] }), _jsxs("div", { style: {
                     flex: 1,
                     minWidth: 0,

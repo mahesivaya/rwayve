@@ -36,7 +36,7 @@
 }
 
 /* ================= SIDEBAR ================= */
-.sidebar {
+.scheduler-sidebar {
   width: 240px;
   /* min-width: 280px; */
   background: linear-gradient(180deg, #1f2937, #0f172a);

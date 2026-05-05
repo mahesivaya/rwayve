@@ -232,7 +232,7 @@ export default function Scheduler() {
     <div className="scheduler">
 
       {/* SIDEBAR */}
-      <div className="sidebar">
+      <div className="scheduler-sidebar">
 
         <div className="mini-header">
           <button onClick={() => changeMonth(-1)}>◀</button>
