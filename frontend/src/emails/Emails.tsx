@@ -32,6 +32,29 @@ export default function Emails() {
 
   const emailCache = useRef<{ [key: number]: any }>({});
 
+  // ================= NARROW MODE (split-pane / small viewport) =================
+  // When the container is narrow (e.g. rendered inside the split view), we
+  // collapse the 3-pane layout to a stacked one: show the list OR the detail,
+  // not both. The threshold is the container width — independent of viewport
+  // size, so this also responds correctly to a resized split.
+  const mainRef = useRef<HTMLDivElement>(null);
+  const [isNarrow, setIsNarrow] = useState(false);
+
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setIsNarrow(entry.contentRect.width < 800);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const showList = !isNarrow || selectedEmail === null;
+  const showDetail = !isNarrow || selectedEmail !== null;
+
   // ================= FETCH ACCOUNTS =================
   const fetchAccounts = async () => {
     const token = localStorage.getItem("token");
@@ -142,7 +165,7 @@ export default function Emails() {
 
   // ================= UI =================
   return (
-    <div className="main">
+    <div ref={mainRef} className={`main ${isNarrow ? "narrow" : ""}`}>
 
       {/* ================= SIDEBAR ================= */}
       <div className="sidebar">
@@ -199,42 +222,44 @@ export default function Emails() {
       </div>
 
       {/* ================= EMAIL LIST ================= */}
-      <div className="email-list">
-        {emails.map((email) => (
-          <div
-            key={email.id}
-            className={`email-item ${
-              selectedEmail?.id === email.id ? "active" : ""
-            }`}
-            onClick={() => openEmail(email)}
-          >
-            <div className="email-top">
-              <span className="email-sender">{email.sender}</span>
-              <span className="email-time">
-                {new Date(email.created_at).toLocaleTimeString()}
-              </span>
-            </div>
-
-            <div className="email-subject">{email.subject}</div>
-
-            <div className="email-preview">
-              {email.preview || ""}
-            </div>
-          </div>
-        ))}
-
-        {hasMore && (
-          <div className="load-more-wrap">
-            <button
-              className="load-more-btn"
-              onClick={loadMore}
-              disabled={loadingMore}
+      {showList && (
+        <div className="email-list">
+          {emails.map((email: any) => (
+            <div
+              key={email.id}
+              className={`email-item ${
+                selectedEmail?.id === email.id ? "active" : ""
+              }`}
+              onClick={() => openEmail(email)}
             >
-              {loadingMore ? "Loading..." : "Load More"}
-            </button>
-          </div>
-        )}
-      </div>
+              <div className="email-top">
+                <span className="email-sender">{email.sender}</span>
+                <span className="email-time">
+                  {new Date(email.created_at).toLocaleTimeString()}
+                </span>
+              </div>
+
+              <div className="email-subject">{email.subject}</div>
+
+              <div className="email-preview">
+                {email.preview || ""}
+              </div>
+            </div>
+          ))}
+
+          {hasMore && (
+            <div className="load-more-wrap">
+              <button
+                className="load-more-btn"
+                onClick={loadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? "Loading..." : "Load More"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ================= COMPOSE MODAL ================= */}
       {composeOpen && accounts.length > 0 && (
@@ -270,22 +295,35 @@ export default function Emails() {
       )}
 
       {/* ================= EMAIL DETAIL ================= */}
-      <div className="email-detail">
-        {!selectedEmail ? (
-          <p>Select an email</p>
-        ) : (
-          <>
-            <h2>{selectedEmail.subject}</h2>
+      {showDetail && (
+        <div className="email-detail">
+          {isNarrow && selectedEmail && (
+            <button
+              className="email-detail-back"
+              onClick={() => setSelectedEmail(null)}
+              title="Back to inbox"
+              aria-label="Back to inbox"
+            >
+              ✕
+            </button>
+          )}
 
-            <p><b>From:</b> {selectedEmail.sender}</p>
-            <p><b>To:</b> {selectedEmail.receiver}</p>
+          {!selectedEmail ? (
+            <p>Select an email</p>
+          ) : (
+            <>
+              <h2>{selectedEmail.subject}</h2>
 
-            <div className="email-body">
-              {selectedEmail.body}
-            </div>
-          </>
-        )}
-      </div>
+              <p><b>From:</b> {selectedEmail.sender}</p>
+              <p><b>To:</b> {selectedEmail.receiver}</p>
+
+              <div className="email-body">
+                {selectedEmail.body}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
     </div>
   );

@@ -14,6 +14,22 @@ export default function Emails() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [composeOpen, setComposeOpen] = useState(false);
     const emailCache = useRef({});
+    // ================= NARROW MODE =================
+    const mainRef = useRef(null);
+    const [isNarrow, setIsNarrow] = useState(false);
+    useEffect(() => {
+        const el = mainRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                setIsNarrow(entry.contentRect.width < 800);
+            }
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+    const showList = !isNarrow || selectedEmail === null;
+    const showDetail = !isNarrow || selectedEmail !== null;
     // ================= FETCH ACCOUNTS =================
     const fetchAccounts = async () => {
         const token = localStorage.getItem("token");
@@ -98,7 +114,7 @@ export default function Emails() {
         setSelectedEmail(data);
     };
     // ================= UI =================
-    return (_jsxs("div", { className: "main", children: [_jsxs("div", { className: "sidebar", children: [_jsx("button", { className: "compose-btn", onClick: () => setComposeOpen(true), disabled: accounts.length === 0, title: accounts.length === 0 ? "Add an account first" : "Compose", children: "Compose" }), _jsx("div", { className: "mail-section-title", children: "Accounts" }), _jsx("button", { className: `filter-btn ${activeAccount === null ? "active" : ""}`, onClick: () => setActiveAccount(null), children: "\uD83C\uDF10 All Accounts" }), accounts.map((acc) => (_jsx("button", { className: `filter-btn ${activeAccount === acc.id ? "active" : ""}`, onClick: () => setActiveAccount(acc.id), children: acc.email }, acc.id))), _jsx("button", { className: "add-email-btn", onClick: addAccount, children: "\u2795 Add Account" }), _jsx("div", { className: "mail-section-title", children: "Folders" }), _jsxs("div", { className: "mail-filters", children: [_jsx("button", { className: `filter-btn ${activeFolder === "inbox" ? "active" : ""}`, onClick: () => setActiveFolder("inbox"), children: "\uD83D\uDCE5 Inbox" }), _jsx("button", { className: `filter-btn ${activeFolder === "sent" ? "active" : ""}`, onClick: () => setActiveFolder("sent"), children: "\uD83D\uDCE4 Sent" })] })] }), _jsxs("div", { className: "email-list", children: [emails.map((email) => (_jsxs("div", { className: `email-item ${selectedEmail?.id === email.id ? "active" : ""}`, onClick: () => openEmail(email), children: [_jsxs("div", { className: "email-top", children: [_jsx("span", { className: "email-sender", children: email.sender }), _jsx("span", { className: "email-time", children: new Date(email.created_at).toLocaleTimeString() })] }), _jsx("div", { className: "email-subject", children: email.subject }), _jsx("div", { className: "email-preview", children: email.preview || "" })] }, email.id))), hasMore && (_jsx("div", { className: "load-more-wrap", children: _jsx("button", { className: "load-more-btn", onClick: loadMore, disabled: loadingMore, children: loadingMore ? "Loading..." : "Load More" }) }))] }), composeOpen && accounts.length > 0 && (_jsx("div", { onClick: () => setComposeOpen(false), style: {
+    return (_jsxs("div", { ref: mainRef, className: `main ${isNarrow ? "narrow" : ""}`, children: [_jsxs("div", { className: "sidebar", children: [_jsx("button", { className: "compose-btn", onClick: () => setComposeOpen(true), disabled: accounts.length === 0, title: accounts.length === 0 ? "Add an account first" : "Compose", children: "Compose" }), _jsx("div", { className: "mail-section-title", children: "Accounts" }), _jsx("button", { className: `filter-btn ${activeAccount === null ? "active" : ""}`, onClick: () => setActiveAccount(null), children: "\uD83C\uDF10 All Accounts" }), accounts.map((acc) => (_jsx("button", { className: `filter-btn ${activeAccount === acc.id ? "active" : ""}`, onClick: () => setActiveAccount(acc.id), children: acc.email }, acc.id))), _jsx("button", { className: "add-email-btn", onClick: addAccount, children: "\u2795 Add Account" }), _jsx("div", { className: "mail-section-title", children: "Folders" }), _jsxs("div", { className: "mail-filters", children: [_jsx("button", { className: `filter-btn ${activeFolder === "inbox" ? "active" : ""}`, onClick: () => setActiveFolder("inbox"), children: "\uD83D\uDCE5 Inbox" }), _jsx("button", { className: `filter-btn ${activeFolder === "sent" ? "active" : ""}`, onClick: () => setActiveFolder("sent"), children: "\uD83D\uDCE4 Sent" })] })] }), showList && _jsxs("div", { className: "email-list", children: [emails.map((email) => (_jsxs("div", { className: `email-item ${selectedEmail?.id === email.id ? "active" : ""}`, onClick: () => openEmail(email), children: [_jsxs("div", { className: "email-top", children: [_jsx("span", { className: "email-sender", children: email.sender }), _jsx("span", { className: "email-time", children: new Date(email.created_at).toLocaleTimeString() })] }), _jsx("div", { className: "email-subject", children: email.subject }), _jsx("div", { className: "email-preview", children: email.preview || "" })] }, email.id))), hasMore && (_jsx("div", { className: "load-more-wrap", children: _jsx("button", { className: "load-more-btn", onClick: loadMore, disabled: loadingMore, children: loadingMore ? "Loading..." : "Load More" }) }))] }), composeOpen && accounts.length > 0 && (_jsx("div", { onClick: () => setComposeOpen(false), style: {
                     position: "fixed",
                     inset: 0,
                     background: "rgba(0,0,0,0.4)",
@@ -113,5 +129,5 @@ export default function Emails() {
                         width: 480,
                         maxWidth: "90vw",
                         boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-                    }, children: _jsx(SendEmail, { accountId: activeAccount ?? accounts[0].id, onClose: () => setComposeOpen(false) }) }) })), _jsx("div", { className: "email-detail", children: !selectedEmail ? (_jsx("p", { children: "Select an email" })) : (_jsxs(_Fragment, { children: [_jsx("h2", { children: selectedEmail.subject }), _jsxs("p", { children: [_jsx("b", { children: "From:" }), " ", selectedEmail.sender] }), _jsxs("p", { children: [_jsx("b", { children: "To:" }), " ", selectedEmail.receiver] }), _jsx("div", { className: "email-body", children: selectedEmail.body })] })) })] }));
+                    }, children: _jsx(SendEmail, { accountId: activeAccount ?? accounts[0].id, onClose: () => setComposeOpen(false) }) }) })), showDetail && _jsxs("div", { className: "email-detail", children: [isNarrow && selectedEmail && _jsx("button", { className: "email-detail-back", onClick: () => setSelectedEmail(null), title: "Back to inbox", "aria-label": "Back to inbox", children: "✕" }), !selectedEmail ? (_jsx("p", { children: "Select an email" })) : (_jsxs(_Fragment, { children: [_jsx("h2", { children: selectedEmail.subject }), _jsxs("p", { children: [_jsx("b", { children: "From:" }), " ", selectedEmail.sender] }), _jsxs("p", { children: [_jsx("b", { children: "To:" }), " ", selectedEmail.receiver] }), _jsx("div", { className: "email-body", children: selectedEmail.body })] }))] })] }));
 }
