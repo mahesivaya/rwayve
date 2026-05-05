@@ -10,18 +10,20 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
+    # 🔥 SET DEFAULT DIRECTORY (cleanest solution)
+    defaults:
+      run:
+        working-directory: backend
+
     steps:
-      # 📥 Checkout repo (full history for commit checks)
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # 🔥 IMPORTANT: gets all commits
+          fetch-depth: 0
 
-      # 🦀 Setup Rust
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # 📦 Cache dependencies
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
