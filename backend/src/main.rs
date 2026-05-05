@@ -9,6 +9,7 @@ mod email;
 mod logging;
 mod middleware;
 mod models;
+mod notes;
 mod prelude;
 mod routes;
 mod scheduler;
@@ -31,6 +32,8 @@ use crate::drive::handler::{get_files, upload_file};
 use crate::scheduler::handler::{create_meeting, delete_meeting, get_meetings, update_meeting};
 
 use crate::call::handler::call_ws;
+
+use crate::notes::handler::{create_note, delete_note, list_notes, update_note};
 
 use crate::email::body_worker::start_body_worker;
 use crate::email::handler::{
@@ -79,7 +82,11 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
                 .service(get_files)
                 .service(send)
                 .service(get_me)
-                .service(save_public_key),
+                .service(save_public_key)
+                .service(list_notes)
+                .service(create_note)
+                .service(update_note)
+                .service(delete_note),
         )
         // 🔥 AUTH / GOOGLE
         .route("/gmail/login", web::get().to(gmail_login))

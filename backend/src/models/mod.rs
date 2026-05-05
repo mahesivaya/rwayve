@@ -5,5 +5,6 @@ pub mod drive;
 pub mod email;
 pub mod email_request;
 pub mod message;
+pub mod note;
 pub mod scheduler;
 pub mod user;

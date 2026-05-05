@@ -53,6 +53,12 @@ export default function Home() {
           <h3>📁 Drive</h3>
           <p>Store and manage files</p>
         </div>
+
+        <div className="card" onClick={() => navigate("/notes")}>
+          <h3>📝 Notes</h3>
+          <p>Store and manage notes</p>
+        </div>
+
       </div>
     </div>
   );

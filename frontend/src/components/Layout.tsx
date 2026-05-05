@@ -11,8 +11,9 @@ const ChatView = lazy(() => import("../chat/Chat"));
 const CallView = lazy(() => import("../call/Call"));
 const SchedulerView = lazy(() => import("../scheduler/Scheduler"));
 const DriveView = lazy(() => import("../drive/DriveBox"));
+const NotesView = lazy(() => import("../notes/Notes"));
 
-type AppKey = "home" | "emails" | "chat" | "call" | "scheduler" | "drive";
+type AppKey = "home" | "emails" | "chat" | "call" | "scheduler" | "drive" | "notes";
 
 const SPLIT_APPS = [
   { key: "home" as AppKey, label: "Home", path: "/", icon: "🏠", Comp: HomeView },
@@ -21,6 +22,7 @@ const SPLIT_APPS = [
   { key: "call" as AppKey, label: "Call", path: "/call", icon: "📞", Comp: CallView },
   { key: "scheduler" as AppKey, label: "Scheduler", path: "/scheduler", icon: "📅", Comp: SchedulerView },
   { key: "drive" as AppKey, label: "Files", path: "/drive", icon: "📁", Comp: DriveView },
+  { key: "notes" as AppKey, label: "Notes", path: "/notes", icon: "📝", Comp: NotesView },
 ];
 
 export default function Layout() {
@@ -86,6 +88,7 @@ export default function Layout() {
           {navItem("/call", "call", "Call")}
           {navItem("/scheduler", "scheduler", "Scheduler")}
           {navItem("/drive", "drive", "Files")}
+          {navItem("/notes", "notes", "Notes")}
         </div>
 
         <div className="actions">
@@ -136,6 +139,7 @@ export default function Layout() {
           <Link to="/call">📞</Link>
           <Link to="/scheduler">📅</Link>
           <Link to="/drive">📁</Link>
+          <Link to="/notes">📝</Link>
 
           <div className="icon-sidebar-spacer" />
 

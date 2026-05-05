@@ -4,12 +4,13 @@
     "lib": ["DOM", "ESNext"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "jsx": "react-jsx",   // ✅ CRITICAL
+    "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "types": ["vite/client", "react", "react-dom"]
   },
   "include": ["src"]
 }

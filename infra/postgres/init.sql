@@ -118,6 +118,15 @@ CREATE TABLE IF NOT EXISTS files (
         ON DELETE CASCADE
 );
 
+-- Notes
+CREATE TABLE IF NOT EXISTS notes (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    title TEXT,
+    content TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
 
 
 -- 🔥 INDEXES
