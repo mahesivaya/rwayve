@@ -27,6 +27,7 @@ export default function Layout() {
 
     const [splitOpen, setSplitOpen] = useState(false);
     const [splitView, setSplitView] = useState(null);
+    const [splitTarget, setSplitTarget] = useState("right");
 
     if (!user) return null;
 
@@ -35,13 +36,13 @@ export default function Layout() {
     const splitLabel = splitApp?.label ?? null;
 
     const navItem = (path, app, label) => {
-        const isMain = !splitOpen && location.pathname === path;
-        const isSplit = splitOpen && splitView === app;
+        const isLeftActive = location.pathname === path;
+        const isRightActive = splitOpen && splitView === app;
         return _jsx(Link, {
             to: path,
-            className: [isMain ? "active" : "", isSplit ? "active-split" : ""].filter(Boolean).join(" "),
+            className: [isLeftActive ? "active" : "", isRightActive ? "active-split" : ""].filter(Boolean).join(" "),
             onClick: (e) => {
-                if (splitOpen) {
+                if (splitOpen && splitTarget === "right") {
                     e.preventDefault();
                     setSplitView(app);
                 }
@@ -62,9 +63,31 @@ export default function Layout() {
                 navItem("/drive", "drive", "Files"),
             ] }),
             _jsxs("div", { className: "actions", children: [
-                splitOpen && _jsx("span", {
+                splitOpen && _jsxs("div", {
+                    className: "split-target",
+                    role: "group",
+                    "aria-label": "Header click target",
+                    children: [
+                        _jsx("button", {
+                            type: "button",
+                            className: `split-target-btn ${splitTarget === "left" ? "active" : ""}`,
+                            onClick: () => setSplitTarget("left"),
+                            title: "Next click loads into the LEFT pane (URL)",
+                            children: "← Left",
+                        }),
+                        _jsx("button", {
+                            type: "button",
+                            className: `split-target-btn ${splitTarget === "right" ? "active" : ""}`,
+                            onClick: () => setSplitTarget("right"),
+                            title: "Next click loads into the RIGHT pane",
+                            children: "Right →",
+                        }),
+                    ],
+                }),
+                splitOpen && splitView && _jsx("span", {
                     className: "split-hint",
-                    children: splitView ? `↗ Split: ${splitLabel}` : "↗ Split open — pick an app",
+                    title: `Right pane: ${splitLabel}`,
+                    children: `↗ ${splitLabel}`,
                 }),
                 _jsx("span", { className: "user-email", children: user.email }),
                 _jsx("button", {

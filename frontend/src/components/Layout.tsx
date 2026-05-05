@@ -33,6 +33,11 @@ export default function Layout() {
   // Right pane starts empty — the user picks an app from the top header,
   // and the click is intercepted to fill this pane instead of navigating.
   const [splitView, setSplitView] = useState<AppKey | null>(null);
+  // When split is open, this decides which pane the next header-link click
+  // affects. "left" → normal URL navigation (Outlet updates). "right" →
+  // preventDefault and set splitView. Default to "right" so opening split
+  // and clicking an app feels like adding a second view.
+  const [splitTarget, setSplitTarget] = useState<"left" | "right">("right");
 
   if (!user) return null;
 
@@ -43,17 +48,21 @@ export default function Layout() {
   // When the split is open, header link clicks target the right pane instead
   // of navigating the URL. When closed, the link behaves normally.
   const navItem = (path: string, app: AppKey, label: string) => {
-    const isMain = !splitOpen && location.pathname === path;
-    const isSplit = splitOpen && splitView === app;
+    const isLeftActive = location.pathname === path;
+    const isRightActive = splitOpen && splitView === app;
     return (
       <Link
         to={path}
         className={[
-          isMain ? "active" : "",
-          isSplit ? "active-split" : "",
+          isLeftActive ? "active" : "",
+          isRightActive ? "active-split" : "",
         ].filter(Boolean).join(" ")}
         onClick={(e: { preventDefault: () => void }) => {
-          if (splitOpen) {
+          // Split open + target=right → load into right pane (no URL change).
+          // Split open + target=left  → fall through to normal Link nav so
+          // the URL updates and Outlet re-renders the left pane.
+          // Split closed → normal Link nav.
+          if (splitOpen && splitTarget === "right") {
             e.preventDefault();
             setSplitView(app);
           }
@@ -81,8 +90,28 @@ export default function Layout() {
 
         <div className="actions">
           {splitOpen && (
-            <span className="split-hint">
-              {splitView ? `↗ Split: ${splitLabel}` : "↗ Split open — pick an app"}
+            <div className="split-target" role="group" aria-label="Header click target">
+              <button
+                type="button"
+                className={`split-target-btn ${splitTarget === "left" ? "active" : ""}`}
+                onClick={() => setSplitTarget("left")}
+                title="Next click loads into the LEFT pane (URL)"
+              >
+                ← Left
+              </button>
+              <button
+                type="button"
+                className={`split-target-btn ${splitTarget === "right" ? "active" : ""}`}
+                onClick={() => setSplitTarget("right")}
+                title="Next click loads into the RIGHT pane"
+              >
+                Right →
+              </button>
+            </div>
+          )}
+          {splitOpen && splitView && (
+            <span className="split-hint" title={`Right pane: ${splitLabel}`}>
+              ↗ {splitLabel}
             </span>
           )}
           <span className="user-email">{user.email}</span>

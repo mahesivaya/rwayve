@@ -93,6 +93,39 @@
   white-space: nowrap;
 }
 
+/* Segmented toggle: which pane the next header-link click targets. */
+.split-target {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  overflow: hidden;
+  background: white;
+}
+
+.split-target-btn {
+  border: none;
+  background: transparent;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #374151;
+  white-space: nowrap;
+  transition: 0.15s;
+}
+
+.split-target-btn + .split-target-btn {
+  border-left: 1px solid #e5e7eb;
+}
+
+.split-target-btn:hover:not(.active) {
+  background: #f3f4f6;
+}
+
+.split-target-btn.active {
+  background: #2563eb;
+  color: white;
+}
+
 .user-email {
   font-size: 14px;
   color: black;
