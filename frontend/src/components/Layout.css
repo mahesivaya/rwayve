@@ -1,80 +1,85 @@
-/* FULL APP LAYOUT */
+/* =============================
+   🌍 APP LAYOUT
+============================== */
 .app {
+  flex: 1;
   height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  margin: 0;
 }
 
-/* HEADER */
+/* =============================
+   🔝 HEADER
+============================== */
 .header {
   height: 60px;
-  background:white;
-  color: white;
+  background: lightslategray;
+  color: black;
 
   display: grid;
-  grid-template-columns: auto 1fr auto; /* 🔥 BEST FIX */
+  grid-template-columns: auto 1fr auto;
   align-items: center;
 
   padding: 0 20px;
   flex-shrink: 0;
+
+  border-bottom: 1px solid #e5e7eb;
 }
 
-/* LOGO */
+/* =============================
+   🧠 LOGO
+============================== */
 .logo {
   font-weight: bold;
   font-size: 18px;
   cursor: pointer;
-  white-space: nowrap;
   color: black;
 }
 
-/* NAV (CENTERED ALWAYS) */
+/* =============================
+   🧭 NAV
+============================== */
 .nav {
   display: flex;
-  justify-content: center;   /* 🔥 center nav */
+  justify-content: center;
   gap: 20px;
   align-items: center;
 }
 
-/* NAV LINKS */
 .nav a {
-  color:black;
+  color: black;
   text-decoration: none;
   font-size: 14px;
   padding: 6px 10px;
   border-radius: 6px;
-  transition: all 0.2s ease;
-  white-space: nowrap;
+  transition: 0.2s;
 }
 
-/* HOVER */
 .nav a:hover {
-  background: white;
-  color:black;
+  background: #f3f4f6;
 }
 
-/* ACTIVE TAB */
 .nav .active {
   background: #2563eb;
-  color: black;
+  color: white;
 }
 
-/* RIGHT SIDE */
+/* =============================
+   👤 ACTIONS
+============================== */
 .actions {
   display: flex;
   align-items: center;
   gap: 12px;
-  white-space: nowrap;
 }
 
-/* USER EMAIL */
 .user-email {
   font-size: 14px;
   color: black;
 }
 
-/* LOGOUT BUTTON */
 .logout-btn {
   background: #ef4444;
   color: white;
@@ -82,15 +87,128 @@
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
-  transition: 0.2s;
 }
 
 .logout-btn:hover {
   background: #dc2626;
 }
 
-/* MAIN CONTENT */
+/* =============================
+   🔥 BODY LAYOUT
+============================== */
+.body {
+  display: flex;
+  flex: 1;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+}
+
+/* =============================
+   📌 ICON SIDEBAR (LEFT)
+============================== */
+.icon-sidebar {
+  width: 60px;
+  background: #f5f7fb;
+
+  border-right: 1px solid #e5e7eb;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+
+  padding-top: 12px;
+}
+
+/* ICON BUTTON */
+.icon-link {
+  width: 44px;
+  height: 34px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 10px;
+  font-size: 20px;
+
+  cursor: pointer;
+  color: black;
+  transition: 0.2s;
+}
+
+.icon-link:hover {
+  background: #e5e7eb;
+}
+
+.icon-link.active {
+  background: #2563eb;
+  color: white;
+}
+
+/* =============================
+   📂 ACCOUNT SIDEBAR
+============================== */
+/* .account-sidebar {
+  width: 260px;
+
+  background: #f5f7fb;
+  border-right: 1px solid #e5e7eb;
+
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+
+  overflow-y: auto;
+} */
+
+/* =============================
+   📄 CONTENT
+============================== */
 .content {
   flex: 1;
+  display: flex;
   overflow: hidden;
+}
+
+/* =============================
+   📧 EMAIL LAYOUT
+============================== */
+.email-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+/* EMAIL LIST */
+.email-list {
+  width: 320px;
+  border-right: 1px solid #e5e7eb;
+  overflow-y: auto;
+  background: white;
+}
+
+/* EMAIL VIEW */
+.email-view {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  background: white;
+}
+
+/* =============================
+   📩 EMAIL ITEM
+============================== */
+.email-item {
+  padding: 12px;
+  border-bottom: 1px solid #f1f1f1;
+  cursor: pointer;
+}
+
+.email-item:hover {
+  background: #f9fafb;
+}
+
+.email-item.active {
+  background: #e0e7ff;
 }

@@ -176,10 +176,17 @@ export default function Chat() {
   // UI
   // =============================
   return (
-    <div style={{ display: "flex", height: "100%" }}>
+    <div style={{ display: "flex", height: "100%", width: "100%", flex: 1 }}>
 
       {/* LEFT USERS */}
-      <div style={{ width: "30%", borderRight: "1px solid #ddd" }}>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          borderRight: "1px solid #ddd",
+          overflowY: "auto",
+        }}
+      >
         <h3 style={{ padding: 10 }}>Users</h3>
 
         {users.map((u) => (
@@ -199,7 +206,14 @@ export default function Chat() {
       </div>
 
       {/* RIGHT CHAT */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
 
         {/* MESSAGES */}
         <div style={{ flex: 1, padding: 10, overflowY: "auto" }}>

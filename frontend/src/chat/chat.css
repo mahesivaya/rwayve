@@ -7,8 +7,9 @@
   
   /* 🔥 USER LIST (smaller, not dominant) */
   .user-list {
-    width: 220px;
-    min-width: 180px;
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
     border-right: 1px solid #ddd;
     background: #f8f9fa;
   }
@@ -16,10 +17,10 @@
   /* CHAT AREA FULL WIDTH */
   .chat-area {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
   
-    width: 100%;
     padding: 20px;
   }
   
@@ -32,10 +33,9 @@
   .messages {
     flex: 1;
     overflow-y: auto;
-    border: 1px solid #ddd;
-    padding: 15px;
-    border-radius: 8px;
-    background: white;
+    padding: 20px;
+    background: #f9fafb;   /* subtle background */
+    border: none;          /* ❌ remove border */
   }
   
   /* MESSAGE */
@@ -51,22 +51,30 @@
   .bubble {
     display: inline-block;
     padding: 10px 14px;
-    border-radius: 12px;
-    max-width: 70%;
+    border-radius: 16px;
+    max-width: 65%;
+    font-size: 14px;
   }
   
   .bubble.me {
-    background: #d1e7ff;
+    background: #2563eb;
+    color: white;
+    border-bottom-right-radius: 4px;
   }
   
   .bubble.other {
-    background: #f1f1f1;
+    background: #e5e7eb;
+    border-bottom-left-radius: 4px;
   }
   
   /* INPUT */
   .chat-input {
     display: flex;
-    margin-top: 10px;
+    gap: 10px;
+  
+    padding-top: 10px;
+    border-top: 1px solid #e5e7eb;
+    background: white;
   }
   
   .chat-input textarea {

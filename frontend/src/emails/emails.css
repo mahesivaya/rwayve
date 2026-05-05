@@ -1,9 +1,6 @@
 /* ================= ROOT ================= */
 body {
-  background: #ffffff;
-  color: #111827;
-  margin: 0;
-  font-family: monospace;
+  background: lightsteelblue;
 }
 
 /* ================= MAIN (FIXED HEIGHT ISSUE) ================= */
@@ -19,8 +16,8 @@ body {
 
 /* ================= SIDEBAR ================= */
 .sidebar {
-  width: 240px;
-  background: #ffffff;
+  /* width: 240px; */
+  background:lightsteelblue;
   padding: 16px;
   border-right: 1px solid #e5e7eb;
   display: flex;
@@ -45,7 +42,7 @@ body {
 .add-email-btn {
   padding: 10px;
   border-radius: 8px;
-  background: #f9fafb;
+  background: lightslategray;
   color: #111827;
   border: 1px solid #e5e7eb;
   margin-bottom: 16px;
@@ -79,21 +76,20 @@ body {
 
 /* Hover */
 .filter-btn:hover {
-  background: #f3f4f6;
+  background: lightslategray;
 }
 
 /* ACTIVE */
 .filter-btn.active {
-  background: #e8f0fe;
-  color: #1a73e8;
-  border-left: 4px solid #1a73e8; /* 🔥 Gmail feel */
+  background: lightslategray;
+  color: black;
   font-weight: 600;
 }
 
 /* ================= EMAIL LIST (MIDDLE PANEL) ================= */
 .email-list {
   width: 340px;
-  background: #ffffff;
+  background:lightsteelblue;
   border-right: 1px solid #e5e7eb;
   overflow-y: auto;
   display: flex;
@@ -163,7 +159,7 @@ body {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
-  background: #ffffff;
+  background:lightsteelblue;
 }
 
 /* BODY */

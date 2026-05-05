@@ -1,7 +1,7 @@
 /* PAGE */
 .dashboard {
     padding: 30px;
-    background: #f5f7fb;
+    background: lightsteelblue;
   
     width: 100%;
     min-height: 100vh;   /* ✅ full page */
@@ -36,7 +36,7 @@
   
   /* CARD */
   .card {
-    background: white;
+    background: lightslategray;
     padding: 30px;
     border-radius: 12px;
     cursor: pointer;

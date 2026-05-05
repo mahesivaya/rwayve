@@ -134,12 +134,22 @@ export default function Chat() {
     // =============================
     // UI
     // =============================
-    return (_jsxs("div", { style: { display: "flex", height: "100%" }, children: [_jsxs("div", { style: { width: "30%", borderRight: "1px solid #ddd" }, children: [_jsx("h3", { style: { padding: 10 }, children: "Users" }), users.map((u) => (_jsx("div", { style: {
+    return (_jsxs("div", { style: { display: "flex", height: "100%", width: "100%", flex: 1 }, children: [_jsxs("div", { style: {
+                    flex: 1,
+                    minWidth: 0,
+                    borderRight: "1px solid #ddd",
+                    overflowY: "auto",
+                }, children: [_jsx("h3", { style: { padding: 10 }, children: "Users" }), users.map((u) => (_jsx("div", { style: {
                             padding: 10,
                             cursor: "pointer",
                             borderBottom: "1px solid #eee",
                             background: selectedUser?.id === u.id ? "#f0f0f0" : "white",
-                        }, onClick: () => loadMessages(u), children: u.email }, u.id)))] }), _jsxs("div", { style: { flex: 1, display: "flex", flexDirection: "column" }, children: [_jsx("div", { style: { flex: 1, padding: 10, overflowY: "auto" }, children: messages.map((msg, i) => (_jsx("div", { style: {
+                        }, onClick: () => loadMessages(u), children: u.email }, u.id)))] }), _jsxs("div", { style: {
+                    flex: 1,
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                }, children: [_jsx("div", { style: { flex: 1, padding: 10, overflowY: "auto" }, children: messages.map((msg, i) => (_jsx("div", { style: {
                                 textAlign: msg.sender_id === user?.id ? "right" : "left",
                                 marginBottom: 10,
                             }, children: _jsxs("div", { style: {

@@ -3,6 +3,18 @@ import "./emails.css";
 import "./loadMore.css";
 import SendEmail from "./SendEmail";
 
+
+type Email = {
+  id: number;
+  sender: string;
+  receiver: string;
+  subject: string;
+  preview?: string;
+  body?: string;
+  created_at: string;
+};
+
+
 const API_BASE = import.meta.env.VITE_API_URL;
 
 export default function Emails() {

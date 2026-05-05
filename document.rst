@@ -464,3 +464,7 @@ git add .
 git commit -m "release: v0.1.0"
 git tag v0.1.0
 git push origin main --tags
+
+
+
+npm install lucide-react

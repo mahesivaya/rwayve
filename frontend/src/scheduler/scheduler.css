@@ -37,8 +37,8 @@
 
 /* ================= SIDEBAR ================= */
 .sidebar {
-  width: 280px;
-  min-width: 280px;
+  width: 240px;
+  /* min-width: 280px; */
   background: linear-gradient(180deg, #1f2937, #0f172a);
   color: #f8fafc;
   padding: 22px 18px;
