@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import "./Layout.css";
 // Lazy-loaded so the split pane doesn't bloat the initial bundle and only
 // pays for what the user actually opens in the secondary tab.
@@ -12,6 +12,7 @@ const CallView = lazy(() => import("../call/Call"));
 const SchedulerView = lazy(() => import("../scheduler/Scheduler"));
 const DriveView = lazy(() => import("../drive/DriveBox"));
 const NotesView = lazy(() => import("../notes/Notes"));
+const AIChatView = lazy(() => import("../aichat/AIChat"));
 const SPLIT_APPS = [
     { key: "home", label: "Home", path: "/", icon: "🏠", Comp: HomeView },
     { key: "emails", label: "Emails", path: "/emails", icon: "📧", Comp: EmailsView },
@@ -20,6 +21,7 @@ const SPLIT_APPS = [
     { key: "scheduler", label: "Scheduler", path: "/scheduler", icon: "📅", Comp: SchedulerView },
     { key: "drive", label: "Files", path: "/drive", icon: "📁", Comp: DriveView },
     { key: "notes", label: "Notes", path: "/notes", icon: "📝", Comp: NotesView },
+    { key: "aichat", label: "AI Chat", path: "/aichat", icon: "✨", Comp: AIChatView },
 ];
 export default function Layout() {
     const { user, logout } = useAuth();
@@ -35,6 +37,19 @@ export default function Layout() {
     // preventDefault and set splitView. Default to "right" so opening split
     // and clicking an app feels like adding a second view.
     const [splitTarget, setSplitTarget] = useState("right");
+    // Profile dropdown
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef(null);
+    useEffect(() => {
+        if (!menuOpen) return;
+        const onDocClick = (e) => {
+            if (menuRef.current && !menuRef.current.contains(e.target)) {
+                setMenuOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", onDocClick);
+        return () => document.removeEventListener("mousedown", onDocClick);
+    }, [menuOpen]);
     if (!user)
         return null;
     const splitApp = SPLIT_APPS.find((a) => a.key === splitView) ?? null;
@@ -59,10 +74,7 @@ export default function Layout() {
                 }
             }, children: label }));
     };
-    return (_jsxs("div", { className: "app", children: [_jsxs("div", { className: "header", children: [_jsx("div", { className: "logo", onClick: () => navigate("/"), children: "Wayve \uD83D\uDE80" }), _jsxs("div", { className: "nav", children: [navItem("/", "home", "Home"), navItem("/emails", "emails", "Emails"), navItem("/chat", "chat", "Chat"), navItem("/call", "call", "Call"), navItem("/scheduler", "scheduler", "Scheduler"), navItem("/drive", "drive", "Files"), navItem("/notes", "notes", "Notes")] }), _jsxs("div", { className: "actions", children: [splitOpen && (_jsxs("div", { className: "split-target", role: "group", "aria-label": "Header click target", children: [_jsx("button", { type: "button", className: `split-target-btn ${splitTarget === "left" ? "active" : ""}`, onClick: () => setSplitTarget("left"), title: "Next click loads into the LEFT pane (URL)", children: "\u2190 Left" }), _jsx("button", { type: "button", className: `split-target-btn ${splitTarget === "right" ? "active" : ""}`, onClick: () => setSplitTarget("right"), title: "Next click loads into the RIGHT pane", children: "Right \u2192" })] })), splitOpen && splitView && (_jsxs("span", { className: "split-hint", title: `Right pane: ${splitLabel}`, children: ["\u2197 ", splitLabel] })), _jsx("span", { className: "user-email", children: user.email }), _jsx("button", { className: "logout-btn", onClick: () => {
-                                    logout();
-                                    navigate("/login");
-                                }, children: "Logout" })] })] }), _jsxs("div", { className: "body", children: [_jsxs("div", { className: "icon-sidebar", children: [_jsx(Link, { to: "/emails", children: "\uD83D\uDCE7" }), _jsx(Link, { to: "/chat", children: "\uD83D\uDCAC" }), _jsx(Link, { to: "/call", children: "\uD83D\uDCDE" }), _jsx(Link, { to: "/scheduler", children: "\uD83D\uDCC5" }), _jsx(Link, { to: "/drive", children: "\uD83D\uDCC1" }), _jsx(Link, { to: "/notes", children: "\uD83D\uDCDD" }), _jsx("div", { className: "icon-sidebar-spacer" }), _jsx("button", { className: `icon-split-btn ${splitOpen ? "active" : ""}`, onClick: () => {
+    return (_jsxs("div", { className: "app", children: [_jsxs("div", { className: "header", children: [_jsx("div", { className: "logo", onClick: () => navigate("/"), children: "Wayve \uD83D\uDE80" }), _jsxs("div", { className: "nav", children: [navItem("/", "home", "Home"), navItem("/emails", "emails", "Emails"), navItem("/chat", "chat", "Chat"), navItem("/call", "call", "Call"), navItem("/scheduler", "scheduler", "Scheduler"), navItem("/drive", "drive", "Files"), navItem("/notes", "notes", "Notes"), navItem("/aichat", "aichat", "AI Chat")] }), _jsxs("div", { className: "actions", children: [splitOpen && (_jsxs("div", { className: "split-target", role: "group", "aria-label": "Header click target", children: [_jsx("button", { type: "button", className: `split-target-btn ${splitTarget === "left" ? "active" : ""}`, onClick: () => setSplitTarget("left"), title: "Next click loads into the LEFT pane (URL)", children: "\u2190 Left" }), _jsx("button", { type: "button", className: `split-target-btn ${splitTarget === "right" ? "active" : ""}`, onClick: () => setSplitTarget("right"), title: "Next click loads into the RIGHT pane", children: "Right \u2192" })] })), splitOpen && splitView && (_jsxs("span", { className: "split-hint", title: `Right pane: ${splitLabel}`, children: ["\u2197 ", splitLabel] })), _jsxs("div", { className: "profile-menu", ref: menuRef, children: [_jsxs("button", { className: "profile-trigger", onClick: () => setMenuOpen((o) => !o), "aria-haspopup": "true", "aria-expanded": menuOpen, title: user.email, children: [_jsx("span", { className: "profile-avatar", children: (user.email?.[0] ?? "?").toUpperCase() }), _jsx("span", { className: "profile-trigger-caret", children: "\u25be" })] }), menuOpen && _jsxs("div", { className: "profile-dropdown", role: "menu", children: [_jsx("div", { className: "profile-dropdown-header", children: _jsx("div", { className: "profile-dropdown-name", children: user.email }) }), _jsxs("button", { className: "profile-dropdown-item", onClick: () => { setMenuOpen(false); navigate("/profile"); }, children: [_jsx("span", { className: "profile-dropdown-icon", children: "\ud83d\udc64" }), "My Profile"] }), _jsxs("button", { className: "profile-dropdown-item", onClick: () => { setMenuOpen(false); navigate("/settings"); }, children: [_jsx("span", { className: "profile-dropdown-icon", children: "\u2699\ufe0f" }), "Settings & Privacy"] }), _jsx("div", { className: "profile-dropdown-divider" }), _jsxs("button", { className: "profile-dropdown-item profile-dropdown-logout", onClick: () => { setMenuOpen(false); logout(); navigate("/login"); }, children: [_jsx("span", { className: "profile-dropdown-icon", children: "\u23fb" }), "Log out"] })] })] })] })] }), _jsxs("div", { className: "body", children: [_jsxs("div", { className: "icon-sidebar", children: [_jsx(Link, { to: "/emails", children: "\uD83D\uDCE7" }), _jsx(Link, { to: "/chat", children: "\uD83D\uDCAC" }), _jsx(Link, { to: "/call", children: "\uD83D\uDCDE" }), _jsx(Link, { to: "/scheduler", children: "\uD83D\uDCC5" }), _jsx(Link, { to: "/drive", children: "\uD83D\uDCC1" }), _jsx(Link, { to: "/notes", children: "\uD83D\uDCDD" }), _jsx(Link, { to: "/aichat", children: "\u2728" }), _jsx("div", { className: "icon-sidebar-spacer" }), _jsx("button", { className: `icon-split-btn ${splitOpen ? "active" : ""}`, onClick: () => {
                                     setSplitOpen((s) => !s);
                                     if (splitOpen)
                                         setSplitView(null);

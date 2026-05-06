@@ -1,6 +1,6 @@
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import "./Layout.css";
 
 // Lazy-loaded so the split pane doesn't bloat the initial bundle and only
@@ -12,8 +12,9 @@ const CallView = lazy(() => import("../call/Call"));
 const SchedulerView = lazy(() => import("../scheduler/Scheduler"));
 const DriveView = lazy(() => import("../drive/DriveBox"));
 const NotesView = lazy(() => import("../notes/Notes"));
+const AIChatView = lazy(() => import("../aichat/AIChat"));
 
-type AppKey = "home" | "emails" | "chat" | "call" | "scheduler" | "drive" | "notes";
+type AppKey = "home" | "emails" | "chat" | "call" | "scheduler" | "drive" | "notes" | "aichat";
 
 const SPLIT_APPS = [
   { key: "home" as AppKey, label: "Home", path: "/", icon: "🏠", Comp: HomeView },
@@ -23,6 +24,7 @@ const SPLIT_APPS = [
   { key: "scheduler" as AppKey, label: "Scheduler", path: "/scheduler", icon: "📅", Comp: SchedulerView },
   { key: "drive" as AppKey, label: "Files", path: "/drive", icon: "📁", Comp: DriveView },
   { key: "notes" as AppKey, label: "Notes", path: "/notes", icon: "📝", Comp: NotesView },
+  { key: "aichat" as AppKey, label: "AI Chat", path: "/aichat", icon: "✨", Comp: AIChatView },
 ];
 
 export default function Layout() {
@@ -40,6 +42,22 @@ export default function Layout() {
   // preventDefault and set splitView. Default to "right" so opening split
   // and clicking an app feels like adding a second view.
   const [splitTarget, setSplitTarget] = useState<"left" | "right">("right");
+
+  // Profile dropdown (replaces the standalone Logout button).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close the dropdown on any click outside its container.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e: { target: any }) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [menuOpen]);
 
   if (!user) return null;
 
@@ -89,6 +107,7 @@ export default function Layout() {
           {navItem("/scheduler", "scheduler", "Scheduler")}
           {navItem("/drive", "drive", "Files")}
           {navItem("/notes", "notes", "Notes")}
+          {navItem("/aichat", "aichat", "AI Chat")}
         </div>
 
         <div className="actions">
@@ -117,16 +136,65 @@ export default function Layout() {
               ↗ {splitLabel}
             </span>
           )}
-          <span className="user-email">{user.email}</span>
-          <button
-            className="logout-btn"
-            onClick={() => {
-              logout();
-              navigate("/login");
-            }}
-          >
-            Logout
-          </button>
+
+          <div className="profile-menu" ref={menuRef}>
+            <button
+              className="profile-trigger"
+              onClick={() => setMenuOpen((o: boolean) => !o)}
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
+              title={user.email}
+            >
+              <span className="profile-avatar">
+                {(user.email?.[0] ?? "?").toUpperCase()}
+              </span>
+              <span className="profile-trigger-caret">▾</span>
+            </button>
+
+            {menuOpen && (
+              <div className="profile-dropdown" role="menu">
+                <div className="profile-dropdown-header">
+                  <div className="profile-dropdown-name">{user.email}</div>
+                </div>
+
+                <button
+                  className="profile-dropdown-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    navigate("/profile");
+                  }}
+                >
+                  <span className="profile-dropdown-icon">👤</span>
+                  My Profile
+                </button>
+
+                <button
+                  className="profile-dropdown-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    navigate("/settings");
+                  }}
+                >
+                  <span className="profile-dropdown-icon">⚙️</span>
+                  Settings & Privacy
+                </button>
+
+                <div className="profile-dropdown-divider" />
+
+                <button
+                  className="profile-dropdown-item profile-dropdown-logout"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    logout();
+                    navigate("/login");
+                  }}
+                >
+                  <span className="profile-dropdown-icon">⏻</span>
+                  Log out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -140,6 +208,7 @@ export default function Layout() {
           <Link to="/scheduler">📅</Link>
           <Link to="/drive">📁</Link>
           <Link to="/notes">📝</Link>
+          <Link to="/aichat">✨</Link>
 
           <div className="icon-sidebar-spacer" />
 

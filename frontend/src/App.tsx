@@ -14,6 +14,9 @@ const Chat = lazy(() => import("./chat/Chat"));
 const Scheduler = lazy(() => import("./scheduler/Scheduler"));
 const Drive = lazy(() => import("./drive/DriveBox"));
 const Notes = lazy(() => import("./notes/Notes"));
+const AIChat = lazy(() => import("./aichat/AIChat"));
+const Profile = lazy(() => import("./profile/Profile"));
+const Settings = lazy(() => import("./profile/Settings"));
 
 export default function App() {
   const { user } = useAuth();
@@ -48,6 +51,9 @@ export default function App() {
             <Route path="/scheduler" element={<Scheduler />} />
             <Route path="/drive" element={<Drive />} />
             <Route path="/notes" element={<Notes />} />
+            <Route path="/aichat" element={<AIChat />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/settings" element={<Settings />} />
 
           </Route>
         </Route>

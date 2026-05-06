@@ -6,6 +6,10 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Profile fields. Idempotent: safe to re-run on an existing DB.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT;
+
 
 
 CREATE TABLE IF NOT EXISTS email_accounts (

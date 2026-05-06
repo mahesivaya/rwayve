@@ -468,3 +468,31 @@ git push origin main --tags
 
 
 npm install lucide-react
+
+
+
+Google gemini API key:
+API Key
+AIzaSyAxIJzNyPssV8czY34WbJCvvv3OJeNlEqI
+Name
+wayve_api_key
+Project name
+projects/151840850497
+Project number
+151840850497
+
+curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent" \
+  -H 'Content-Type: application/json' \
+  -H 'X-goog-api-key: AIzaSyAxIJzNyPssV8czY34WbJCvvv3OJeNlEqI' \
+  -X POST \
+  -d '{
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "Explain how AI works in a few words"
+          }
+        ]
+      }
+    ]
+  }'
