@@ -7,7 +7,7 @@ mod call;
 mod chat;
 mod drive;
 mod email;
-mod logging;
+mod observability;
 mod middleware;
 mod models;
 mod notes;
@@ -24,7 +24,7 @@ pub mod security;
 // use crate::middleware::metrics::MetricsMiddleware;
 // use crate::middleware::rate_limit::RateLimitMiddleware;
 
-use crate::logging::logger::init_logger;
+use crate::observability::logger::init_logger;
 
 use crate::chat::handler::{chat_ws, get_messages};
 
@@ -186,7 +186,7 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .wrap(cors)
-            // .wrap(LoggerMiddleware)        // logging
+            // .wrap(LoggerMiddleware)        // observability
             // .wrap(MetricsMiddleware)       // performance
             // .wrap(RateLimitMiddleware)     // protection
             // .wrap(AuthMiddleware)          // security

@@ -1,5 +1,5 @@
 // 📦 Logger functions (your custom ones)
-pub use crate::logging::logger::log_auth;
+pub use crate::observability::logger::log_auth;
 
 // 🌐 Actix Web
 pub use actix_web::{Error, HttpRequest, HttpResponse, Responder, get, post, web};
