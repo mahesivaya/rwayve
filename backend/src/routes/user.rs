@@ -57,12 +57,10 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
         None => return HttpResponse::Unauthorized().finish(),
     };
 
-    let result = sqlx::query(
-        "SELECT id, email, first_name, last_name FROM users WHERE id = $1",
-    )
-    .bind(user_id)
-    .fetch_optional(pool.get_ref())
-    .await;
+    let result = sqlx::query("SELECT id, email, first_name, last_name FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool.get_ref())
+        .await;
 
     match result {
         Ok(Some(row)) => {

@@ -20,10 +20,7 @@ pub struct ChatRequest {
 /// (Gemini). The API key lives in GEMINI_API_KEY on the server and is
 /// never exposed to the browser. Auth is JWT-gated like the rest of /api.
 #[post("/ai/chat")]
-pub async fn ai_chat(
-    req: HttpRequest,
-    data: web::Json<ChatRequest>,
-) -> impl Responder {
+pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Responder {
     if get_user_id_from_request(&req).is_none() {
         return HttpResponse::Unauthorized().finish();
     }
