@@ -10,6 +10,7 @@ mod email;
 mod middleware;
 mod models;
 mod notes;
+mod observability;
 mod prelude;
 mod routes;
 mod scheduler;
