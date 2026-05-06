@@ -7,7 +7,6 @@ mod call;
 mod chat;
 mod drive;
 mod email;
-mod observability;
 mod middleware;
 mod models;
 mod notes;
