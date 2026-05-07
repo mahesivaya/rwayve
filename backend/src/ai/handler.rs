@@ -1,6 +1,7 @@
 use crate::email::oauth::HTTP_CLIENT;
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
+use tracing::{error, info, instrument, warn};
 
 #[derive(Deserialize)]
 pub struct ChatTurn {
@@ -20,19 +21,23 @@ pub struct ChatRequest {
 /// (Gemini). The API key lives in GEMINI_API_KEY on the server and is
 /// never exposed to the browser. Auth is JWT-gated like the rest of /api.
 #[post("/ai/chat")]
+#[instrument(target = "ai", skip(req, data), fields(turns = data.messages.len()))]
 pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Responder {
-    if get_user_id_from_request(&req).is_none() {
-        return HttpResponse::Unauthorized().finish();
-    }
+    let user_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
 
     let api_key = match std::env::var("GEMINI_API_KEY") {
         Ok(k) if !k.is_empty() => k,
         _ => {
-            println!("ai_chat: GEMINI_API_KEY missing");
+            error!(target: "ai", "GEMINI_API_KEY missing");
             return HttpResponse::InternalServerError()
                 .body("AI not configured (GEMINI_API_KEY missing)");
         }
     };
+
+    info!(target: "ai", user_id, turns = data.messages.len(), "ai chat request");
 
     let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-2.0-flash".to_string());
 
@@ -68,7 +73,7 @@ pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Res
     let res = match res {
         Ok(r) => r,
         Err(e) => {
-            println!("ai_chat upstream error: {:?}", e);
+            error!(target: "ai", error = %e, "gemini upstream transport error");
             return HttpResponse::BadGateway().body("Upstream error");
         }
     };
@@ -77,7 +82,7 @@ pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Res
     let payload: Value = match res.json().await {
         Ok(v) => v,
         Err(e) => {
-            println!("ai_chat parse error: {:?}", e);
+            error!(target: "ai", error = %e, "gemini json parse failed");
             return HttpResponse::BadGateway().body("Bad upstream response");
         }
     };
@@ -87,7 +92,7 @@ pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Res
             .as_str()
             .unwrap_or("Upstream error")
             .to_string();
-        println!("ai_chat upstream {}: {}", status, msg);
+        warn!(target: "ai", %status, message = %msg, "gemini non-2xx");
         return HttpResponse::BadGateway().body(msg);
     }
 

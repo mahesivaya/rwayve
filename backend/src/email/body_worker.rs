@@ -6,27 +6,29 @@ use crate::security::encryption::encrypt;
 
 use serde_json::Value;
 use tokio::time::{Duration, sleep};
+use tracing::{debug, error, info};
 
 type FetchTask = std::pin::Pin<Box<dyn std::future::Future<Output = Result<(i32, String)>> + Send>>;
 
 const BODY_CONCURRENCY: usize = 40;
 const BODY_BATCH_SIZE: i64 = 200;
 const ACCOUNTS_PER_ITERATION: i64 = 10;
-const IDLE_SLEEP_SECS: u64 = 5;
+const IDLE_SLEEP_SECS: u64 = 60;
 const ERROR_SLEEP_SECS: u64 = 10;
 
 pub fn start_body_worker(pool: PgPool) {
     tokio::spawn(async move {
+        info!(target: "worker", "body_worker started");
         loop {
             match run_iteration(&pool).await {
                 Ok(0) => {
                     sleep(Duration::from_secs(IDLE_SLEEP_SECS)).await;
                 }
-                Ok(_) => {
-                    // Work happened — loop immediately for next batch
+                Ok(n) => {
+                    debug!(target: "worker", count = n, "body_worker iteration done");
                 }
                 Err(e) => {
-                    println!("body_worker error: {:?}", e);
+                    error!(target: "worker", error = ?e, "body_worker iteration failed");
                     sleep(Duration::from_secs(ERROR_SLEEP_SECS)).await;
                 }
             }

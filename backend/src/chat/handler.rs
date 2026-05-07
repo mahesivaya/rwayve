@@ -13,6 +13,7 @@ use sqlx::{PgPool, Row};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use tracing::{debug, error, info, instrument};
 
 // ================= GLOBAL SESSIONS =================
 
@@ -66,12 +67,12 @@ impl Actor for ChatSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        println!("🟢 User connected: {}", self.user_id);
+        info!(target: "ws", user_id = self.user_id, "chat session connected");
         SESSIONS.lock().unwrap().insert(self.user_id, ctx.address());
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        println!("🔴 User disconnected: {}", self.user_id);
+        info!(target: "ws", user_id = self.user_id, "chat session disconnected");
         SESSIONS.lock().unwrap().remove(&self.user_id);
     }
 }
@@ -92,7 +93,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Text(text)) => {
-                println!("📩 Incoming: {}", text);
+                debug!(target: "ws", user_id = self.user_id, len = text.len(), "chat msg in");
 
                 let parsed: Result<ChatMessage, _> = serde_json::from_str(&text);
 
@@ -131,7 +132,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                     let (iv, encrypted) = match encrypt(&content) {
                         Ok(res) => res,
                         Err(e) => {
-                            println!("❌ Encryption error: {:?}", e);
+                            error!(target: "ws", sender_id, receiver_id, error = ?e, "chat encrypt failed");
                             return;
                         }
                     };
@@ -224,6 +225,7 @@ pub struct QueryParams {
 }
 
 #[get("/messages")]
+#[instrument(target = "http", skip(pool, cache, query), fields(user1 = query.user1, user2 = query.user2))]
 pub async fn get_messages(
     pool: web::Data<PgPool>,
     cache: web::Data<Option<Cache>>,
@@ -234,6 +236,7 @@ pub async fn get_messages(
     if let Some(c) = cache.get_ref().as_ref()
         && let Some(cached) = c.get_json::<Vec<Message>>(&cache_key).await
     {
+        debug!(target: "cache", key = %cache_key, "messages cache hit");
         // Still flip unread → read on every fetch so the sender sees the
         // status change even on cache hits.
         let _ = sqlx::query(
@@ -301,7 +304,7 @@ pub async fn get_messages(
                     let content = match decrypt(&iv, &encrypted) {
                         Ok(text) => text,
                         Err(e) => {
-                            println!("❌ decrypt error: {:?}", e);
+                            error!(target: "ws", error = %e, "message decrypt failed");
                             "[decryption failed]".to_string()
                         }
                     };
@@ -333,7 +336,7 @@ pub async fn get_messages(
         }
 
         Err(e) => {
-            println!("❌ DB error: {:?}", e);
+            error!(target: "db", error = ?e, "get_messages query failed");
 
             HttpResponse::InternalServerError()
                 .json(serde_json::json!({ "error": "Failed to fetch messages" }))

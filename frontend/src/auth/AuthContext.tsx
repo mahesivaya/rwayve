@@ -1,5 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { savePrivateKey, loadPrivateKey } from "../crypto/keyStore";
+import { logger } from "../utils/logger";
+
+const log = logger.scope("auth");
 
 type UserType = {
   email: string;
@@ -33,11 +36,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const existingKey = await loadPrivateKey();
 
       if (existingKey) {
-        console.log("🔑 Key already exists in IndexedDB");
+        log.debug("private key already in IndexedDB");
         return;
       }
 
-      console.log("🔐 Generating new key pair...");
+      log.info("generating new RSA key pair");
 
       const keyPair = await crypto.subtle.generateKey(
         {
@@ -68,10 +71,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }),
       });
 
-      console.log("✅ Encryption setup complete");
+      log.info("encryption setup complete");
 
     } catch (err) {
-      console.error("❌ Encryption setup failed", err);
+      log.error("encryption setup failed", err);
     }
   };
 
@@ -86,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
       // 1) Prefer token from URL (OAuth)
       if (tokenFromUrl) {
-        console.log("🔐 Restoring token from OAuth");
+        log.info("restoring token from OAuth redirect");
         localStorage.setItem("token", tokenFromUrl);
         token = tokenFromUrl;
   
@@ -98,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
       // 2) If still no token → stop
       if (!token) {
-        console.warn("⚠️ No token found");
+        log.debug("no token in storage; staying logged out");
         setLoading(false);
         return;
       }
@@ -116,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
         if (!res.ok) {
           const txt = await res.text();
-          console.error("❌ /api/me failed:", res.status, txt);
+          log.error("/api/me failed", { status: res.status, body: txt });
           setLoading(false);
           return;
         }
@@ -127,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // 4) Ensure keys exist
         await setupEncryption(token);
       } catch (err) {
-        console.error("❌ Network error:", err);
+        log.error("auth init network error", err);
       }
   
       setLoading(false);

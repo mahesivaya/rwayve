@@ -10,6 +10,7 @@ use actix_web::{HttpResponse, Responder, get, web};
 use base64::Engine;
 use sqlx::PgPool;
 use sqlx::Row;
+use tracing::{error, info, instrument, warn};
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {
@@ -22,6 +23,7 @@ pub struct LoginQuery {
     pub token: Option<String>,
 }
 
+#[instrument(target = "gmail", skip(req, query))]
 pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> impl Responder {
     let secrets = load_google_secrets();
     let client_id = secrets["web"]["client_id"]
@@ -43,8 +45,11 @@ pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> imp
     };
 
     if token.is_empty() {
+        warn!(target: "gmail", "gmail_login rejected: missing token");
         return HttpResponse::Unauthorized().body("Missing token");
     }
+
+    info!(target: "gmail", "gmail oauth flow start");
 
     let scope = "https://www.googleapis.com/auth/userinfo.email \
                  https://www.googleapis.com/auth/gmail.send \
@@ -68,6 +73,7 @@ pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> imp
         .finish()
 }
 
+#[instrument(target = "gmail", skip(pool, query))]
 pub async fn oauth_callback(
     pool: web::Data<PgPool>,
     query: web::Query<CallbackQuery>,
@@ -76,19 +82,24 @@ pub async fn oauth_callback(
 
     let secrets = load_google_secrets();
 
-    // 🔥 Extract token from state
     let token = match &query.state {
         Some(t) => t,
-        None => return HttpResponse::Unauthorized().body("Missing state"),
+        None => {
+            warn!(target: "gmail", "oauth_callback rejected: missing state");
+            return HttpResponse::Unauthorized().body("Missing state");
+        }
     };
 
-    // 🔥 Decode JWT
     let decoded = match crate::security::jwt::decode_jwt(token) {
         Some(d) => d,
-        None => return HttpResponse::Unauthorized().body("Invalid token"),
+        None => {
+            warn!(target: "gmail", "oauth_callback rejected: invalid jwt state");
+            return HttpResponse::Unauthorized().body("Invalid token");
+        }
     };
 
     let user_id = decoded.sub;
+    info!(target: "gmail", user_id, "oauth_callback exchanging code");
 
     let client_id = secrets["web"]["client_id"]
         .as_str()
@@ -164,11 +175,12 @@ pub async fn oauth_callback(
     .await
     {
         Ok(row) => {
-            println!("✅ Account saved");
-            row.get("id")
+            let id: i32 = row.get("id");
+            info!(target: "gmail", user_id, account_id = id, "Gmail account connected: {}", email);
+            id
         }
         Err(e) => {
-            println!("❌ DB ERROR: {}", e);
+            error!(target: "db", user_id, error = %e, "Failed to save Gmail account: {}", email);
             return HttpResponse::InternalServerError().body("Failed to save account");
         }
     };
@@ -186,12 +198,12 @@ pub async fn oauth_callback(
         )
         .await
         {
-            Ok(n) => println!("✅ Imported {} calendar events", n),
-            Err(e) => println!("⚠️ Calendar import failed: {}", e),
+            Ok(n) => info!(target: "scheduler", user_id, account_id, count = n, "calendar import done"),
+            Err(e) => warn!(target: "scheduler", user_id, account_id, error = %e, "calendar import failed"),
         }
     });
 
-    println!("🚀 Redirecting to frontend...");
+    info!(target: "gmail", user_id, "redirecting to frontend");
 
     // 🔁 Redirect AFTER saving
     let frontend = std::env::var("FRONTEND_URL").unwrap_or("http://localhost:5173".to_string());
@@ -204,6 +216,7 @@ pub async fn oauth_callback(
 }
 
 #[post("/send")]
+#[instrument(target = "gmail", skip(req, data, pool), fields(to = %data.to))]
 async fn send(
     req: HttpRequest,
     data: web::Json<SendEmailRequest>,
@@ -217,6 +230,8 @@ async fn send(
         Some(id) => id,
         None => return HttpResponse::Unauthorized().body("Invalid token"),
     };
+
+    info!(target: "gmail", user_id, account_id = data.account_id, "send email request");
 
     let account = sqlx::query(
         "SELECT email, access_token FROM email_accounts 
@@ -266,17 +281,23 @@ async fn send(
             let response_text = resp.text().await.unwrap_or_default();
 
             if status.is_success() {
+                info!(target: "gmail", user_id, "Email sent to {}", data.to);
                 HttpResponse::Ok().body("Email sent ✅")
             } else {
+                warn!(target: "gmail", user_id, %status, body = %response_text, "Gmail rejected send to {}", data.to);
                 HttpResponse::InternalServerError()
                     .body(format!("Gmail rejected request: {}", response_text))
             }
         }
-        Err(_e) => HttpResponse::InternalServerError().body("Failed to reach Gmail"),
+        Err(e) => {
+            error!(target: "gmail", user_id, error = %e, "Failed to connect to Gmail API");
+            HttpResponse::InternalServerError().body("Failed to reach Gmail")
+        }
     }
 }
 
 #[get("/me")]
+#[instrument(target = "http", skip(req, pool))]
 async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     // 🔥 1. Extract Authorization header
     let auth_header = match req.headers().get("Authorization") {
@@ -324,13 +345,14 @@ async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
         }
 
         Err(e) => {
-            println!("❌ DB ERROR: {}", e);
+            error!(target: "db", error = %e, "get_me lookup failed");
             HttpResponse::InternalServerError().finish()
         }
     }
 }
 
 #[get("/emails/{id}")]
+#[instrument(target = "http", skip(pool))]
 pub async fn get_email_by_id(pool: web::Data<PgPool>, path: web::Path<i32>) -> impl Responder {
     let email_id = path.into_inner();
 
@@ -367,13 +389,14 @@ pub async fn get_email_by_id(pool: web::Data<PgPool>, path: web::Path<i32>) -> i
         Ok(None) => HttpResponse::NotFound().body("Email not found"),
 
         Err(e) => {
-            println!("❌ DB error: {:?}", e);
+            error!(target: "db", email_id, error = ?e, "get_email_by_id failed");
             HttpResponse::InternalServerError().finish()
         }
     }
 }
 
 #[get("/emails/{id}/body")]
+#[instrument(target = "gmail", skip(req, path, pool))]
 pub async fn get_email_body(
     req: HttpRequest,
     path: web::Path<i32>,
@@ -404,7 +427,7 @@ pub async fn get_email_body(
         Ok(Some(r)) => r,
         Ok(None) => return HttpResponse::NotFound().finish(),
         Err(e) => {
-            println!("get_email_body DB error: {:?}", e);
+            error!(target: "db", user_id, email_id, error = ?e, "get_email_body lookup failed");
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -417,7 +440,7 @@ pub async fn get_email_body(
         return match decrypt(&body_iv, &body_encrypted) {
             Ok(body) => HttpResponse::Ok().json(serde_json::json!({ "body": body })),
             Err(e) => {
-                println!("get_email_body decrypt error: {:?}", e);
+                error!(target: "gmail", email_id, error = %e, "get_email_body decrypt failed");
                 HttpResponse::InternalServerError().finish()
             }
         };
@@ -441,7 +464,7 @@ pub async fn get_email_body(
     let token = match refresh_access_token(&client_id, &client_secret, &refresh_token).await {
         Ok(t) => t,
         Err(e) => {
-            println!("get_email_body token refresh error: {:?}", e);
+            error!(target: "gmail", account_id, error = ?e, "refresh_access_token failed");
             return HttpResponse::BadGateway().finish();
         }
     };
@@ -461,12 +484,12 @@ pub async fn get_email_body(
         Ok(r) => match r.json().await {
             Ok(v) => v,
             Err(e) => {
-                println!("get_email_body Gmail JSON error: {:?}", e);
+                error!(target: "gmail", email_id, error = %e, "gmail body json parse failed");
                 return HttpResponse::BadGateway().finish();
             }
         },
         Err(e) => {
-            println!("get_email_body Gmail request error: {:?}", e);
+            error!(target: "gmail", email_id, error = %e, "gmail body request failed");
             return HttpResponse::BadGateway().finish();
         }
     };
@@ -487,6 +510,7 @@ pub async fn get_email_body(
 }
 
 #[post("/save-public-key")]
+#[instrument(target = "auth", skip(req, pool, body))]
 async fn save_public_key(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -506,9 +530,12 @@ async fn save_public_key(
         .await;
 
     match res {
-        Ok(_) => HttpResponse::Ok().body("Saved"),
+        Ok(_) => {
+            info!(target: "auth", user_id, "public key saved");
+            HttpResponse::Ok().body("Saved")
+        }
         Err(e) => {
-            println!("DB error: {:?}", e);
+            error!(target: "db", user_id, error = ?e, "save_public_key failed");
             HttpResponse::InternalServerError().finish()
         }
     }

@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
+use tracing::instrument;
 
 #[derive(Deserialize)]
 struct TokenResp {
@@ -52,6 +53,7 @@ async fn fetch_access_token() -> Result<String, String> {
     Ok(tok.access_token)
 }
 
+#[instrument(target = "scheduler", skip(start_utc), fields(topic, duration_min))]
 pub async fn create_zoom_meeting(
     topic: &str,
     start_utc: DateTime<Utc>,

@@ -2,8 +2,10 @@ use crate::models::note::{Note, NoteInput};
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
 use actix_web::{delete, put};
+use tracing::{error, instrument};
 
 #[get("/notes")]
+#[instrument(target = "http", skip(req, pool))]
 pub async fn list_notes(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     let user_id = match get_user_id_from_request(&req) {
         Some(id) => id,
@@ -23,13 +25,14 @@ pub async fn list_notes(req: HttpRequest, pool: web::Data<PgPool>) -> impl Respo
     match result {
         Ok(rows) => HttpResponse::Ok().json(rows),
         Err(e) => {
-            println!("notes list DB error: {:?}", e);
+            error!(target: "db", user_id, error = ?e, "notes list failed");
             HttpResponse::InternalServerError().finish()
         }
     }
 }
 
 #[post("/notes")]
+#[instrument(target = "http", skip(req, pool, data))]
 pub async fn create_note(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -54,13 +57,14 @@ pub async fn create_note(
     match result {
         Ok(note) => HttpResponse::Ok().json(note),
         Err(e) => {
-            println!("notes create DB error: {:?}", e);
+            error!(target: "db", user_id, error = ?e, "notes create failed");
             HttpResponse::InternalServerError().finish()
         }
     }
 }
 
 #[put("/notes/{id}")]
+#[instrument(target = "http", skip(req, pool, path, data))]
 pub async fn update_note(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -93,13 +97,14 @@ pub async fn update_note(
         Ok(Some(note)) => HttpResponse::Ok().json(note),
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(e) => {
-            println!("notes update DB error: {:?}", e);
+            error!(target: "db", user_id, note_id = id, error = ?e, "notes update failed");
             HttpResponse::InternalServerError().finish()
         }
     }
 }
 
 #[delete("/notes/{id}")]
+#[instrument(target = "http", skip(req, pool, path))]
 pub async fn delete_note(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -122,7 +127,7 @@ pub async fn delete_note(
         Ok(r) if r.rows_affected() == 0 => HttpResponse::NotFound().finish(),
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "deleted": true })),
         Err(e) => {
-            println!("notes delete DB error: {:?}", e);
+            error!(target: "db", user_id, note_id = id, error = ?e, "notes delete failed");
             HttpResponse::InternalServerError().finish()
         }
     }

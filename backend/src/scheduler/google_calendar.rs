@@ -2,9 +2,11 @@ use chrono::{DateTime, Utc};
 use chrono_tz::America::New_York;
 use serde_json::Value;
 use sqlx::PgPool;
+use tracing::{instrument, warn};
 
 const CAL_URL: &str = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 
+#[instrument(target = "scheduler", skip(pool, access_token))]
 pub async fn import_upcoming_events(
     pool: &PgPool,
     user_id: i32,
@@ -140,7 +142,7 @@ pub async fn import_upcoming_events(
 
         match res {
             Ok(_) => inserted += 1,
-            Err(e) => println!("⚠️ Calendar event insert error ({}): {:?}", event_id, e),
+            Err(e) => warn!(target: "db", %event_id, error = ?e, "calendar event insert failed"),
         }
     }
 

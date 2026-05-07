@@ -5,6 +5,7 @@ use actix_web_actors::ws;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use tracing::{debug, info, warn};
 
 use crate::models::callmodel::SignalMessage;
 
@@ -20,13 +21,13 @@ impl Actor for CallSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        println!("✅ WS Connected: user {}", self.user_id);
+        info!(target: "ws", user_id = self.user_id, "call session connected");
 
         SESSIONS.lock().unwrap().insert(self.user_id, ctx.address());
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        println!("❌ WS Disconnected: user {}", self.user_id);
+        info!(target: "ws", user_id = self.user_id, "call session disconnected");
 
         SESSIONS.lock().unwrap().remove(&self.user_id);
     }
@@ -44,7 +45,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for CallSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, _: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Text(text)) => {
-                println!("📩 Incoming: {}", text);
+                debug!(target: "ws", user_id = self.user_id, len = text.len(), "call signal in");
 
                 if let Ok(signal) = serde_json::from_str::<SignalMessage>(&text) {
                     let target = signal.to;
@@ -52,7 +53,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for CallSession {
                     let sessions = SESSIONS.lock().unwrap();
 
                     if let Some(addr) = sessions.get(&target).cloned() {
-                        println!("➡️ Forwarding {} → {}", self.user_id, target);
+                        debug!(target: "ws", from = self.user_id, to = target, kind = %signal.r#type, "forwarding signal");
 
                         addr.do_send(SignalMessage {
                             r#type: signal.r#type.clone(),
@@ -62,19 +63,15 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for CallSession {
                             candidate: signal.candidate.clone(),
                         });
                     } else {
-                        println!("⚠️ User {} not connected", target);
+                        warn!(target: "ws", target_user = target, "signal target not connected");
                     }
                 } else {
-                    println!("❌ Failed to parse message");
+                    warn!(target: "ws", user_id = self.user_id, "failed to parse signal message");
                 }
             }
 
-            Ok(ws::Message::Ping(_msg)) => {
-                println!("🏓 Ping");
-            }
-
             Ok(ws::Message::Close(_)) => {
-                println!("🔌 Client closed connection");
+                debug!(target: "ws", user_id = self.user_id, "call client closed");
             }
 
             _ => {}
@@ -92,7 +89,7 @@ pub async fn call_ws(
         .and_then(|id| id.parse::<i32>().ok())
         .unwrap_or(0);
 
-    println!("🚀 WS CONNECT REQUEST user_id={}", user_id);
+    info!(target: "ws", user_id, "call_ws connect request");
 
     ws::start(CallSession { user_id }, &req, stream)
 }

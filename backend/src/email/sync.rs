@@ -3,6 +3,7 @@ use crate::prelude::*;
 use crate::email::oauth::{HTTP_CLIENT, load_google_secrets, refresh_access_token};
 
 use serde_json::Value;
+use tracing::{debug, error, info, instrument, warn};
 
 // (msg_id, sender, receiver, subject) — body is fetched later by body_worker
 pub type EmailHeader = (String, String, String, String);
@@ -25,12 +26,15 @@ pub async fn fetch_headers_only(token: &str, msg_id: &str) -> Result<EmailHeader
     Ok((msg_id.to_string(), sender, receiver, subject))
 }
 
+#[instrument(target = "worker", skip(pool))]
 pub async fn sync_all(pool: &PgPool) -> Result<()> {
     let rows = sqlx::query(
         "SELECT id, access_token, refresh_token, last_sync FROM email_accounts WHERE access_token IS NOT NULL"
     )
     .fetch_all(pool)
     .await?;
+
+    info!(target: "worker", accounts = rows.len(), "sync_all start");
 
     let secrets = load_google_secrets();
     let client_id = secrets["web"]["client_id"]
@@ -56,7 +60,8 @@ pub async fn sync_all(pool: &PgPool) -> Result<()> {
             let token = match refresh_access_token(&client_id, &client_secret, &refresh_token).await
             {
                 Ok(t) => t,
-                Err(_e) => {
+                Err(e) => {
+                    warn!(target: "worker", account_id, error = ?e, "token refresh failed; skipping account");
                     return;
                 }
             };
@@ -68,7 +73,7 @@ pub async fn sync_all(pool: &PgPool) -> Result<()> {
                 .await;
 
             if let Err(e) = sync_account(&pool, account_id, &token, last_sync).await {
-                println!("Sync error {}: {}", account_id, e);
+                error!(target: "worker", account_id, error = ?e, "sync_account failed");
             }
         });
 
@@ -175,6 +180,7 @@ pub fn extract_headers(res: &Value) -> (String, String, String) {
     (sender, receiver, subject)
 }
 
+#[instrument(target = "worker", skip(pool, token), fields(account_id))]
 pub async fn sync_account(
     pool: &PgPool,
     account_id: i32,
@@ -182,6 +188,7 @@ pub async fn sync_account(
     last_sync: Option<i64>,
 ) -> anyhow::Result<()> {
     let ids = fetch_ids(token, last_sync).await?;
+    debug!(target: "worker", account_id, count = ids.len(), "fetched gmail ids");
 
     let mut tasks = FuturesUnordered::new();
 

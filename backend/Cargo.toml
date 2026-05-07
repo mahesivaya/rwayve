@@ -3,6 +3,16 @@ name = "rwayve"
 version = "0.1.0"
 edition = "2024"
 
+# Reduce peak memory during release linking. Without this, Docker builds
+# with <8GB get SIGKILL'd at the final link step (opt-level=3 + few
+# codegen units = huge per-unit memory). opt-level=1 sacrifices some
+# runtime speed for buildability on memory-constrained CI / Docker.
+[profile.release]
+opt-level = 1
+codegen-units = 256
+lto = false
+incremental = false
+
 [dependencies]
 actix = "0.13"
 actix-web = "4"
@@ -38,10 +48,11 @@ futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 lazy_static = "1.4"
 tracing = "0.1.44"
-tracing-subscriber = "0.3.23"
-tracing-appender = "0.2.4"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+tracing-error = "0.2"
+tracing-actix-web = "0.7"
 log = "0.4.29"
-fern = "0.7.1"
 actix-files = "0.6.10"
 dotenvy = "0.15.7"
 clap-cargo = "0.18.3"

@@ -1,6 +1,7 @@
 use chrono::{Duration as ChronoDuration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -43,7 +44,7 @@ pub fn decode_jwt(token: &str) -> Option<Claims> {
     ) {
         Ok(data) => Some(data.claims),
         Err(e) => {
-            println!("❌ JWT decode error: {}", e);
+            warn!(target: "auth", error = %e, "jwt decode failed");
             None
         }
     }

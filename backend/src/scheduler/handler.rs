@@ -7,6 +7,7 @@ use chrono::{TimeZone, Utc};
 use chrono_tz::Tz;
 use serde_json::json;
 use std::str::FromStr;
+use tracing::{error, info, instrument, warn};
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
@@ -146,7 +147,7 @@ Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}",
         return Err(format!("Gmail failed: {}", text));
     }
 
-    println!("✅ Meeting emails sent successfully");
+    info!(target: "scheduler", user_id, "meeting emails sent");
 
     Ok(())
 }
@@ -160,6 +161,7 @@ struct MeetingResponse {
 }
 
 #[post("/meetings")]
+#[instrument(target = "scheduler", skip(req, pool, data), fields(title = %data.title))]
 pub async fn create_meeting(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -232,7 +234,7 @@ pub async fn create_meeting(
     let zoom_join_url = match create_zoom_meeting(&data.title, meeting_utc, duration_min).await {
         Ok(url) => Some(url),
         Err(e) => {
-            println!("⚠️ Zoom meeting creation failed: {}", e);
+            warn!(target: "scheduler", error = %e, "zoom meeting create failed; continuing without join url");
             None
         }
     };
@@ -241,7 +243,7 @@ pub async fn create_meeting(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            println!("❌ TX error: {:?}", e);
+            error!(target: "db", error = ?e, "create_meeting tx begin failed");
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -265,7 +267,7 @@ pub async fn create_meeting(
     {
         Ok(m) => m,
         Err(e) => {
-            println!("❌ Meeting insert error: {:?}", e);
+            error!(target: "db", user_id, error = ?e, "meeting insert failed");
             let _ = tx.rollback().await;
             return HttpResponse::InternalServerError().finish();
         }
@@ -293,16 +295,18 @@ pub async fn create_meeting(
     .await;
 
     if let Err(e) = insert_participants {
-        println!("❌ Participants insert error: {:?}", e);
+        error!(target: "db", meeting_id, error = ?e, "participants insert failed");
         let _ = tx.rollback().await;
         return HttpResponse::InternalServerError().finish();
     }
 
     // ================= COMMIT =================
     if let Err(e) = tx.commit().await {
-        println!("❌ TX commit error: {:?}", e);
+        error!(target: "db", meeting_id, error = ?e, "create_meeting tx commit failed");
         return HttpResponse::InternalServerError().finish();
     }
+
+    info!(target: "scheduler", user_id, meeting_id, "meeting created");
 
     // ================= BACKGROUND EMAIL =================
     let pool_clone = pool.clone();
@@ -320,7 +324,7 @@ pub async fn create_meeting(
 
     actix_web::rt::spawn(async move {
         if let Err(e) = send_meeting_emails(pool_clone.get_ref(), email_req).await {
-            println!("❌ Email sending failed: {:?}", e);
+            warn!(target: "scheduler", meeting_id, error = %e, "invite email failed");
         }
     });
 
@@ -333,6 +337,7 @@ pub async fn create_meeting(
 
 // ================= GET =================
 #[get("/meetings")]
+#[instrument(target = "http", skip(req, pool))]
 pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
     let user_id = match get_user_id(&req) {
         Ok(id) => id,
@@ -367,13 +372,14 @@ pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResp
     match result {
         Ok(rows) => HttpResponse::Ok().json(rows),
         Err(e) => {
-            println!("DB error: {:?}", e);
+            error!(target: "db", user_id, error = ?e, "get_meetings failed");
             HttpResponse::InternalServerError().finish()
         }
     }
 }
 
 #[put("/meetings/{id}")]
+#[instrument(target = "scheduler", skip(req, path, data, pool))]
 pub async fn update_meeting(
     req: HttpRequest,
     path: web::Path<i32>,
@@ -425,7 +431,7 @@ pub async fn update_meeting(
         )),
         Ok(None) => None,
         Err(e) => {
-            println!("❌ Load existing meeting error: {:?}", e);
+            error!(target: "db", meeting_id = id, error = ?e, "update_meeting load failed");
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -434,7 +440,7 @@ pub async fn update_meeting(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            println!("❌ TX error: {:?}", e);
+            error!(target: "db", meeting_id = id, error = ?e, "update_meeting tx begin failed");
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -456,7 +462,7 @@ pub async fn update_meeting(
     .await;
 
     if let Err(e) = update {
-        println!("❌ Update error: {:?}", e);
+        error!(target: "db", meeting_id = id, error = ?e, "meeting update failed");
         let _ = tx.rollback().await;
         return HttpResponse::InternalServerError().body("Failed to update meeting");
     }
@@ -467,7 +473,7 @@ pub async fn update_meeting(
         .execute(&mut *tx)
         .await
     {
-        println!("❌ Delete participants error: {:?}", e);
+        error!(target: "db", meeting_id = id, error = ?e, "delete old participants failed");
         let _ = tx.rollback().await;
         return HttpResponse::InternalServerError().finish();
     }
@@ -491,16 +497,18 @@ pub async fn update_meeting(
     .await;
 
     if let Err(e) = insert {
-        println!("❌ Insert participants error: {:?}", e);
+        error!(target: "db", meeting_id = id, error = ?e, "insert new participants failed");
         let _ = tx.rollback().await;
         return HttpResponse::InternalServerError().finish();
     }
 
     // ================= COMMIT =================
     if let Err(e) = tx.commit().await {
-        println!("❌ TX commit error: {:?}", e);
+        error!(target: "db", meeting_id = id, error = ?e, "update_meeting tx commit failed");
         return HttpResponse::InternalServerError().finish();
     }
+
+    info!(target: "scheduler", user_id, meeting_id = id, "meeting updated");
 
     // ================= NOTIFY ON CONTENT CHANGES =================
     // Email participants only when title/date/start/end actually changed —
@@ -535,7 +543,7 @@ pub async fn update_meeting(
             };
             actix_web::rt::spawn(async move {
                 if let Err(e) = send_meeting_emails(pool_clone.get_ref(), email_req).await {
-                    println!("❌ Update email failed: {:?}", e);
+                    warn!(target: "scheduler", meeting_id = id, error = %e, "update email failed");
                 }
             });
         }
@@ -548,6 +556,7 @@ pub async fn update_meeting(
 }
 
 #[delete("/meetings/{id}")]
+#[instrument(target = "scheduler", skip(req, path, pool))]
 pub async fn delete_meeting(
     req: HttpRequest,
     path: web::Path<i32>,
@@ -578,7 +587,7 @@ pub async fn delete_meeting(
         )),
         Ok(None) => None,
         Err(e) => {
-            println!("❌ Load meeting (delete) error: {:?}", e);
+            error!(target: "db", meeting_id = id, error = ?e, "delete_meeting snapshot load failed");
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -594,7 +603,7 @@ pub async fn delete_meeting(
                 .map(|r| r.get::<String, _>("email"))
                 .collect(),
             Err(e) => {
-                println!("❌ Load participants (delete) error: {:?}", e);
+                warn!(target: "db", meeting_id = id, error = ?e, "delete_meeting load participants failed");
                 Vec::new()
             }
         };
@@ -622,16 +631,17 @@ pub async fn delete_meeting(
                 };
                 actix_web::rt::spawn(async move {
                     if let Err(e) = send_meeting_emails(pool_clone.get_ref(), email_req).await {
-                        println!("❌ Cancel email failed: {:?}", e);
+                        warn!(target: "scheduler", meeting_id = id, error = %e, "cancel email failed");
                     }
                 });
             }
+            info!(target: "scheduler", user_id, meeting_id = id, "meeting deleted");
             HttpResponse::Ok().json(json!({
                 "message": "Meeting deleted"
             }))
         }
         Err(e) => {
-            println!("❌ Delete error FULL: {:#?}", e);
+            error!(target: "db", meeting_id = id, error = ?e, "meeting delete failed");
             HttpResponse::InternalServerError().body("Failed to delete meeting")
         }
     }

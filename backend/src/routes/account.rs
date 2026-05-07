@@ -2,16 +2,16 @@ use crate::models::account::Account;
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
 use actix_web::delete;
+use tracing::{error, info, instrument};
 
 #[get("/accounts")]
+#[instrument(target = "http", skip(req, pool))]
 async fn get_accounts(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
-    // 🔥 Extract token
     let token = match req.headers().get("Authorization") {
         Some(h) => h.to_str().unwrap_or("").replace("Bearer ", ""),
         None => return HttpResponse::Unauthorized().body("Missing token"),
     };
 
-    // 🔥 Decode JWT
     let decoded = match crate::security::jwt::decode_jwt(&token) {
         Some(d) => d,
         None => return HttpResponse::Unauthorized().body("Invalid token"),
@@ -19,7 +19,6 @@ async fn get_accounts(req: HttpRequest, pool: web::Data<PgPool>) -> impl Respond
 
     let user_id = decoded.sub;
 
-    // ✅ Filter by user_id
     let result = sqlx::query_as::<_, Account>(
         r#"
         SELECT id, email
@@ -35,13 +34,14 @@ async fn get_accounts(req: HttpRequest, pool: web::Data<PgPool>) -> impl Respond
     match result {
         Ok(rows) => HttpResponse::Ok().json(rows),
         Err(e) => {
-            println!("DB error: {:?}", e);
+            error!(target: "db", user_id, error = ?e, "get_accounts failed");
             HttpResponse::InternalServerError().body("error")
         }
     }
 }
 
 #[delete("/accounts/{id}")]
+#[instrument(target = "http", skip(req, pool))]
 pub async fn delete_account(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -54,8 +54,6 @@ pub async fn delete_account(
 
     let id = path.into_inner();
 
-    // Owner-scoped: 404 if the row doesn't exist or belongs to someone else.
-    // Cascading FKs on emails(account_id) clean up the synced messages.
     let result = sqlx::query("DELETE FROM email_accounts WHERE id = $1 AND user_id = $2")
         .bind(id)
         .bind(user_id)
@@ -64,9 +62,12 @@ pub async fn delete_account(
 
     match result {
         Ok(r) if r.rows_affected() == 0 => HttpResponse::NotFound().finish(),
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "deleted": true })),
+        Ok(_) => {
+            info!(target: "http", user_id, account_id = id, "email account deleted");
+            HttpResponse::Ok().json(serde_json::json!({ "deleted": true }))
+        }
         Err(e) => {
-            println!("delete_account DB error: {:?}", e);
+            error!(target: "db", user_id, account_id = id, error = ?e, "delete_account failed");
             HttpResponse::InternalServerError().finish()
         }
     }

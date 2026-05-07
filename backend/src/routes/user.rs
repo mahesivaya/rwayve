@@ -3,8 +3,10 @@ use crate::security::jwt::get_user_id_from_request;
 use actix_web::{HttpRequest, HttpResponse, Responder, get, put, web};
 use serde::Deserialize;
 use sqlx::PgPool;
+use tracing::{error, info, instrument};
 
 #[get("/users")]
+#[instrument(target = "http", skip(req, pool))]
 pub async fn get_user_by_email(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     let query = req.query_string();
 
@@ -36,7 +38,7 @@ pub async fn get_user_by_email(req: HttpRequest, pool: web::Data<PgPool>) -> imp
         Ok(None) => HttpResponse::Ok().json(serde_json::json!(null)),
 
         Err(e) => {
-            println!("DB error: {:?}", e);
+            error!(target: "db", error = ?e, "get_user_by_email lookup failed");
             HttpResponse::InternalServerError().finish()
         }
     }
@@ -51,6 +53,7 @@ pub struct ProfileUpdate {
 }
 
 #[get("/profile")]
+#[instrument(target = "http", skip(req, pool))]
 pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     let user_id = match get_user_id_from_request(&req) {
         Some(id) => id,
@@ -78,13 +81,14 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
         }
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(e) => {
-            println!("get_profile DB error: {:?}", e);
+            error!(target: "db", user_id, error = ?e, "get_profile lookup failed");
             HttpResponse::InternalServerError().finish()
         }
     }
 }
 
 #[put("/profile")]
+#[instrument(target = "http", skip(req, pool, data))]
 pub async fn update_profile(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -114,6 +118,7 @@ pub async fn update_profile(
             let first_name: Option<String> = row.try_get("first_name").ok();
             let last_name: Option<String> = row.try_get("last_name").ok();
 
+            info!(target: "http", user_id, "profile updated");
             HttpResponse::Ok().json(serde_json::json!({
                 "id": id,
                 "email": email,
@@ -123,13 +128,14 @@ pub async fn update_profile(
         }
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(e) => {
-            println!("update_profile DB error: {:?}", e);
+            error!(target: "db", user_id, error = ?e, "update_profile failed");
             HttpResponse::InternalServerError().finish()
         }
     }
 }
 
 #[get("/users/all")]
+#[instrument(target = "http", skip(pool))]
 async fn get_all_users(pool: web::Data<PgPool>) -> impl Responder {
     let result = sqlx::query("SELECT id, email FROM users")
         .fetch_all(pool.get_ref())
@@ -153,7 +159,7 @@ async fn get_all_users(pool: web::Data<PgPool>) -> impl Responder {
             HttpResponse::Ok().json(users)
         }
         Err(e) => {
-            println!("DB error: {:?}", e);
+            error!(target: "db", error = ?e, "get_all_users failed");
             HttpResponse::InternalServerError().finish()
         }
     }

@@ -25,6 +25,7 @@ pub mod security;
 // use crate::middleware::rate_limit::RateLimitMiddleware;
 
 use crate::observability::logger::init_logger;
+use crate::observability::tracing_root::AppRootSpanBuilder;
 
 use crate::chat::handler::{chat_ws, get_messages};
 
@@ -62,6 +63,8 @@ use tokio::time::{Duration, sleep};
 
 use dotenvy::dotenv;
 use std::env;
+use tracing::{error, info, warn};
+use tracing_actix_web::TracingLogger;
 
 fn app_routes(cfg: &mut web::ServiceConfig) {
     cfg
@@ -110,20 +113,18 @@ fn start_sync_worker(pool: PgPool) {
         let mut interval = Duration::from_secs(30);
 
         loop {
-            println!("🔄 [SYNC] Starting sync cycle");
+            info!(target: "worker", ?interval, "sync cycle start");
 
             match sync_all(&pool).await {
                 Ok(_) => {
-                    println!("✅ [SYNC] Success");
-                    interval = Duration::from_secs(30); // reset interval
+                    info!(target: "worker", "sync cycle success");
+                    interval = Duration::from_secs(30);
                 }
                 Err(e) => {
-                    println!("❌ [SYNC] Error: {:?}", e);
+                    error!(target: "worker", error = ?e, "sync cycle failed");
 
-                    // exponential backoff (max 5 min)
                     interval = std::cmp::min(interval * 2, Duration::from_secs(300));
-
-                    println!("⏳ [SYNC] Backing off for {:?}", interval);
+                    warn!(target: "worker", ?interval, "sync backoff");
                 }
             }
 
@@ -134,9 +135,9 @@ fn start_sync_worker(pool: PgPool) {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    println!("🚀 Server starting...");
     init_logger();
     dotenv().ok();
+    info!("Server starting...");
 
     let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| panic!("DATABASE_URL missing"));
     let pool = loop {
@@ -146,11 +147,11 @@ async fn main() -> std::io::Result<()> {
             .await
         {
             Ok(pool) => {
-                println!("✅ Connected to DB");
+                info!(target: "db", "Connected to Postgres");
                 break pool;
             }
             Err(e) => {
-                println!("⏳ Waiting for DB.. please wait... {:?}", e);
+                warn!(target: "db", error = ?e, "Postgres unavailable, retrying...");
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
         }
@@ -161,16 +162,16 @@ async fn main() -> std::io::Result<()> {
 
     let redis_cache = match crate::cache::Cache::connect().await {
         Ok(c) => {
-            println!("✅ Connected to Redis");
+            info!(target: "cache", "Connected to Redis");
             Some(c)
         }
         Err(e) => {
-            println!("⚠️ Redis unavailable, caching disabled: {:?}", e);
+            warn!(target: "cache", error = ?e, "Redis unavailable, caching disabled");
             None
         }
     };
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin("http://localhost")
             .allowed_origin("http://localhost:3000")
@@ -185,6 +186,7 @@ async fn main() -> std::io::Result<()> {
             .supports_credentials();
 
         App::new()
+            .wrap(TracingLogger::<AppRootSpanBuilder>::new())
             .wrap(cors)
             // .wrap(LoggerMiddleware)        // observability
             // .wrap(MetricsMiddleware)       // performance
@@ -194,7 +196,11 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(redis_cache.clone()))
             .configure(app_routes)
     })
-    .bind(("0.0.0.0", 8080))?
-    .run()
-    .await
+    .bind(("0.0.0.0", 8080))?;
+
+    info!("Server started on :8080");
+
+    let res = server.run().await;
+    info!("Server shutdown complete");
+    res
 }

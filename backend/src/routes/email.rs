@@ -5,6 +5,7 @@ use crate::security::jwt::get_user_id_from_request;
 use actix_web::{HttpRequest, HttpResponse, Responder, get, web};
 use serde_json::Value;
 use sqlx::{PgPool, QueryBuilder, Row};
+use tracing::{debug, error, info, instrument};
 
 #[derive(Deserialize)]
 pub struct EmailQuery {
@@ -15,6 +16,7 @@ pub struct EmailQuery {
 }
 
 #[get("/emails")]
+#[instrument(target = "http", skip(req, pool, cache, query))]
 pub async fn get_emails(
     req: HttpRequest,
     pool: web::Data<PgPool>,
@@ -51,6 +53,7 @@ pub async fn get_emails(
     if let Some(c) = cache.get_ref().as_ref()
         && let Some(cached) = c.get_json::<Value>(&cache_key).await
     {
+        debug!(target: "cache", key = %cache_key, "emails list cache hit");
         return HttpResponse::Ok().json(cached);
     }
 
@@ -124,10 +127,11 @@ pub async fn get_emails(
                 c.set_json_with_ttl(&cache_key, &emails, 30).await;
             }
 
+            info!(target: "http", user_id, count = emails.len(), "Fetched emails");
             HttpResponse::Ok().json(emails)
         }
         Err(e) => {
-            println!("❌ DB error: {:?}", e);
+            error!(target: "db", user_id, error = ?e, "get_emails query failed");
             HttpResponse::InternalServerError().finish()
         }
     }

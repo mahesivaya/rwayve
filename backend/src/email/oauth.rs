@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use tracing::{instrument, warn};
 
 pub fn load_google_secrets() -> serde_json::Value {
     let data = fs::read_to_string("client_secret.json")
@@ -7,6 +8,7 @@ pub fn load_google_secrets() -> serde_json::Value {
     serde_json::from_str(&data).unwrap()
 }
 
+#[instrument(target = "gmail", skip_all)]
 pub async fn refresh_access_token(
     client_id: &str,
     client_secret: &str,
@@ -25,7 +27,8 @@ pub async fn refresh_access_token(
         .json()
         .await?;
 
-    if res.get("error").is_some() {
+    if let Some(err) = res.get("error") {
+        warn!(target: "gmail", error = %err, "google token refresh returned error");
         return Err(anyhow::anyhow!("Token refresh failed"));
     }
 

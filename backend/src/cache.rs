@@ -3,6 +3,7 @@ use redis::aio::MultiplexedConnection;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::env;
+use tracing::warn;
 
 #[derive(Clone)]
 pub struct Cache {
@@ -28,12 +29,15 @@ impl Cache {
         let raw = match serde_json::to_string(value) {
             Ok(s) => s,
             Err(e) => {
-                println!("⚠️ cache serialize error: {:?}", e);
+                warn!(target: "cache", key, error = ?e, "cache serialize failed");
                 return;
             }
         };
         let mut conn = self.conn.clone();
-        let _: redis::RedisResult<()> = conn.set_ex(key, raw, ttl_secs).await;
+        let res: redis::RedisResult<()> = conn.set_ex(key, raw, ttl_secs).await;
+        if let Err(e) = res {
+            warn!(target: "cache", key, error = ?e, "redis SETEX failed");
+        }
     }
 
     pub async fn del(&self, key: &str) {

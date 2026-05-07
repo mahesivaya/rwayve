@@ -6,6 +6,7 @@ use futures_util::StreamExt;
 use sqlx::{FromRow, PgPool};
 use std::path::Path;
 use tokio::{fs, io::AsyncWriteExt};
+use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
 
 //
@@ -45,6 +46,7 @@ pub struct FileRecord {
 // 🔥 UPDATED UPLOAD FILE (FIXED USER_ID)
 //
 #[post("/files/upload")]
+#[instrument(target = "http", skip(payload, pool))]
 pub async fn upload_file(
     mut payload: Multipart,
     pool: web::Data<PgPool>,
@@ -52,7 +54,7 @@ pub async fn upload_file(
     let upload_dir = "./uploads";
 
     fs::create_dir_all(upload_dir).await.map_err(|e| {
-        println!("❌ Dir error: {:?}", e);
+        error!(target: "http", error = ?e, "upload dir create failed");
         actix_web::error::ErrorInternalServerError("Dir error")
     })?;
 
@@ -99,7 +101,7 @@ pub async fn upload_file(
         let filepath = format!("{}/{}_{}", upload_dir, file_id, filename);
 
         let mut f = fs::File::create(&filepath).await.map_err(|e| {
-            println!("❌ File create error: {:?}", e);
+            error!(target: "http", path = %filepath, error = ?e, "file create failed");
             actix_web::error::ErrorInternalServerError("File create error")
         })?;
 
@@ -111,7 +113,7 @@ pub async fn upload_file(
             size += data.len() as i64;
 
             f.write_all(&data).await.map_err(|e| {
-                println!("❌ Write error: {:?}", e);
+                error!(target: "http", path = %filepath, error = ?e, "file write failed");
                 actix_web::error::ErrorInternalServerError("Write error")
             })?;
         }
@@ -137,9 +139,11 @@ pub async fn upload_file(
         .execute(pool.get_ref())
         .await
         .map_err(|e| {
-            println!("❌ DB Insert Error: {:?}", e);
+            error!(target: "db", user_id, error = ?e, "files insert failed");
             actix_web::error::ErrorInternalServerError("DB error")
         })?;
+
+        info!(target: "http", user_id, name = %filename, size, "file uploaded");
     }
 
     Ok(HttpResponse::Ok().body("Upload successful"))
@@ -149,9 +153,8 @@ pub async fn upload_file(
 // ✅ GET FILES
 //
 #[get("/files")]
+#[instrument(target = "http", skip(pool, query), fields(user_id = query.user_id))]
 pub async fn get_files(pool: web::Data<PgPool>, query: web::Query<FileQuery>) -> impl Responder {
-    println!("📥 Fetch files for user_id: {}", query.user_id);
-
     let result = sqlx::query_as::<_, FileRecord>(
         "SELECT id, name, file_path, size, created_at FROM files WHERE user_id = $1 ORDER BY created_at DESC"
     )
@@ -161,7 +164,7 @@ pub async fn get_files(pool: web::Data<PgPool>, query: web::Query<FileQuery>) ->
 
     match result {
         Ok(rows) => {
-            println!("📦 Found {} files", rows.len());
+            debug!(target: "http", user_id = query.user_id, count = rows.len(), "files listed");
 
             let files: Vec<FileResponse> = rows
                 .into_iter()
@@ -188,7 +191,7 @@ pub async fn get_files(pool: web::Data<PgPool>, query: web::Query<FileQuery>) ->
         }
 
         Err(e) => {
-            println!("❌ DB error: {:?}", e);
+            error!(target: "db", user_id = query.user_id, error = ?e, "files list failed");
 
             HttpResponse::InternalServerError()
                 .json(serde_json::json!({ "error": "Failed to fetch files" }))

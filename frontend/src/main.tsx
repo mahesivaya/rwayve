@@ -5,6 +5,9 @@ import "./index.css";
 
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
+import { installDevLog } from "./utils/devlog";
+
+installDevLog();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <BrowserRouter>
