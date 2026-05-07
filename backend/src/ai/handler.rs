@@ -1,7 +1,8 @@
 use crate::email::oauth::HTTP_CLIENT;
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
-use tracing::{error, info, instrument, warn};
+use crate::{dev_error, dev_info, dev_warn};
+use tracing::instrument;
 
 #[derive(Deserialize)]
 pub struct ChatTurn {
@@ -31,13 +32,13 @@ pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Res
     let api_key = match std::env::var("GEMINI_API_KEY") {
         Ok(k) if !k.is_empty() => k,
         _ => {
-            error!(target: "ai", "GEMINI_API_KEY missing");
+            dev_error!("GEMINI_API_KEY missing");
             return HttpResponse::InternalServerError()
                 .body("AI not configured (GEMINI_API_KEY missing)");
         }
     };
 
-    info!(target: "ai", user_id, turns = data.messages.len(), "ai chat request");
+    dev_info!("AI chat request: user_id={} turns={}", user_id, data.messages.len());
 
     let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-2.0-flash".to_string());
 
@@ -73,7 +74,7 @@ pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Res
     let res = match res {
         Ok(r) => r,
         Err(e) => {
-            error!(target: "ai", error = %e, "gemini upstream transport error");
+            dev_error!("Gemini upstream transport error: {}", e);
             return HttpResponse::BadGateway().body("Upstream error");
         }
     };
@@ -82,7 +83,7 @@ pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Res
     let payload: Value = match res.json().await {
         Ok(v) => v,
         Err(e) => {
-            error!(target: "ai", error = %e, "gemini json parse failed");
+            dev_error!("Gemini json parse failed: {}", e);
             return HttpResponse::BadGateway().body("Bad upstream response");
         }
     };
@@ -92,7 +93,7 @@ pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Res
             .as_str()
             .unwrap_or("Upstream error")
             .to_string();
-        warn!(target: "ai", %status, message = %msg, "gemini non-2xx");
+        dev_warn!("Gemini non-2xx: {} - {}", status, msg);
         return HttpResponse::BadGateway().body(msg);
     }
 

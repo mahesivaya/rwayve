@@ -24,6 +24,7 @@ pub mod security;
 // use crate::middleware::metrics::MetricsMiddleware;
 // use crate::middleware::rate_limit::RateLimitMiddleware;
 
+use crate::observability::devlog::init_devlog;
 use crate::observability::logger::init_logger;
 // 🚧 use crate::observability::tracing_root::AppRootSpanBuilder; // disabled
 
@@ -63,7 +64,6 @@ use tokio::time::{Duration, sleep};
 
 use dotenvy::dotenv;
 use std::env;
-use tracing::{error, info, warn};
 // 🚧 use tracing_actix_web::TracingLogger; // disabled
 
 fn app_routes(cfg: &mut web::ServiceConfig) {
@@ -111,20 +111,18 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
 fn start_sync_worker(pool: PgPool) {
     tokio::spawn(async move {
         let mut interval = Duration::from_secs(30);
+        dev_info!("Sync worker started");
 
         loop {
-            info!(target: "worker", ?interval, "sync cycle start");
-
             match sync_all(&pool).await {
                 Ok(_) => {
-                    info!(target: "worker", "sync cycle success");
+                    dev_info!("Sync cycle success");
                     interval = Duration::from_secs(30);
                 }
                 Err(e) => {
-                    error!(target: "worker", error = ?e, "sync cycle failed");
-
+                    dev_error!("Sync cycle failed: {:?}", e);
                     interval = std::cmp::min(interval * 2, Duration::from_secs(300));
-                    warn!(target: "worker", ?interval, "sync backoff");
+                    dev_warn!("Sync backoff: {:?}", interval);
                 }
             }
 
@@ -136,23 +134,38 @@ fn start_sync_worker(pool: PgPool) {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     init_logger();
+    init_devlog();
     dotenv().ok();
-    info!("Server starting...");
+    dev_info!("Server starting...");
 
     let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| panic!("DATABASE_URL missing"));
-    let pool = loop {
-        match PgPoolOptions::new()
-            .max_connections(10)
-            .connect(&db_url)
-            .await
-        {
-            Ok(pool) => {
-                info!(target: "db", "Connected to Postgres");
-                break pool;
-            }
-            Err(e) => {
-                warn!(target: "db", error = ?e, "Postgres unavailable, retrying...");
-                tokio::time::sleep(Duration::from_secs(2)).await;
+    // Log the first failure verbosely; subsequent identical failures get a
+    // compact dot-counter so dev.log doesn't fill with the same line.
+    let pool = {
+        let mut attempts: u32 = 0;
+        loop {
+            match PgPoolOptions::new()
+                .max_connections(10)
+                .connect(&db_url)
+                .await
+            {
+                Ok(pool) => {
+                    if attempts > 0 {
+                        dev_info!("Connected to Postgres after {} retries", attempts);
+                    } else {
+                        dev_info!("Connected to Postgres");
+                    }
+                    break pool;
+                }
+                Err(e) => {
+                    if attempts == 0 {
+                        dev_warn!("Postgres unavailable, retrying... ({e:?})");
+                    } else if attempts.is_power_of_two() {
+                        dev_warn!("Postgres still unavailable after {} retries", attempts);
+                    }
+                    attempts += 1;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
             }
         }
     };
@@ -162,11 +175,11 @@ async fn main() -> std::io::Result<()> {
 
     let redis_cache = match crate::cache::Cache::connect().await {
         Ok(c) => {
-            info!(target: "cache", "Connected to Redis");
+            dev_info!("Connected to Redis");
             Some(c)
         }
         Err(e) => {
-            warn!(target: "cache", error = ?e, "Redis unavailable, caching disabled");
+            dev_warn!("Redis unavailable, caching disabled ({e:?})");
             None
         }
     };
@@ -198,9 +211,9 @@ async fn main() -> std::io::Result<()> {
     })
     .bind(("0.0.0.0", 8080))?;
 
-    info!("Server started on :8080");
+    dev_info!("Server started on :8080");
 
     let res = server.run().await;
-    info!("Server shutdown complete");
+    dev_info!("Server shutdown complete");
     res
 }

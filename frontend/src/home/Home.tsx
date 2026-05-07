@@ -59,6 +59,11 @@ export default function Home() {
           <p>Store and manage notes</p>
         </div>
 
+        <div className="card" onClick={() => navigate("/aichat")}>
+          <h3>✨ AI Chat</h3>
+          <p>Chat with AI</p>
+        </div>
+
       </div>
     </div>
   );

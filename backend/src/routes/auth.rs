@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use crate::{dev_error, dev_info, dev_warn};
 
 use crate::models::auth::{LoginInput, LoginResponse, RegisterInput};
 use crate::models::message::MessageResponse;
@@ -36,18 +37,18 @@ pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -
     match result {
         Ok(row) => {
             let user_id: i32 = row.get("id");
-            info!(target: "auth", user_id, "User registered: {}", data.email);
+            dev_info!("User registered: {}", data.email);
             let token = create_jwt(user_id, data.email.clone());
             HttpResponse::Ok().json(serde_json::json!({ "token": token }))
         }
 
         Err(e) => {
             if e.to_string().contains("duplicate key") {
-                warn!(target: "auth", "Register rejected (already exists): {}", data.email);
+                dev_warn!("Register rejected (already exists): {}", data.email);
                 HttpResponse::BadRequest()
                     .json(serde_json::json!({ "message": "User already exists" }))
             } else {
-                error!(target: "db", error = ?e, "Register insert failed for {}", data.email);
+                dev_error!("Register insert failed for {}: {:?}", data.email, e);
                 HttpResponse::InternalServerError()
                     .json(serde_json::json!({ "message": "Insert failed" }))
             }
@@ -69,13 +70,13 @@ async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResp
     let user = match user_result {
         Ok(Some(user)) => user,
         Ok(None) => {
-            warn!(target: "auth", "Invalid login attempt: {}", data.email);
+            dev_warn!("Invalid login attempt: {}", data.email);
             return HttpResponse::Unauthorized().json(MessageResponse {
                 message: "Invalid credentials".to_string(),
             });
         }
         Err(e) => {
-            error!(target: "db", error = ?e, "login user lookup failed");
+            dev_error!("Login user lookup failed: {:?}", e);
             return HttpResponse::InternalServerError().json(MessageResponse {
                 message: "Database error".to_string(),
             });
@@ -93,13 +94,13 @@ async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResp
     };
 
     if !valid {
-        warn!(target: "auth", user_id = user.id, "Invalid login attempt: {}", data.email);
+        dev_warn!("Invalid login attempt: {}", data.email);
         return HttpResponse::Unauthorized().json(MessageResponse {
             message: "Invalid credentials".to_string(),
         });
     }
 
-    info!(target: "auth", user_id = user.id, "Login success: {}", data.email);
+    dev_info!("Login success: {}", data.email);
     let token = create_jwt(user.id, user.email.clone());
     HttpResponse::Ok().json(LoginResponse { token })
 }

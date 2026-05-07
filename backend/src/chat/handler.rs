@@ -10,10 +10,11 @@ use actix_web_actors::ws::WebsocketContext;
 use serde::Deserialize;
 use sqlx::{PgPool, Row};
 
+use crate::{dev_error, dev_info};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, instrument};
 
 // ================= GLOBAL SESSIONS =================
 
@@ -67,12 +68,12 @@ impl Actor for ChatSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!(target: "ws", user_id = self.user_id, "chat session connected");
+        dev_info!("Chat WS connected: user_id={}", self.user_id);
         SESSIONS.lock().unwrap().insert(self.user_id, ctx.address());
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        info!(target: "ws", user_id = self.user_id, "chat session disconnected");
+        dev_info!("Chat WS disconnected: user_id={}", self.user_id);
         SESSIONS.lock().unwrap().remove(&self.user_id);
     }
 }
@@ -132,7 +133,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                     let (iv, encrypted) = match encrypt(&content) {
                         Ok(res) => res,
                         Err(e) => {
-                            error!(target: "ws", sender_id, receiver_id, error = ?e, "chat encrypt failed");
+                            dev_error!("Chat encrypt failed (sender={}, receiver={}): {:?}", sender_id, receiver_id, e);
                             return;
                         }
                     };

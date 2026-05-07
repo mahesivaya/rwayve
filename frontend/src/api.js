@@ -1,10 +1,18 @@
 import { logger } from "./utils/logger";
 const log = logger.scope("api");
 const API_BASE = import.meta.env.VITE_API_URL;
+const newReqId = () => {
+    // Short, sortable, no-deps id for correlation. Backend reads X-Request-ID.
+    const c = globalThis.crypto;
+    if (c && "randomUUID" in c)
+        return c.randomUUID().slice(0, 8);
+    return Math.random().toString(36).slice(2, 10);
+};
 export const apiFetch = async (endpoint, options = {}) => {
     const token = localStorage.getItem("token");
     const method = options.method || "GET";
-    log.debug(`→ ${method} ${endpoint}`);
+    const reqId = newReqId();
+    log.debug(`→ [${reqId}] ${method} ${endpoint}`);
     const start = performance.now();
     let res;
     try {
@@ -13,26 +21,26 @@ export const apiFetch = async (endpoint, options = {}) => {
             headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`,
+                "X-Request-ID": reqId,
                 ...(options.headers || {}),
             },
         });
     }
     catch (err) {
-        log.error(`✗ ${method} ${endpoint} (network)`, err);
+        log.error(`✗ [${reqId}] ${method} ${endpoint} (network)`, err);
         throw err;
     }
     const ms = Math.round(performance.now() - start);
     if (res.status === 401) {
-        log.warn(`← ${method} ${endpoint} 401 in ${ms}ms — clearing token`);
+        log.warn(`← [${reqId}] ${method} ${endpoint} 401 in ${ms}ms — clearing token`);
         localStorage.removeItem("token");
         window.location.href = "/login";
         throw new Error("Unauthorized");
     }
-    if (!res.ok) {
-        log.warn(`← ${method} ${endpoint} ${res.status} in ${ms}ms`);
-    }
-    else {
-        log.debug(`← ${method} ${endpoint} ${res.status} in ${ms}ms`);
-    }
+    const line = `← [${reqId}] ${method} ${endpoint} ${res.status} in ${ms}ms`;
+    if (!res.ok)
+        log.warn(line);
+    else
+        log.debug(line);
     return res;
 };

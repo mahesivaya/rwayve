@@ -1,11 +1,12 @@
 use crate::prelude::*;
+use crate::dev_info;
 use actix::Addr;
 use actix::*;
 use actix_web_actors::ws;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use crate::models::callmodel::SignalMessage;
 
@@ -21,13 +22,13 @@ impl Actor for CallSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!(target: "ws", user_id = self.user_id, "call session connected");
+        dev_info!("Call WS connected: user_id={}", self.user_id);
 
         SESSIONS.lock().unwrap().insert(self.user_id, ctx.address());
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        info!(target: "ws", user_id = self.user_id, "call session disconnected");
+        dev_info!("Call WS disconnected: user_id={}", self.user_id);
 
         SESSIONS.lock().unwrap().remove(&self.user_id);
     }
@@ -89,7 +90,7 @@ pub async fn call_ws(
         .and_then(|id| id.parse::<i32>().ok())
         .unwrap_or(0);
 
-    info!(target: "ws", user_id, "call_ws connect request");
+    dev_info!("Call WS connect request: user_id={}", user_id);
 
     ws::start(CallSession { user_id }, &req, stream)
 }
