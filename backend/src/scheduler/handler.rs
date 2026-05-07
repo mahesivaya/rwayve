@@ -1,7 +1,6 @@
 use crate::models::scheduler::{CreateMeeting, Meeting};
 use crate::prelude::*;
 use crate::scheduler::zoom::create_zoom_meeting;
-use crate::{dev_error, dev_info, dev_warn};
 use actix_web::{HttpRequest, HttpResponse, delete, post, put, web};
 use base64::Engine;
 use chrono::{TimeZone, Utc};
@@ -235,7 +234,7 @@ pub async fn create_meeting(
     let zoom_join_url = match create_zoom_meeting(&data.title, meeting_utc, duration_min).await {
         Ok(url) => Some(url),
         Err(e) => {
-            dev_warn!("Zoom meeting create failed: {} (continuing without join url)", e);
+            warn!("Zoom meeting create failed: {} (continuing without join url)", e);
             None
         }
     };
@@ -307,7 +306,7 @@ pub async fn create_meeting(
         return HttpResponse::InternalServerError().finish();
     }
 
-    dev_info!("Meeting created: id={} user_id={} title=\"{}\"", meeting_id, user_id, data.title);
+    info!("Meeting created: id={} user_id={} title=\"{}\"", meeting_id, user_id, data.title);
 
     // ================= BACKGROUND EMAIL =================
     let pool_clone = pool.clone();
@@ -509,7 +508,7 @@ pub async fn update_meeting(
         return HttpResponse::InternalServerError().finish();
     }
 
-    dev_info!("Meeting updated: id={} user_id={}", id, user_id);
+    info!("Meeting updated: id={} user_id={}", id, user_id);
 
     // ================= NOTIFY ON CONTENT CHANGES =================
     // Email participants only when title/date/start/end actually changed —
@@ -636,13 +635,13 @@ pub async fn delete_meeting(
                     }
                 });
             }
-            dev_info!("Meeting deleted: id={} user_id={}", id, user_id);
+            info!("Meeting deleted: id={} user_id={}", id, user_id);
             HttpResponse::Ok().json(json!({
                 "message": "Meeting deleted"
             }))
         }
         Err(e) => {
-            dev_error!("Meeting delete failed (id={}): {:?}", id, e);
+            error!("Meeting delete failed (id={}): {:?}", id, e);
             HttpResponse::InternalServerError().body("Failed to delete meeting")
         }
     }

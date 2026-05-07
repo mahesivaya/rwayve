@@ -47,10 +47,12 @@ actix-multipart = "0.6"
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 lazy_static = "1.4"
-tracing = "0.1.44"
+tracing = { version = "0.1.44", features = ["log-always"] }
 # 🚧 Temporarily disabled to shrink release-build memory. The `tracing` macro
-# crate alone is light; subscriber/appender/actix-web are the heavy ones.
-# Re-enable when Docker memory allows.
+# crate alone is light; subscriber/appender/actix-web are the heavy ones. With
+# the `log-always` feature above, `tracing::info!/warn!/error!` events are
+# forwarded to the `log` facade — caught by our DevLogger impl in
+# observability/devlog.rs.
 # tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 # tracing-appender = "0.2"
 # tracing-actix-web = "0.7"

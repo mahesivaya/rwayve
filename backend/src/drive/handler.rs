@@ -6,8 +6,7 @@ use futures_util::StreamExt;
 use sqlx::{FromRow, PgPool};
 use std::path::Path;
 use tokio::{fs, io::AsyncWriteExt};
-use crate::{dev_error, dev_info};
-use tracing::{debug, error, instrument};
+use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
 
 //
@@ -140,11 +139,11 @@ pub async fn upload_file(
         .execute(pool.get_ref())
         .await
         .map_err(|e| {
-            dev_error!("Files insert failed (user_id={}): {:?}", user_id, e);
+            error!("Files insert failed (user_id={}): {:?}", user_id, e);
             actix_web::error::ErrorInternalServerError("DB error")
         })?;
 
-        dev_info!("File uploaded: name=\"{}\" size={} user_id={}", filename, size, user_id);
+        info!("File uploaded: name=\"{}\" size={} user_id={}", filename, size, user_id);
     }
 
     Ok(HttpResponse::Ok().body("Upload successful"))

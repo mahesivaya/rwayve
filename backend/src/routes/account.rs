@@ -1,9 +1,8 @@
 use crate::models::account::Account;
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
-use crate::dev_info;
 use actix_web::delete;
-use tracing::{error, instrument};
+use tracing::{error, info, instrument};
 
 #[get("/accounts")]
 #[instrument(target = "http", skip(req, pool))]
@@ -64,7 +63,7 @@ pub async fn delete_account(
     match result {
         Ok(r) if r.rows_affected() == 0 => HttpResponse::NotFound().finish(),
         Ok(_) => {
-            dev_info!("Email account deleted: id={} user_id={}", id, user_id);
+            info!("Email account deleted: id={} user_id={}", id, user_id);
             HttpResponse::Ok().json(serde_json::json!({ "deleted": true }))
         }
         Err(e) => {

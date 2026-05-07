@@ -64,6 +64,7 @@ use tokio::time::{Duration, sleep};
 
 use dotenvy::dotenv;
 use std::env;
+use tracing::{error, info, warn};
 // 🚧 use tracing_actix_web::TracingLogger; // disabled
 
 fn app_routes(cfg: &mut web::ServiceConfig) {
@@ -111,18 +112,18 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
 fn start_sync_worker(pool: PgPool) {
     tokio::spawn(async move {
         let mut interval = Duration::from_secs(30);
-        dev_info!("Sync worker started");
+        info!("Sync worker started");
 
         loop {
             match sync_all(&pool).await {
                 Ok(_) => {
-                    dev_info!("Sync cycle success");
+                    info!("Sync cycle success");
                     interval = Duration::from_secs(30);
                 }
                 Err(e) => {
-                    dev_error!("Sync cycle failed: {:?}", e);
+                    error!("Sync cycle failed: {:?}", e);
                     interval = std::cmp::min(interval * 2, Duration::from_secs(300));
-                    dev_warn!("Sync backoff: {:?}", interval);
+                    warn!("Sync backoff: {:?}", interval);
                 }
             }
 
@@ -136,7 +137,7 @@ async fn main() -> std::io::Result<()> {
     init_logger();
     init_devlog();
     dotenv().ok();
-    dev_info!("Server starting...");
+    info!("Server starting...");
 
     let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| panic!("DATABASE_URL missing"));
     // Log the first failure verbosely; subsequent identical failures get a
@@ -151,17 +152,17 @@ async fn main() -> std::io::Result<()> {
             {
                 Ok(pool) => {
                     if attempts > 0 {
-                        dev_info!("Connected to Postgres after {} retries", attempts);
+                        info!("Connected to Postgres after {} retries", attempts);
                     } else {
-                        dev_info!("Connected to Postgres");
+                        info!("Connected to Postgres");
                     }
                     break pool;
                 }
                 Err(e) => {
                     if attempts == 0 {
-                        dev_warn!("Postgres unavailable, retrying... ({e:?})");
+                        warn!("Postgres unavailable, retrying... ({e:?})");
                     } else if attempts.is_power_of_two() {
-                        dev_warn!("Postgres still unavailable after {} retries", attempts);
+                        warn!("Postgres still unavailable after {} retries", attempts);
                     }
                     attempts += 1;
                     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -175,11 +176,11 @@ async fn main() -> std::io::Result<()> {
 
     let redis_cache = match crate::cache::Cache::connect().await {
         Ok(c) => {
-            dev_info!("Connected to Redis");
+            info!("Connected to Redis");
             Some(c)
         }
         Err(e) => {
-            dev_warn!("Redis unavailable, caching disabled ({e:?})");
+            warn!("Redis unavailable, caching disabled ({e:?})");
             None
         }
     };
@@ -195,6 +196,7 @@ async fn main() -> std::io::Result<()> {
             .allowed_headers(vec![
                 actix_web::http::header::CONTENT_TYPE,
                 actix_web::http::header::AUTHORIZATION,
+                actix_web::http::header::HeaderName::from_static("x-request-id"),
             ])
             .supports_credentials();
 
@@ -211,9 +213,9 @@ async fn main() -> std::io::Result<()> {
     })
     .bind(("0.0.0.0", 8080))?;
 
-    dev_info!("Server started on :8080");
+    info!("Server started on :8080");
 
     let res = server.run().await;
-    dev_info!("Server shutdown complete");
+    info!("Server shutdown complete");
     res
 }

@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use crate::{dev_error, dev_info, dev_warn};
 
 use crate::email::oauth::HTTP_CLIENT;
 use crate::email::oauth::{load_google_secrets, refresh_access_token};
@@ -177,11 +176,11 @@ pub async fn oauth_callback(
     {
         Ok(row) => {
             let id: i32 = row.get("id");
-            dev_info!("Gmail account connected: {} (user_id={}, account_id={})", email, user_id, id);
+            info!("Gmail account connected: {} (user_id={}, account_id={})", email, user_id, id);
             id
         }
         Err(e) => {
-            dev_error!("Failed to save Gmail account {}: {:?}", email, e);
+            error!("Failed to save Gmail account {}: {:?}", email, e);
             return HttpResponse::InternalServerError().body("Failed to save account");
         }
     };
@@ -282,16 +281,16 @@ async fn send(
             let response_text = resp.text().await.unwrap_or_default();
 
             if status.is_success() {
-                dev_info!("Email sent to {} (user_id={})", data.to, user_id);
+                info!("Email sent to {} (user_id={})", data.to, user_id);
                 HttpResponse::Ok().body("Email sent ✅")
             } else {
-                dev_warn!("Gmail rejected send to {} (status={}, body={})", data.to, status, response_text);
+                warn!("Gmail rejected send to {} (status={}, body={})", data.to, status, response_text);
                 HttpResponse::InternalServerError()
                     .body(format!("Gmail rejected request: {}", response_text))
             }
         }
         Err(e) => {
-            dev_error!("Failed to connect to Gmail API: {}", e);
+            error!("Failed to connect to Gmail API: {}", e);
             HttpResponse::InternalServerError().body("Failed to reach Gmail")
         }
     }
