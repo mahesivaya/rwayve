@@ -213,7 +213,8 @@ pub async fn oauth_callback(
     info!(target: "gmail", user_id, "redirecting to frontend");
 
     // 🔁 Redirect AFTER saving
-    let frontend = std::env::var("FRONTEND_URL").expect("FRONTEND_URL missing");
+    let frontend =
+        std::env::var("FRONTEND_URL").unwrap_or_else(|_| panic!("FRONTEND_URL missing"));
 
     let redirect = format!("{}/emails?connected=true&token={}", frontend, token);
 
