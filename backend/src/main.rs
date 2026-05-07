@@ -185,13 +185,13 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    let frontend_url =
+    env::var("FRONTEND_URL")
+        .expect("FRONTEND_URL missing");
+
     let server = HttpServer::new(move || {
         let cors = Cors::default()
-            .allowed_origin("http://localhost")
-            .allowed_origin("http://localhost:3000")
-            .allowed_origin("http://127.0.0.1:3000")
-            .allowed_origin("http://localhost:5173")
-            .allowed_origin("http://127.0.0.1:5173")
+            .allowed_origin(&frontend_url)
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
             .allowed_headers(vec![
                 actix_web::http::header::CONTENT_TYPE,

@@ -1,5 +1,6 @@
 import { logger } from "../utils/logger";
 const API_BASE = import.meta.env.VITE_API_URL;
+const WS_BASE = import.meta.env.VITE_WS_BASE_URL;
 
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
@@ -95,7 +96,7 @@ export default function Chat() {
   useEffect(() => {
     if (!user) return;
 
-    const ws = new WebSocket(`ws://localhost/ws/chat?user_id=${user.id}`);
+    const ws = new WebSocket(`ws://${WS_BASE}/ws/chat?user_id=${user.id}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
