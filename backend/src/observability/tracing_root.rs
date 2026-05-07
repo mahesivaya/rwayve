@@ -1,11 +1,13 @@
+// 🚧 Temporarily disabled while `tracing-actix-web` is unused.
+// Original implementation preserved below for restore.
+
+/*
 use actix_web::body::MessageBody;
 use actix_web::dev::{ServiceRequest, ServiceResponse};
 use tracing::Span;
 use tracing_actix_web::{DefaultRootSpanBuilder, RootSpanBuilder, root_span};
 use uuid::Uuid;
 
-/// Root span that prefers the caller's `X-Request-ID` so frontend logs line
-/// up with backend logs end-to-end. Falls back to a fresh UUID.
 pub struct AppRootSpanBuilder;
 
 impl RootSpanBuilder for AppRootSpanBuilder {
@@ -27,3 +29,4 @@ impl RootSpanBuilder for AppRootSpanBuilder {
         DefaultRootSpanBuilder::on_request_end(span, outcome);
     }
 }
+*/

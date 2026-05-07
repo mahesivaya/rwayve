@@ -1,14 +1,16 @@
+// 🚧 Tracing subscriber wiring is temporarily disabled to shrink the
+// release-build memory footprint. `init_logger` is now a no-op so existing
+// `tracing::info!/warn!/error!` calls stay valid (they emit nothing without a
+// subscriber, which is the intent for this temporary state). The original
+// implementation is preserved below in a block comment for easy restore.
+pub fn init_logger() {}
+
+/*
 use tracing_appender::rolling;
 use tracing_subscriber::{
     EnvFilter, Layer, fmt, filter::filter_fn, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
-/// Initialize the global tracing subscriber.
-///
-/// Layers route by `target:` so callers control where a record lands by
-/// picking the target on the macro call (e.g. `tracing::info!(target: "auth", ...)`).
-/// The console layer respects `RUST_LOG`; per-file layers always log at
-/// their target's level so file output isn't accidentally silenced by env.
 pub fn init_logger() {
     let http_access = rolling::daily("logs/http", "access.log");
     let auth_log = rolling::daily("logs/auth", "auth.log");
@@ -20,11 +22,7 @@ pub fn init_logger() {
     let cache_log = rolling::daily("logs/cache", "cache.log");
     let ai_log = rolling::daily("logs/ai", "ai.log");
     let sched_log = rolling::daily("logs/scheduler", "scheduler.log");
-    // Combined firehose for `tail -f` / grep during dev. Always DEBUG so the
-    // file stays useful even when RUST_LOG raises the console threshold.
     let all_log = rolling::daily("logs", "all.log");
-    // Human-readable dev companion. Single line per event at INFO+, easy to
-    // skim while reproducing a flow.
     let dev_log = rolling::daily("logs", "dev.log");
 
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
@@ -111,3 +109,4 @@ pub fn init_logger() {
         )
         .init();
 }
+*/

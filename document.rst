@@ -496,3 +496,12 @@ curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lates
       }
     ]
   }'
+
+
+
+
+Uncomment the three deps in Cargo.toml:51-53
+Move the block comment in logger.rs and tracing_root.rs back to expose the original code
+Uncomment pub mod tracing_root; in observability/mod.rs
+Uncomment the two imports + the .wrap(TracingLogger…) line in main.rs
+Logs to terminal will be silent for now. If you want temporary visibility while tracing is disabled, you can add eprintln! at key spots — let me know and I'll wire those in.

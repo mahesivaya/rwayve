@@ -25,7 +25,7 @@ pub mod security;
 // use crate::middleware::rate_limit::RateLimitMiddleware;
 
 use crate::observability::logger::init_logger;
-use crate::observability::tracing_root::AppRootSpanBuilder;
+// 🚧 use crate::observability::tracing_root::AppRootSpanBuilder; // disabled
 
 use crate::chat::handler::{chat_ws, get_messages};
 
@@ -64,7 +64,7 @@ use tokio::time::{Duration, sleep};
 use dotenvy::dotenv;
 use std::env;
 use tracing::{error, info, warn};
-use tracing_actix_web::TracingLogger;
+// 🚧 use tracing_actix_web::TracingLogger; // disabled
 
 fn app_routes(cfg: &mut web::ServiceConfig) {
     cfg
@@ -186,7 +186,7 @@ async fn main() -> std::io::Result<()> {
             .supports_credentials();
 
         App::new()
-            .wrap(TracingLogger::<AppRootSpanBuilder>::new())
+            // 🚧 .wrap(TracingLogger::<AppRootSpanBuilder>::new()) // disabled
             .wrap(cors)
             // .wrap(LoggerMiddleware)        // observability
             // .wrap(MetricsMiddleware)       // performance

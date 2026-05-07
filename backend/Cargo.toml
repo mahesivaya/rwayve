@@ -48,14 +48,13 @@ futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 lazy_static = "1.4"
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
-tracing-appender = "0.2"
-tracing-error = "0.2"
-tracing-actix-web = "0.7"
+# 🚧 Temporarily disabled to shrink release-build memory. The `tracing` macro
+# crate alone is light; subscriber/appender/actix-web are the heavy ones.
+# Re-enable when Docker memory allows.
+# tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+# tracing-appender = "0.2"
+# tracing-actix-web = "0.7"
 log = "0.4.29"
 actix-files = "0.6.10"
 dotenvy = "0.15.7"
-clap-cargo = "0.18.3"
-static_assertions = "1.1.0"
 redis = { version = "0.25", features = ["tokio-comp"] }
-deadpool-redis = "0.14"
