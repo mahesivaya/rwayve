@@ -37,7 +37,11 @@ pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Res
         }
     };
 
-    info!("AI chat request: user_id={} turns={}", user_id, data.messages.len());
+    info!(
+        "AI chat request: user_id={} turns={}",
+        user_id,
+        data.messages.len()
+    );
 
     let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-2.0-flash".to_string());
 

@@ -132,7 +132,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                     let (iv, encrypted) = match encrypt(&content) {
                         Ok(res) => res,
                         Err(e) => {
-                            error!("Chat encrypt failed (sender={}, receiver={}): {:?}", sender_id, receiver_id, e);
+                            error!(
+                                "Chat encrypt failed (sender={}, receiver={}): {:?}",
+                                sender_id, receiver_id, e
+                            );
                             return;
                         }
                     };

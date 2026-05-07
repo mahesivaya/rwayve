@@ -185,9 +185,7 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    let frontend_url =
-    env::var("FRONTEND_URL")
-        .expect("FRONTEND_URL missing");
+    let frontend_url = env::var("FRONTEND_URL").expect("FRONTEND_URL missing");
 
     let server = HttpServer::new(move || {
         let cors = Cors::default()

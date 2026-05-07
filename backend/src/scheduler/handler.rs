@@ -234,7 +234,10 @@ pub async fn create_meeting(
     let zoom_join_url = match create_zoom_meeting(&data.title, meeting_utc, duration_min).await {
         Ok(url) => Some(url),
         Err(e) => {
-            warn!("Zoom meeting create failed: {} (continuing without join url)", e);
+            warn!(
+                "Zoom meeting create failed: {} (continuing without join url)",
+                e
+            );
             None
         }
     };
@@ -306,7 +309,10 @@ pub async fn create_meeting(
         return HttpResponse::InternalServerError().finish();
     }
 
-    info!("Meeting created: id={} user_id={} title=\"{}\"", meeting_id, user_id, data.title);
+    info!(
+        "Meeting created: id={} user_id={} title=\"{}\"",
+        meeting_id, user_id, data.title
+    );
 
     // ================= BACKGROUND EMAIL =================
     let pool_clone = pool.clone();
@@ -592,21 +598,22 @@ pub async fn delete_meeting(
         }
     };
 
-    let participants: Vec<String> =
-        match sqlx::query("SELECT email FROM meeting_participants WHERE meeting_id = $1")
-            .bind(id)
-            .fetch_all(pool.get_ref())
-            .await
-        {
-            Ok(rows) => rows
-                .into_iter()
-                .map(|r| r.get::<String, _>("email"))
-                .collect(),
-            Err(e) => {
-                warn!(target: "db", meeting_id = id, error = ?e, "delete_meeting load participants failed");
-                Vec::new()
-            }
-        };
+    let participants: Vec<String> = match sqlx::query(
+        "SELECT email FROM meeting_participants WHERE meeting_id = $1",
+    )
+    .bind(id)
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|r| r.get::<String, _>("email"))
+            .collect(),
+        Err(e) => {
+            warn!(target: "db", meeting_id = id, error = ?e, "delete_meeting load participants failed");
+            Vec::new()
+        }
+    };
 
     let result = sqlx::query("DELETE FROM meetings WHERE id = $1")
         .bind(id)

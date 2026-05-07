@@ -143,7 +143,10 @@ pub async fn upload_file(
             actix_web::error::ErrorInternalServerError("DB error")
         })?;
 
-        info!("File uploaded: name=\"{}\" size={} user_id={}", filename, size, user_id);
+        info!(
+            "File uploaded: name=\"{}\" size={} user_id={}",
+            filename, size, user_id
+        );
     }
 
     Ok(HttpResponse::Ok().body("Upload successful"))

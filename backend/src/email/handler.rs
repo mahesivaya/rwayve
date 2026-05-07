@@ -176,7 +176,10 @@ pub async fn oauth_callback(
     {
         Ok(row) => {
             let id: i32 = row.get("id");
-            info!("Gmail account connected: {} (user_id={}, account_id={})", email, user_id, id);
+            info!(
+                "Gmail account connected: {} (user_id={}, account_id={})",
+                email, user_id, id
+            );
             id
         }
         Err(e) => {
@@ -198,16 +201,19 @@ pub async fn oauth_callback(
         )
         .await
         {
-            Ok(n) => info!(target: "scheduler", user_id, account_id, count = n, "calendar import done"),
-            Err(e) => warn!(target: "scheduler", user_id, account_id, error = %e, "calendar import failed"),
+            Ok(n) => {
+                info!(target: "scheduler", user_id, account_id, count = n, "calendar import done")
+            }
+            Err(e) => {
+                warn!(target: "scheduler", user_id, account_id, error = %e, "calendar import failed")
+            }
         }
     });
 
     info!(target: "gmail", user_id, "redirecting to frontend");
 
     // 🔁 Redirect AFTER saving
-    let frontend = std::env::var("FRONTEND_URL")
-        .expect("FRONTEND_URL missing");
+    let frontend = std::env::var("FRONTEND_URL").expect("FRONTEND_URL missing");
 
     let redirect = format!("{}/emails?connected=true&token={}", frontend, token);
 
@@ -285,7 +291,10 @@ async fn send(
                 info!("Email sent to {} (user_id={})", data.to, user_id);
                 HttpResponse::Ok().body("Email sent ✅")
             } else {
-                warn!("Gmail rejected send to {} (status={}, body={})", data.to, status, response_text);
+                warn!(
+                    "Gmail rejected send to {} (status={}, body={})",
+                    data.to, status, response_text
+                );
                 HttpResponse::InternalServerError()
                     .body(format!("Gmail rejected request: {}", response_text))
             }
