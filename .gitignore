@@ -29,3 +29,4 @@ client_secret.json
 .env
 uploads/
 *.pem
+docs/

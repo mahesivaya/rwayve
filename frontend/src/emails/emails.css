@@ -212,6 +212,37 @@ body {
   white-space: pre-wrap;
 }
 
+.email-body-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #6b7280;
+  font-size: 14px;
+  padding: 12px 0;
+}
+
+.email-body-error {
+  color: #b91c1c;
+  font-size: 14px;
+  padding: 12px 0;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #d1d5db;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: email-spin 0.8s linear infinite;
+  display: inline-block;
+}
+
+@keyframes email-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ================= SCROLLBAR ================= */
 .email-list::-webkit-scrollbar,
 .email-detail::-webkit-scrollbar {

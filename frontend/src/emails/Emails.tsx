@@ -153,14 +153,41 @@ export default function Emails() {
 
     const token = localStorage.getItem("token");
 
+    // 1) Show metadata immediately. Body may be empty if body_worker hasn't
+    //    fetched it yet — render the placeholder via bodyLoading.
     const res = await fetch(`${API_BASE}/api/emails/${email.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-
     const data = await res.json();
+    setSelectedEmail({ ...data, _bodyLoading: !data.body });
+
+    // 2) If body wasn't ready, hit the on-demand endpoint. Backend triggers a
+    //    Gmail fetch, encrypts, persists, and returns the body.
+    if (!data.body) {
+      try {
+        const bodyRes = await fetch(`${API_BASE}/api/emails/${email.id}/body`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (bodyRes.ok) {
+          const { body } = await bodyRes.json();
+          const merged = { ...data, body, _bodyLoading: false };
+          emailCache.current[email.id] = merged;
+          // Only update if user hasn't navigated away to a different email.
+          setSelectedEmail((cur: any) => (cur && cur.id === email.id ? merged : cur));
+          return;
+        }
+        setSelectedEmail((cur: any) =>
+          cur && cur.id === email.id ? { ...cur, _bodyLoading: false, _bodyError: true } : cur
+        );
+      } catch {
+        setSelectedEmail((cur: any) =>
+          cur && cur.id === email.id ? { ...cur, _bodyLoading: false, _bodyError: true } : cur
+        );
+      }
+      return;
+    }
 
     emailCache.current[email.id] = data;
-    setSelectedEmail(data);
   };
 
   // ================= UI =================
@@ -318,7 +345,16 @@ export default function Emails() {
               <p><b>To:</b> {selectedEmail.receiver}</p>
 
               <div className="email-body">
-                {selectedEmail.body}
+                {selectedEmail._bodyLoading ? (
+                  <div className="email-body-loading">
+                    <span className="spinner" aria-hidden="true" />
+                    <span>Loading email …</span>
+                  </div>
+                ) : selectedEmail._bodyError ? (
+                  <p className="email-body-error">Failed to load email body. Try again.</p>
+                ) : (
+                  selectedEmail.body
+                )}
               </div>
             </>
           )}

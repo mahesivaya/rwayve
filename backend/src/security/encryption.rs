@@ -37,10 +37,24 @@ pub fn decrypt(nonce_b64: &str, cipher_b64: &str) -> Result<String, String> {
         .decode(nonce_b64)
         .map_err(|e| format!("Nonce decode error: {:?}", e))?;
 
+    // AES-GCM nonce is fixed 12 bytes; passing anything else makes
+    // `Nonce::from_slice` panic in generic-array. Reject explicitly so
+    // callers get a clean error instead of a panic.
+    if nonce.len() != 12 {
+        return Err(format!(
+            "Invalid nonce length: expected 12, got {}",
+            nonce.len()
+        ));
+    }
+
     // decode ciphertext
     let ciphertext = general_purpose::STANDARD
         .decode(cipher_b64)
         .map_err(|e| format!("Cipher decode error: {:?}", e))?;
+
+    if ciphertext.is_empty() {
+        return Err("Empty ciphertext".to_string());
+    }
 
     // decrypt
     let decrypted = cipher

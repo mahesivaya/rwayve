@@ -388,9 +388,19 @@ pub async fn get_email_by_id(pool: web::Data<PgPool>, path: web::Path<i32>) -> i
             let body_iv: String = row.get("body_iv");
             let body_encrypted: String = row.get("body_encrypted");
 
-            let body = match crate::security::encryption::decrypt(&body_iv, &body_encrypted) {
-                Ok(text) => text,
-                Err(_) => "Failed to decrypt".to_string(),
+            // Newly synced emails carry empty body until body_worker fetches
+            // them — return a placeholder instead of attempting to decrypt
+            // (which would have panicked on an empty nonce).
+            let body = if body_encrypted.is_empty() || body_iv.is_empty() {
+                String::new()
+            } else {
+                match crate::security::encryption::decrypt(&body_iv, &body_encrypted) {
+                    Ok(text) => text,
+                    Err(e) => {
+                        warn!(target: "gmail", email_id, error = %e, "email body decrypt failed");
+                        "Failed to decrypt".to_string()
+                    }
+                }
             };
 
             HttpResponse::Ok().json(serde_json::json!({

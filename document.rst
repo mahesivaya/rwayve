@@ -505,3 +505,68 @@ Move the block comment in logger.rs and tracing_root.rs back to expose the origi
 Uncomment pub mod tracing_root; in observability/mod.rs
 Uncomment the two imports + the .wrap(TracingLogger…) line in main.rs
 Logs to terminal will be silent for now. If you want temporary visibility while tracing is disabled, you can add eprintln! at key spots — let me know and I'll wire those in.
+
+
+
+App start
+→ /api/me
+→ RSA key generation
+→ IndexedDB save
+→ export public key
+→ POST /api/save-public-key
+→ THEN render app
+
+
+docker system prune -a
+
+
+
+
+
+
+
+
+
+
+{
+        "Version": "2008-10-17",
+        "Id": "PolicyForCloudFrontPrivateContent",
+        "Statement": [
+            {
+                "Sid": "AllowCloudFrontServicePrincipal",
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "cloudfront.amazonaws.com"
+                },
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::tideon-s3-bucket/*",
+                "Condition": {
+                    "StringEquals": {
+                      "AWS:SourceArn": "arn:aws:cloudfront::339713009139:distribution/E1EULUZC0EGV1H"
+                    }
+                }
+            }
+        ]
+      }
+
+
+{
+        "Version": "2008-10-17",
+        "Id": "PolicyForCloudFrontPrivateContent",
+        "Statement": [
+            {
+                "Sid": "AllowCloudFrontServicePrincipal",
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "cloudfront.amazonaws.com"
+                },
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::tideon-s3-bucket/*",
+                "Condition": {
+                    "StringEquals": {
+                      "AWS:SourceArn": "arn:aws:cloudfront::339713009139:distribution/E1EULUZC0EGV1H"
+                    }
+                }
+            }
+        ]
+      }
