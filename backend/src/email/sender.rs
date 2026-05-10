@@ -17,7 +17,9 @@ pub async fn send_mail(to: &str, subject: &str, body: &str) -> Result<(), String
     let from_parsed = from
         .parse()
         .map_err(|e| format!("SMTP_FROM invalid: {e:?}"))?;
-    let to_parsed = to.parse().map_err(|e| format!("recipient invalid: {e:?}"))?;
+    let to_parsed = to
+        .parse()
+        .map_err(|e| format!("recipient invalid: {e:?}"))?;
 
     let email = Message::builder()
         .from(from_parsed)

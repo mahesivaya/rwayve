@@ -191,10 +191,7 @@ pub async fn oauth_callback(
                         "Google signup blocked: {} already registered with {}",
                         email, provider
                     );
-                    let redirect = format!(
-                        "{}/login?error=email_exists",
-                        frontend_for_errors
-                    );
+                    let redirect = format!("{}/login?error=email_exists", frontend_for_errors);
                     return HttpResponse::Found()
                         .append_header(("Location", redirect))
                         .finish();
