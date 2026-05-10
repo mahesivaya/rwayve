@@ -5,8 +5,9 @@ use sqlx::PgPool;
 use tracing::{instrument, warn};
 
 fn cal_url() -> String {
-    std::env::var("GOOGLE_CALENDAR_URL")
-        .unwrap_or_else(|_| "https://www.googleapis.com/calendar/v3/calendars/primary/events".into())
+    std::env::var("GOOGLE_CALENDAR_URL").unwrap_or_else(|_| {
+        "https://www.googleapis.com/calendar/v3/calendars/primary/events".into()
+    })
 }
 
 #[instrument(target = "scheduler", skip(pool, access_token))]

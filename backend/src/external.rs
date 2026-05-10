@@ -28,8 +28,7 @@ pub fn gemini_base() -> String {
 /// Root for Gmail REST calls. The two workers (sync + body_worker) build
 /// per-message URLs off this base; tests point it at a wiremock server.
 pub fn gmail_api_base() -> String {
-    std::env::var("GMAIL_API_BASE")
-        .unwrap_or_else(|_| "https://gmail.googleapis.com".to_string())
+    std::env::var("GMAIL_API_BASE").unwrap_or_else(|_| "https://gmail.googleapis.com".to_string())
 }
 
 pub fn zoom_oauth_token_url() -> String {

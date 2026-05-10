@@ -122,13 +122,13 @@ mod tests {
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
-        assert!(!messages.is_empty(), "expected at least one message in MailHog");
+        assert!(
+            !messages.is_empty(),
+            "expected at least one message in MailHog"
+        );
 
         let m = &messages[0];
-        let recipient = m["To"][0]["Mailbox"]
-            .as_str()
-            .unwrap_or("")
-            .to_string()
+        let recipient = m["To"][0]["Mailbox"].as_str().unwrap_or("").to_string()
             + "@"
             + m["To"][0]["Domain"].as_str().unwrap_or("");
         assert_eq!(recipient, to);
