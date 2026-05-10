@@ -1,9 +1,11 @@
+use crate::models::auth::ChangePasswordInput;
 use crate::models::email_request::UserResponse;
 use crate::security::jwt::get_user_id_from_request;
-use actix_web::{HttpRequest, HttpResponse, Responder, get, put, web};
+use actix_web::{HttpRequest, HttpResponse, Responder, get, post, put, web};
+use bcrypt::{DEFAULT_COST, hash, verify};
 use serde::Deserialize;
 use sqlx::PgPool;
-use tracing::{error, info, instrument};
+use tracing::{error, info, instrument, warn};
 
 #[get("/users")]
 #[instrument(target = "http", skip(req, pool))]
@@ -60,10 +62,12 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
         None => return HttpResponse::Unauthorized().finish(),
     };
 
-    let result = sqlx::query("SELECT id, email, first_name, last_name FROM users WHERE id = $1")
-        .bind(user_id)
-        .fetch_optional(pool.get_ref())
-        .await;
+    let result = sqlx::query(
+        "SELECT id, email, first_name, last_name, auth_provider FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await;
 
     match result {
         Ok(Some(row)) => {
@@ -71,12 +75,14 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
             let email: String = row.get("email");
             let first_name: Option<String> = row.try_get("first_name").ok();
             let last_name: Option<String> = row.try_get("last_name").ok();
+            let auth_provider: String = row.get("auth_provider");
 
             HttpResponse::Ok().json(serde_json::json!({
                 "id": id,
                 "email": email,
                 "first_name": first_name,
                 "last_name": last_name,
+                "auth_provider": auth_provider,
             }))
         }
         Ok(None) => HttpResponse::NotFound().finish(),
@@ -85,6 +91,72 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
             HttpResponse::InternalServerError().finish()
         }
     }
+}
+
+#[post("/profile/password")]
+#[instrument(target = "auth", skip(req, pool, data))]
+pub async fn change_password(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    data: web::Json<ChangePasswordInput>,
+) -> impl Responder {
+    let user_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    if data.new_password.len() < 6 {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "message": "New password must be at least 6 characters" }));
+    }
+
+    let row = sqlx::query("SELECT password FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool.get_ref())
+        .await;
+
+    let stored: Option<String> = match row {
+        Ok(Some(r)) => r.try_get("password").ok().flatten(),
+        _ => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let stored = match stored {
+        Some(p) => p,
+        None => {
+            warn!(target: "auth", user_id, "change-password rejected: google account");
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "message": "This account uses Google sign-in and has no password to change"
+            }));
+        }
+    };
+
+    let valid = verify(&data.current_password, &stored).unwrap_or(false);
+    if !valid {
+        warn!(target: "auth", user_id, "change-password: wrong current password");
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "message": "Current password is incorrect" }));
+    }
+
+    let hashed = match hash(&data.new_password, DEFAULT_COST) {
+        Ok(h) => h,
+        Err(e) => {
+            error!(target: "auth", error = %e, "bcrypt hash failed");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    if let Err(e) = sqlx::query("UPDATE users SET password = $1 WHERE id = $2")
+        .bind(&hashed)
+        .bind(user_id)
+        .execute(pool.get_ref())
+        .await
+    {
+        error!(target: "auth", user_id, error = %e, "password update failed");
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    info!(target: "auth", user_id, "password changed");
+    HttpResponse::Ok().json(serde_json::json!({ "message": "Password updated" }))
 }
 
 #[put("/profile")]

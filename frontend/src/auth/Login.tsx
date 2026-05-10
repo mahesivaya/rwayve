@@ -1,19 +1,30 @@
 import { logger } from "../utils/logger";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { login } from "../api/Auth";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { API_BASE } from "../config";
 import "./login.css";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [params] = useSearchParams();
   const navigate = useNavigate();
   const { login: authLogin } = useAuth();
 
+  // Surface OAuth-side errors that the backend redirected here with.
+  useEffect(() => {
+    if (params.get("error") === "email_exists") {
+      setError("This email is already registered with a password. Please log in below.");
+    }
+  }, [params]);
+
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setError("");
 
     try {
       const data = await login(email, password);
@@ -28,8 +39,12 @@ export default function Login() {
       navigate("/emails");
     } catch (err) {
       logger.error(err);
-      alert("Login failed");
+      setError("Login failed. Check your credentials.");
     }
+  };
+
+  const handleGoogle = () => {
+    window.location.href = `${API_BASE}/gmail/login?mode=signup`;
   };
 
   return (
@@ -55,6 +70,24 @@ export default function Login() {
         />
 
         <button type="submit">Login</button>
+
+        <div className="auth-divider"><span>or</span></div>
+
+        <button
+          type="button"
+          className="google-btn"
+          onClick={handleGoogle}
+        >
+          Continue with Gmail
+        </button>
+
+        {error && <p className="error">{error}</p>}
+
+        <p className="switch-auth">
+          <span onClick={() => navigate("/forgot-password")}>
+            Forgot password?
+          </span>
+        </p>
 
         <p className="switch-auth">
           Don’t have an account?{" "}

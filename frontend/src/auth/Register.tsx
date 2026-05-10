@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { register } from "../api/Auth";
 import { useAuth } from "../auth/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { API_BASE } from "../config";
 import "./login.css"; // ✅ reuse styles
 
 export default function Register() {
@@ -10,9 +11,21 @@ export default function Register() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
+  const [params] = useSearchParams();
 
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  // Surface OAuth-side errors that the backend redirected here with.
+  useEffect(() => {
+    if (params.get("error") === "email_exists") {
+      setError("This email is already registered. Please log in instead.");
+    }
+  }, [params]);
+
+  const handleGoogleSignup = () => {
+    window.location.href = `${API_BASE}/gmail/login?mode=signup`;
+  };
 
   const handleRegister = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -71,6 +84,16 @@ export default function Register() {
         />
 
         <button type="submit">Register</button>
+
+        <div className="auth-divider"><span>or</span></div>
+
+        <button
+          type="button"
+          className="google-btn"
+          onClick={handleGoogleSignup}
+        >
+          Sign up with Google
+        </button>
 
         {/* ✅ Error message */}
         {error && <p className="error">{error}</p>}

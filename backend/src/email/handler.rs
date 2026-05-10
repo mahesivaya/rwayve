@@ -5,7 +5,7 @@ use crate::email::oauth::{load_google_secrets, refresh_access_token};
 use crate::email::utils::extract_body;
 use crate::models::email_request::SendEmailRequest;
 use crate::security::encryption::{decrypt, encrypt};
-use crate::security::jwt::get_user_id_from_request;
+use crate::security::jwt::{create_jwt, get_user_id_from_request};
 use actix_web::{HttpResponse, Responder, get, web};
 use base64::Engine;
 use sqlx::PgPool;
@@ -21,7 +21,12 @@ pub struct CallbackQuery {
 #[derive(Deserialize)]
 pub struct LoginQuery {
     pub token: Option<String>,
+    pub mode: Option<String>,
 }
+
+// Sentinel placed in OAuth `state` for the signup flow. The callback uses it
+// to know it must create a user before linking the Gmail account.
+const SIGNUP_STATE: &str = "signup";
 
 #[instrument(target = "gmail", skip(req, query))]
 pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> impl Responder {
@@ -33,23 +38,31 @@ pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> imp
         .as_str()
         .expect("redirect_uris missing in google secrets");
 
-    let token = if let Some(t) = &query.token {
-        t.clone()
+    let is_signup = query.mode.as_deref() == Some("signup");
+
+    let state = if is_signup {
+        SIGNUP_STATE.to_string()
     } else {
-        req.headers()
-            .get("Authorization")
-            .and_then(|h| h.to_str().ok())
-            .and_then(|s| s.strip_prefix("Bearer "))
-            .unwrap_or("")
-            .to_string()
+        let token = if let Some(t) = &query.token {
+            t.clone()
+        } else {
+            req.headers()
+                .get("Authorization")
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| s.strip_prefix("Bearer "))
+                .unwrap_or("")
+                .to_string()
+        };
+
+        if token.is_empty() {
+            warn!(target: "gmail", "gmail_login rejected: missing token");
+            return HttpResponse::Unauthorized().body("Missing token");
+        }
+
+        token
     };
 
-    if token.is_empty() {
-        warn!(target: "gmail", "gmail_login rejected: missing token");
-        return HttpResponse::Unauthorized().body("Missing token");
-    }
-
-    info!(target: "gmail", "gmail oauth flow start");
+    info!(target: "gmail", signup = is_signup, "gmail oauth flow start");
 
     let scope = "https://www.googleapis.com/auth/userinfo.email \
                  https://www.googleapis.com/auth/gmail.send \
@@ -65,7 +78,7 @@ pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> imp
         &access_type=offline\
         &prompt=consent\
         &state={}",
-        client_id, redirect_uri, scope, token
+        client_id, redirect_uri, scope, state
     );
 
     HttpResponse::Found()
@@ -82,7 +95,7 @@ pub async fn oauth_callback(
 
     let secrets = load_google_secrets();
 
-    let token = match &query.state {
+    let state = match &query.state {
         Some(t) => t,
         None => {
             warn!(target: "gmail", "oauth_callback rejected: missing state");
@@ -90,16 +103,23 @@ pub async fn oauth_callback(
         }
     };
 
-    let decoded = match crate::security::jwt::decode_jwt(token) {
-        Some(d) => d,
-        None => {
-            warn!(target: "gmail", "oauth_callback rejected: invalid jwt state");
-            return HttpResponse::Unauthorized().body("Invalid token");
-        }
-    };
+    let is_signup = state == SIGNUP_STATE;
 
-    let user_id = decoded.sub;
-    info!(target: "gmail", user_id, "oauth_callback exchanging code");
+    // For "connect existing account" flow we resolve user_id up front from
+    // the JWT in state. For signup we don't know it until after we exchange
+    // the code and learn the user's Google email.
+    let mut user_id: i32 = 0;
+    if !is_signup {
+        let decoded = match crate::security::jwt::decode_jwt(state) {
+            Some(d) => d,
+            None => {
+                warn!(target: "gmail", "oauth_callback rejected: invalid jwt state");
+                return HttpResponse::Unauthorized().body("Invalid token");
+            }
+        };
+        user_id = decoded.sub;
+    }
+    info!(target: "gmail", user_id, signup = is_signup, "oauth_callback exchanging code");
 
     let client_id = secrets["web"]["client_id"]
         .as_str()
@@ -148,6 +168,69 @@ pub async fn oauth_callback(
         .unwrap();
 
     let email = user_info["email"].as_str().unwrap_or("");
+
+    if email.is_empty() {
+        warn!(target: "gmail", "oauth_callback: Google did not return an email");
+        return HttpResponse::BadRequest().body("Google account did not expose an email address");
+    }
+
+    // 🆕 Signup branch: resolve or create the user before linking Gmail.
+    let frontend_for_errors = std::env::var("FRONTEND_URL").unwrap_or_default();
+    if is_signup {
+        let existing = sqlx::query("SELECT id, auth_provider FROM users WHERE email = $1")
+            .bind(email)
+            .fetch_optional(pool.get_ref())
+            .await;
+
+        match existing {
+            Ok(Some(row)) => {
+                let provider: String = row.get("auth_provider");
+                if provider != "google" {
+                    warn!(
+                        target: "auth",
+                        "Google signup blocked: {} already registered with {}",
+                        email, provider
+                    );
+                    let redirect = format!(
+                        "{}/login?error=email_exists",
+                        frontend_for_errors
+                    );
+                    return HttpResponse::Found()
+                        .append_header(("Location", redirect))
+                        .finish();
+                }
+                // Already a Google user — just sign them back in.
+                user_id = row.get("id");
+                info!(target: "auth", user_id, "Google sign-in for existing user");
+            }
+            Ok(None) => {
+                // Brand-new user via Google.
+                let insert = sqlx::query(
+                    "INSERT INTO users (email, password, auth_provider) \
+                     VALUES ($1, NULL, 'google') RETURNING id",
+                )
+                .bind(email)
+                .fetch_one(pool.get_ref())
+                .await;
+
+                match insert {
+                    Ok(row) => {
+                        user_id = row.get("id");
+                        info!(target: "auth", user_id, email, "Google signup created user");
+                    }
+                    Err(e) => {
+                        error!(target: "auth", error = %e, "Google signup user insert failed");
+                        return HttpResponse::InternalServerError()
+                            .body("Failed to create account");
+                    }
+                }
+            }
+            Err(e) => {
+                error!(target: "auth", error = %e, "Google signup user lookup failed");
+                return HttpResponse::InternalServerError().body("Database error");
+            }
+        }
+    }
 
     // 💾 SAVE TO DB FIRST ✅
     let account_id: i32 = match sqlx::query(
@@ -210,7 +293,7 @@ pub async fn oauth_callback(
         }
     });
 
-    info!(target: "gmail", user_id, "redirecting to frontend");
+    info!(target: "gmail", user_id, signup = is_signup, "redirecting to frontend");
 
     // 🔁 Redirect AFTER saving
     let frontend = match std::env::var("FRONTEND_URL") {
@@ -221,7 +304,14 @@ pub async fn oauth_callback(
         }
     };
 
-    let redirect = format!("{}/emails?connected=true&token={}", frontend, token);
+    // Signup: mint a fresh JWT for the new user and land on /home.
+    // Connect-existing: reuse the inbound JWT (which is `state`) and land on /emails.
+    let redirect = if is_signup {
+        let session_token = create_jwt(user_id, email.to_string());
+        format!("{}/home?signup=true&token={}", frontend, session_token)
+    } else {
+        format!("{}/emails?connected=true&token={}", frontend, state)
+    };
 
     HttpResponse::Found()
         .append_header(("Location", redirect))

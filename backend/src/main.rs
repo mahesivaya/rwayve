@@ -47,9 +47,11 @@ use crate::email::handler::{
 use crate::email::sync::sync_all;
 
 use crate::routes::account::{delete_account, get_accounts};
-use crate::routes::auth::{login, register};
+use crate::routes::auth::{forgot_password, login, register, reset_password};
 use crate::routes::email::get_emails;
-use crate::routes::user::{get_all_users, get_profile, get_user_by_email, update_profile};
+use crate::routes::user::{
+    change_password, get_all_users, get_profile, get_user_by_email, update_profile,
+};
 
 // ==============================
 // 🔹 EXTERNAL CRATES
@@ -74,6 +76,9 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
             web::scope("/api")
                 .service(register)
                 .service(login)
+                .service(forgot_password)
+                .service(reset_password)
+                .service(change_password)
                 .service(get_emails)
                 .service(get_email_body)
                 .service(get_email_by_id)

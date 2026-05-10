@@ -5,6 +5,8 @@ import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Register from "./auth/Register";
 import Login from "./auth/Login";
+import ForgotPassword from "./auth/ForgotPassword";
+import ResetPassword from "./auth/ResetPassword";
 import { useAuth } from "./auth/AuthContext";
 
 // 🔥 Lazy loaded pages
@@ -40,6 +42,8 @@ export default function App() {
           path="/register"
           element={user ? <Navigate to="/home" /> : <Register />}
         />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* PROTECTED */}
         <Route element={<ProtectedRoute />}>

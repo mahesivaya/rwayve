@@ -570,3 +570,16 @@ docker system prune -a
             }
         ]
       }
+
+
+
+
+docker buildx build \
+  --platform linux/amd64 \
+  -t 339713009139.dkr.ecr.us-east-1.amazonaws.com/tideon_ecr:v3 \
+  --push .
+
+
+
+Email:maheshiv1999@gmail.com
+App password: cbtq vrls popq eowj

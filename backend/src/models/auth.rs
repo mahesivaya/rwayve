@@ -17,3 +17,20 @@ pub struct LoginInput {
 pub struct LoginResponse {
     pub token: String,
 }
+
+#[derive(Deserialize)]
+pub struct ForgotInput {
+    pub email: String,
+}
+
+#[derive(Deserialize)]
+pub struct ResetInput {
+    pub token: String,
+    pub new_password: String,
+}
+
+#[derive(Deserialize)]
+pub struct ChangePasswordInput {
+    pub current_password: String,
+    pub new_password: String,
+}

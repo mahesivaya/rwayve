@@ -108,6 +108,35 @@
   font-size: 14px;
 }
 
+.profile-password-section {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.profile-section-title {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.profile-cancel {
+  padding: 9px 16px;
+  background: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.profile-cancel:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
 /* ================= SETTINGS ================= */
 .settings-page {
   width: 100%;

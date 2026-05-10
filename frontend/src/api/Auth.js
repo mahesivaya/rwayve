@@ -58,3 +58,40 @@ export async function login(email, password) {
         throw err;
     }
 }
+export async function forgotPassword(email) {
+    const res = await fetch(`${API_BASE}/api/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok)
+        throw new Error(data.message || "Request failed");
+    return data;
+}
+export async function resetPassword(token, newPassword) {
+    const res = await fetch(`${API_BASE}/api/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, new_password: newPassword }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok)
+        throw new Error(data.message || "Reset failed");
+    return data;
+}
+export async function changePassword(currentPassword, newPassword) {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`${API_BASE}/api/profile/password`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok)
+        throw new Error(data.message || "Change failed");
+    return data;
+}

@@ -4,5 +4,5 @@ use crate::prelude::*;
 pub struct User {
     pub id: i32,
     pub email: String,
-    pub password: String,
+    pub password: Option<String>,
 }

@@ -1,11 +1,15 @@
 use crate::prelude::*;
 
-use crate::models::auth::{LoginInput, LoginResponse, RegisterInput};
+use crate::email::sender::send_mail;
+use crate::models::auth::{ForgotInput, LoginInput, LoginResponse, RegisterInput, ResetInput};
 use crate::models::message::MessageResponse;
 use crate::models::user::User;
 use crate::security::jwt::create_jwt;
 use bcrypt::{DEFAULT_COST, hash, verify};
+use rand::RngCore;
 use tracing::{error, info, instrument, warn};
+
+const RESET_TTL_MINUTES: i64 = 30;
 
 #[post("/register")]
 #[instrument(target = "auth", skip(pool, data), fields(email = %data.email))]
@@ -82,7 +86,18 @@ async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResp
         }
     };
 
-    let valid = match verify(&data.password, &user.password) {
+    // Google-signup users have no password — guide them to the right flow.
+    let stored_password = match &user.password {
+        Some(p) => p,
+        None => {
+            warn!("Password login rejected for Google account: {}", data.email);
+            return HttpResponse::Unauthorized().json(MessageResponse {
+                message: "Use 'Sign in with Google' for this account".to_string(),
+            });
+        }
+    };
+
+    let valid = match verify(&data.password, stored_password) {
         Ok(v) => v,
         Err(e) => {
             error!(target: "auth", error = %e, "bcrypt verify failed");
@@ -102,4 +117,164 @@ async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResp
     info!("Login success: {}", data.email);
     let token = create_jwt(user.id, user.email.clone());
     HttpResponse::Ok().json(LoginResponse { token })
+}
+
+fn random_token_hex() -> String {
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+// Always responds 200 with a generic message — never reveals whether the
+// email exists, to avoid an enumeration oracle.
+#[post("/forgot-password")]
+#[instrument(target = "auth", skip(pool, data), fields(email = %data.email))]
+pub async fn forgot_password(
+    pool: web::Data<PgPool>,
+    data: web::Json<ForgotInput>,
+) -> HttpResponse {
+    info!(target: "auth", "forgot-password request");
+
+    let generic_ok = HttpResponse::Ok().json(serde_json::json!({
+        "message": "If that account exists, a reset link has been sent."
+    }));
+
+    let user = sqlx::query("SELECT id, email, password FROM users WHERE email = $1")
+        .bind(&data.email)
+        .fetch_optional(pool.get_ref())
+        .await;
+
+    let row = match user {
+        Ok(Some(r)) => r,
+        Ok(None) => return generic_ok,
+        Err(e) => {
+            error!(target: "auth", error = %e, "forgot lookup failed");
+            return generic_ok;
+        }
+    };
+
+    // Google-signup users (NULL password) can't reset what they don't have.
+    let stored_password: Option<String> = row.try_get("password").ok();
+    if stored_password.is_none() {
+        info!(target: "auth", "forgot ignored: google-only account");
+        return generic_ok;
+    }
+
+    let user_id: i32 = row.get("id");
+    let token = random_token_hex();
+    let expires_at = chrono::Utc::now() + chrono::Duration::minutes(RESET_TTL_MINUTES);
+
+    let insert = sqlx::query(
+        "INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)",
+    )
+    .bind(user_id)
+    .bind(&token)
+    .bind(expires_at)
+    .execute(pool.get_ref())
+    .await;
+
+    if let Err(e) = insert {
+        error!(target: "auth", error = %e, "reset token insert failed");
+        return generic_ok;
+    }
+
+    let frontend = std::env::var("FRONTEND_URL").unwrap_or_default();
+    let link = format!("{}/reset-password?token={}", frontend, token);
+    let body = format!(
+        "Hi,\n\nWe received a request to reset your Wayve password.\n\
+         Use the link below within {RESET_TTL_MINUTES} minutes:\n\n{link}\n\n\
+         If you didn't request this, you can safely ignore this email.\n"
+    );
+
+    if let Err(e) = send_mail(&data.email, "Reset your Wayve password", &body).await {
+        error!(target: "auth", error = %e, "reset email send failed");
+    }
+
+    generic_ok
+}
+
+#[post("/reset-password")]
+#[instrument(target = "auth", skip(pool, data))]
+pub async fn reset_password(pool: web::Data<PgPool>, data: web::Json<ResetInput>) -> HttpResponse {
+    info!(target: "auth", "reset-password attempt");
+
+    if data.new_password.len() < 6 {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "message": "Password must be at least 6 characters" }));
+    }
+
+    let row = sqlx::query(
+        "SELECT user_id, expires_at, used_at \
+         FROM password_reset_tokens WHERE token = $1",
+    )
+    .bind(&data.token)
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    let row = match row {
+        Ok(Some(r)) => r,
+        _ => {
+            warn!(target: "auth", "reset rejected: unknown token");
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({ "message": "Invalid or expired link" }));
+        }
+    };
+
+    let used_at: Option<chrono::DateTime<chrono::Utc>> = row.try_get("used_at").ok().flatten();
+    let expires_at: chrono::DateTime<chrono::Utc> = row.get("expires_at");
+    let user_id: i32 = row.get("user_id");
+
+    if used_at.is_some() || expires_at < chrono::Utc::now() {
+        warn!(target: "auth", user_id, "reset rejected: token expired or used");
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "message": "Invalid or expired link" }));
+    }
+
+    let hashed = match hash(&data.new_password, DEFAULT_COST) {
+        Ok(h) => h,
+        Err(e) => {
+            error!(target: "auth", error = %e, "bcrypt hash failed");
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Server error" }));
+        }
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => {
+            error!(target: "auth", error = %e, "tx begin failed");
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Server error" }));
+        }
+    };
+
+    if let Err(e) = sqlx::query("UPDATE users SET password = $1 WHERE id = $2")
+        .bind(&hashed)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+    {
+        error!(target: "auth", error = %e, "password update failed");
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "message": "Server error" }));
+    }
+
+    if let Err(e) = sqlx::query("UPDATE password_reset_tokens SET used_at = NOW() WHERE token = $1")
+        .bind(&data.token)
+        .execute(&mut *tx)
+        .await
+    {
+        error!(target: "auth", error = %e, "token mark-used failed");
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "message": "Server error" }));
+    }
+
+    if let Err(e) = tx.commit().await {
+        error!(target: "auth", error = %e, "tx commit failed");
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "message": "Server error" }));
+    }
+
+    info!(target: "auth", user_id, "password reset successful");
+    HttpResponse::Ok().json(serde_json::json!({ "message": "Password updated" }))
 }

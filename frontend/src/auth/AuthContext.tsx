@@ -37,16 +37,22 @@ const parseJwt = (token: string): Claims | null => {
 // reuse the stored one. Side-effect: persists the OAuth token and cleans
 // it out of the URL. Runs synchronously before first render so we can
 // optimistically populate `user` without flashing a loading screen.
+//
+// IMPORTANT: only consume `?token=` when an OAuth marker is also present.
+// Other features (like password reset) also use `?token=` on their own URLs
+// and must not have it stolen here.
 const resolveBootToken = (): string | null => {
   const params = new URLSearchParams(window.location.search);
   const tokenFromUrl = params.get("token");
+  const isOAuthLanding = params.has("signup") || params.has("connected");
 
-  if (tokenFromUrl) {
+  if (tokenFromUrl && isOAuthLanding) {
     log.info("restoring token from OAuth redirect");
     localStorage.setItem("token", tokenFromUrl);
     params.delete("token");
     const qs = params.toString();
-    window.history.replaceState({}, document.title, qs ? `/emails?${qs}` : "/emails");
+    const path = window.location.pathname || "/home";
+    window.history.replaceState({}, document.title, qs ? `${path}?${qs}` : path);
     return tokenFromUrl;
   }
 
@@ -122,10 +128,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
 
         if (res.status === 401) {
-          log.warn("/api/me rejected stored token; logging out");
+          log.warn("/api/me rejected stored token; clearing session");
           localStorage.removeItem("token");
           setUser(null);
-          window.location.href = "/login";
+          // No hard redirect: ProtectedRoute already sends unauthenticated
+          // users away from protected pages, and public pages (/login,
+          // /register, /reset-password, ...) must stay rendered.
           return;
         }
 
