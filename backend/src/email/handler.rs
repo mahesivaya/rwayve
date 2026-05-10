@@ -136,7 +136,7 @@ pub async fn oauth_callback(
 
     // 🔁 exchange code → tokens
     let res: Value = HTTP_CLIENT
-        .post("https://oauth2.googleapis.com/token")
+        .post(crate::external::google_token_url())
         .form(&[
             ("code", code),
             ("client_id", &client_id),
@@ -158,7 +158,7 @@ pub async fn oauth_callback(
 
     // 🔍 get user email
     let user_info: Value = HTTP_CLIENT
-        .get("https://www.googleapis.com/oauth2/v2/userinfo")
+        .get(crate::external::google_userinfo_url())
         .bearer_auth(access_token)
         .send()
         .await
@@ -369,7 +369,7 @@ async fn send(
     let client = reqwest::Client::new();
 
     let res = client
-        .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
+        .post(crate::external::gmail_send_url())
         .bearer_auth(&access_token)
         .json(&serde_json::json!({ "raw": encoded }))
         .send()

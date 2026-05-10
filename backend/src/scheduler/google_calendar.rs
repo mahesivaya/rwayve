@@ -4,7 +4,10 @@ use serde_json::Value;
 use sqlx::PgPool;
 use tracing::{instrument, warn};
 
-const CAL_URL: &str = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+fn cal_url() -> String {
+    std::env::var("GOOGLE_CALENDAR_URL")
+        .unwrap_or_else(|_| "https://www.googleapis.com/calendar/v3/calendars/primary/events".into())
+}
 
 #[instrument(target = "scheduler", skip(pool, access_token))]
 pub async fn import_upcoming_events(
@@ -25,7 +28,7 @@ pub async fn import_upcoming_events(
         .map_err(|e| format!("HTTP client error: {:?}", e))?;
 
     let res = client
-        .get(CAL_URL)
+        .get(cal_url())
         .bearer_auth(access_token)
         .query(&[
             ("timeMin", time_min.as_str()),

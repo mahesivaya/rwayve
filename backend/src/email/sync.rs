@@ -10,7 +10,8 @@ pub type EmailHeader = (String, String, String, String);
 
 pub async fn fetch_headers_only(token: &str, msg_id: &str) -> Result<EmailHeader> {
     let url = format!(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject",
+        "{}/gmail/v1/users/me/messages/{}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject",
+        crate::external::gmail_api_base(),
         msg_id
     );
 
@@ -100,7 +101,8 @@ pub async fn fetch_ids(token: &str, last_sync: Option<i64>) -> Result<Vec<String
 
     loop {
         let mut url = format!(
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100{}",
+            "{}/gmail/v1/users/me/messages?maxResults=100{}",
+            crate::external::gmail_api_base(),
             query
         );
 

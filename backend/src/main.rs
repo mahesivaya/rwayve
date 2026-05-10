@@ -7,6 +7,7 @@ mod call;
 mod chat;
 mod drive;
 mod email;
+mod external;
 mod middleware;
 mod models;
 mod notes;
@@ -15,6 +16,9 @@ mod prelude;
 mod routes;
 mod scheduler;
 pub mod security;
+
+#[cfg(test)]
+mod test_support;
 
 // ==============================
 // 🔹 USE INTERNAL MODULES

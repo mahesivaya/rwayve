@@ -2,8 +2,12 @@ use crate::prelude::*;
 use tracing::{instrument, warn};
 
 pub fn load_google_secrets() -> serde_json::Value {
-    let data = fs::read_to_string("client_secret.json")
-        .unwrap_or_else(|e| panic!("Failed to read client_secret.json: {e}"));
+    // Allow tests (and self-hosted setups with the secret elsewhere) to
+    // override the path. Defaults to the production location.
+    let path = std::env::var("GOOGLE_CLIENT_SECRET_PATH")
+        .unwrap_or_else(|_| "client_secret.json".to_string());
+    let data = fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
 
     serde_json::from_str(&data).unwrap()
 }
@@ -15,7 +19,7 @@ pub async fn refresh_access_token(
     refresh_token: &str,
 ) -> Result<String> {
     let res: Value = HTTP_CLIENT
-        .post("https://oauth2.googleapis.com/token")
+        .post(crate::external::google_token_url())
         .form(&[
             ("client_id", client_id),
             ("client_secret", client_secret),

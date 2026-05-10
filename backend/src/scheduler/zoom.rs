@@ -31,7 +31,7 @@ async fn fetch_access_token() -> Result<String, String> {
         .map_err(|e| format!("HTTP client error: {:?}", e))?;
 
     let res = client
-        .post("https://zoom.us/oauth/token")
+        .post(crate::external::zoom_oauth_token_url())
         .header("Authorization", format!("Basic {}", basic))
         .form(&[
             ("grant_type", "account_credentials"),
@@ -80,7 +80,10 @@ pub async fn create_zoom_meeting(
         .map_err(|e| format!("HTTP client error: {:?}", e))?;
 
     let res = client
-        .post("https://api.zoom.us/v2/users/me/meetings")
+        .post(format!(
+            "{}/v2/users/me/meetings",
+            crate::external::zoom_api_base()
+        ))
         .bearer_auth(&token)
         .json(&body)
         .send()

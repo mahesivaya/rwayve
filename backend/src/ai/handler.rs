@@ -66,8 +66,10 @@ pub async fn ai_chat(req: HttpRequest, data: web::Json<ChatRequest>) -> impl Res
     }
 
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-        model, api_key
+        "{}/v1beta/models/{}:generateContent?key={}",
+        crate::external::gemini_base(),
+        model,
+        api_key
     );
 
     let body = serde_json::json!({ "contents": contents });

@@ -30,3 +30,5 @@ client_secret.json
 uploads/
 *.pem
 docs/
+
+Cargo.lock

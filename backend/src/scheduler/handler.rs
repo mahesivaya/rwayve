@@ -135,7 +135,7 @@ Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}",
         .map_err(|e| format!("HTTP client error: {:?}", e))?;
 
     let res = client
-        .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
+        .post(crate::external::gmail_send_url())
         .bearer_auth(access_token)
         .json(&json!({ "raw": encoded }))
         .send()

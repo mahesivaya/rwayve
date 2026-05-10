@@ -98,7 +98,7 @@ async fn run_iteration(pool: &PgPool) -> Result<usize> {
     Ok(total)
 }
 
-async fn process_account(
+pub(crate) async fn process_account(
     pool: &PgPool,
     account_id: i32,
     client_id: &str,
@@ -177,7 +177,8 @@ async fn process_account(
 
 async fn fetch_one(token: &str, id: i32, gmail_id: &str) -> Result<(i32, String)> {
     let url = format!(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full",
+        "{}/gmail/v1/users/me/messages/{}?format=full",
+        crate::external::gmail_api_base(),
         gmail_id
     );
 

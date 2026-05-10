@@ -1,7 +1,7 @@
 import { logger } from "../utils/logger";
 import { useEffect, useRef, useState } from "react";
 
-const WS_URL = "/ws/call"; // adjust if needed
+const WS_BASE = import.meta.env.VITE_WS_BASE_URL ?? window.location.host;
 
 export default function Call() {
   const wsRef = useRef<WebSocket | null>(null);
@@ -44,7 +44,12 @@ export default function Call() {
 
   // 🔥 Start WebSocket
   useEffect(() => {
-    const ws = new WebSocket(WS_URL);
+    // Auth: backend derives user_id from the JWT and rejects connections
+    // without a valid `?token=`.
+    const token = localStorage.getItem("token") ?? "";
+    const ws = new WebSocket(
+      `ws://${WS_BASE}/ws/call?token=${encodeURIComponent(token)}`,
+    );
     wsRef.current = ws;
 
     ws.onopen = () => {

@@ -33,6 +33,25 @@ services:
     volumes:
       - redis_data:/data
 
+  # Test/dev SMTP catcher. Lives behind the `mail` profile so production
+  # `docker compose up` ignores it. Used by:
+  #   - the docker smoke script (scripts/smoke.sh) to verify forgot-password
+  #     emails actually leave the backend
+  #   - local devs who want to inspect outgoing mail at http://localhost:8025
+  # Bring up explicitly with: `docker compose --profile mail up -d`
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: mailhog
+    profiles: ["mail"]
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI / JSON API
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8025/api/v2/messages"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   backend:
     build:
       context: ../backend

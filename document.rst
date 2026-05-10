@@ -583,3 +583,29 @@ docker buildx build \
 
 Email:maheshiv1999@gmail.com
 App password: cbtq vrls popq eowj
+
+
+
+
+cargo fmt --all
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo check
+cargo check --all-targets --all-features -- --check
+
+
+
+# Frontend (no infra required)
+cd frontend && npm test
+
+# Backend unit tests only (no DB required)
+cargo test --manifest-path backend/Cargo.toml --bin rwayve security
+
+# Backend full suite (needs Postgres + optional MailHog)
+docker compose -f infra/docker-compose.yml up -d postgres_db
+docker compose -f infra/docker-compose.yml --profile mail up -d mailhog
+psql -f infra/postgres/init.sql
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rwayve \
+  MAILHOG_API=http://localhost:8025 \
+  MAILHOG_SMTP_HOST=localhost MAILHOG_SMTP_PORT=1025 \
+  cargo test --manifest-path backend/Cargo.toml

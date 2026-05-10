@@ -37,18 +37,35 @@ pub struct ChatSession {
 
 // ================= WS ENTRY =================
 
+#[derive(Deserialize)]
+pub struct WsAuthQuery {
+    pub token: Option<String>,
+}
+
 pub async fn chat_ws(
     req: HttpRequest,
     stream: web::Payload,
     pool: web::Data<PgPool>,
     cache: web::Data<Option<Cache>>,
+    query: web::Query<WsAuthQuery>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let user_id = req
-        .query_string()
-        .split('=')
-        .nth(1)
-        .and_then(|id| id.parse::<i32>().ok())
-        .unwrap_or(0);
+    // Auth: a valid JWT in `?token=...` is required. user_id is derived from
+    // the verified claims, NOT from the query string — preventing impersonation.
+    let token = match query.token.as_deref() {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            tracing::warn!(target: "ws", "chat_ws rejected: missing token");
+            return Ok(HttpResponse::Unauthorized().body("Missing token"));
+        }
+    };
+
+    let user_id = match crate::security::jwt::decode_jwt(token) {
+        Some(claims) => claims.sub,
+        None => {
+            tracing::warn!(target: "ws", "chat_ws rejected: invalid token");
+            return Ok(HttpResponse::Unauthorized().body("Invalid token"));
+        }
+    };
 
     ws::start(
         ChatSession {

@@ -84,12 +84,25 @@ pub async fn call_ws(
     stream: web::Payload,
     query: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
-    let user_id = query
-        .get("user_id")
-        .and_then(|id| id.parse::<i32>().ok())
-        .unwrap_or(0);
+    // Auth: require a valid JWT and derive user_id from its claims.
+    // Any `user_id=` query param is now ignored — the JWT is the source of truth.
+    let token = match query.get("token").map(String::as_str) {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            warn!(target: "ws", "call_ws rejected: missing token");
+            return Ok(HttpResponse::Unauthorized().body("Missing token"));
+        }
+    };
 
-    info!("Call WS connect request: user_id={}", user_id);
+    let user_id = match crate::security::jwt::decode_jwt(token) {
+        Some(claims) => claims.sub,
+        None => {
+            warn!(target: "ws", "call_ws rejected: invalid token");
+            return Ok(HttpResponse::Unauthorized().body("Invalid token"));
+        }
+    };
+
+    info!("Call WS connect: user_id={}", user_id);
 
     ws::start(CallSession { user_id }, &req, stream)
 }
