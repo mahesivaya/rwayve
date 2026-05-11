@@ -125,3 +125,18 @@ pub(crate) async fn send_mail_plaintext_for_tests(
         .map(|_| ())
         .map_err(|e| format!("send failed: {e:?}"))
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn clean_mailbox_strips_inline_env_comments() {
+        assert_eq!(
+            super::clean_mailbox("mahesh@example.com  # optional"),
+            "mahesh@example.com"
+        );
+        assert_eq!(
+            super::clean_mailbox("  user@example.com  "),
+            "user@example.com"
+        );
+    }
+}

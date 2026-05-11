@@ -674,3 +674,21 @@ wayve/
 ├── docs/
 │
 └── tests/
+
+
+
+
+
+
+Gmail
+Proton Mail
+Outlook
+Yahoo Mail
+iCloud Mail
+Fastmail
+Zoho Mail
+Tuta Mail
+Mailfence
+Posteo
+StartMail
+Hushmail

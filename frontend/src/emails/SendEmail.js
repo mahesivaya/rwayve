@@ -1,8 +1,8 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { logger } from "../utils/logger";
-const API_BASE = import.meta.env.VITE_API_URL;
+import {API_BASE} from "../utils/env";
 import { useState, useEffect } from "react";
-import { encryptMessage } from "../crypto/crypto";
+import { buildEncryptedBody } from "./encryptEmail";
 export default function SendEmail({ accountId, onClose, onSent }) {
     const [to, setTo] = useState("");
     const [subject, setSubject] = useState("");
@@ -28,35 +28,9 @@ export default function SendEmail({ accountId, onClose, onSent }) {
         setLoading(true);
         setStatus("");
         try {
-            // 🔥 1. Check if receiver is Wayve user
-            const checkRes = await fetch(`${API_BASE}/api/users?email=${to}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-            let finalBody = body;
-            if (checkRes.ok) {
-                const users = await checkRes.json();
-                // 👉 FIX: handle array response
-                const user = Array.isArray(users) ? users[0] : users;
-                logger.log("USER RESPONSE:", user);
-                if (user && user.public_key) {
-                    const parsedKey = typeof user.public_key === "string"
-                        ? JSON.parse(user.public_key)
-                        : user.public_key;
-                    const publicKey = await crypto.subtle.importKey("spki", new Uint8Array(parsedKey), { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
-                    const { encryptedMessage, encryptedKey, iv } = await encryptMessage(body, publicKey);
-                    finalBody =
-                        "WAYVE_SECURE_V1\n" +
-                            JSON.stringify({
-                                type: "wayve_encrypted",
-                                data: Array.from(new Uint8Array(encryptedMessage)),
-                                key: Array.from(new Uint8Array(encryptedKey)),
-                                iv: Array.from(iv),
-                            });
-                }
-            }
-            logger.log("FINAL BODY:", finalBody);
+            logger.warn("📨 BEFORE ENCRYPT:", body);
+            const finalBody = await buildEncryptedBody(to, body, token);
+            logger.warn("🔐 AFTER ENCRYPT:", finalBody);
             // 🔥 2. Send email
             const res = await fetch(`${API_BASE}/api/send`, {
                 method: "POST",
@@ -86,7 +60,9 @@ export default function SendEmail({ accountId, onClose, onSent }) {
             logger.error(err);
             setStatus(err.message || "Failed to send email ❌");
         }
-        setLoading(false);
+        finally {
+            setLoading(false);
+        }
     };
     return (_jsxs("div", { style: {
             display: "flex",

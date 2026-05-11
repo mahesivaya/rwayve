@@ -73,6 +73,14 @@ use std::env;
 use tracing::{error, info, warn};
 use tracing_actix_web::TracingLogger;
 
+fn load_env_files() {
+    // `cargo run` from backend/ loads backend/.env via dotenv().
+    // Running from the repo root needs this explicit path. Docker Compose
+    // injects backend/.env through env_file, so missing files are fine.
+    dotenv().ok();
+    dotenvy::from_filename("backend/.env").ok();
+}
+
 fn app_routes(cfg: &mut web::ServiceConfig) {
     cfg
         // 🔥 GROUP API ROUTES
@@ -145,7 +153,7 @@ fn start_sync_worker(pool: PgPool) {
 async fn main() -> std::io::Result<()> {
     init_tracing();
     init_devlog();
-    dotenv().ok();
+    load_env_files();
     info!("Server starting...");
     tracing::info!("Server starting...");
 

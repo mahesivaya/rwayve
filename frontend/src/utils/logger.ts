@@ -15,7 +15,7 @@ const isDev = (() => {
   }
 })();
 
-const minLevel: Level = isDev ? "debug" : "warn";
+const minLevel: Level = "debug";
 
 interface BufferEntry {
   ts: string;
