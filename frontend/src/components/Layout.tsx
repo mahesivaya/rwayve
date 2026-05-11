@@ -236,17 +236,22 @@ export default function Layout() {
 
           {splitOpen && (
             <div className="split-pane right">
-              <button
-                className="split-close-floating"
-                onClick={() => {
-                  setSplitOpen(false);
-                  setSplitView(null);
-                }}
-                title="Close split"
-                aria-label="Close split"
-              >
-                ✕
-              </button>
+              <div className="split-pane-toolbar">
+                <span className="split-pane-title">
+                  {splitLabel ? `${splitLabel} tab` : "Split tab"}
+                </span>
+                <button
+                  className="split-close-btn"
+                  onClick={() => {
+                    setSplitOpen(false);
+                    setSplitView(null);
+                  }}
+                  title="Close extra tab"
+                  aria-label="Close extra tab"
+                >
+                  ✕ Close tab
+                </button>
+              </div>
 
               <div className="split-pane-body">
                 {SplitComp ? (

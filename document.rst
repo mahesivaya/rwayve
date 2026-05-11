@@ -609,3 +609,68 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/rwayve \
   MAILHOG_API=http://localhost:8025 \
   MAILHOG_SMTP_HOST=localhost MAILHOG_SMTP_PORT=1025 \
   cargo test --manifest-path backend/Cargo.toml
+
+
+
+
+wayve/
+│
+├── Cargo.toml
+├── Cargo.lock
+│
+├── apps/
+│   ├── api/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       └── main.rs
+│   │
+│   ├── websocket/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       └── main.rs
+│   │
+│   ├── worker/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       └── main.rs
+│   │
+│   └── cli/
+│       ├── Cargo.toml
+│       └── src/
+│           └── main.rs
+│
+├── services/
+│   ├── auth/
+│   ├── email/
+│   ├── chat/
+│   ├── scheduler/
+│   ├── drive/
+│   ├── ai/
+│   ├── notifications/
+│   └── search/
+│
+├── shared/
+│   ├── config/
+│   ├── database/
+│   ├── security/
+│   ├── observability/
+│   ├── cache/
+│   ├── errors/
+│   ├── models/
+│   ├── types/
+│   └── utils/
+│
+├── frontend/
+│
+├── infra/
+│   ├── docker/
+│   ├── nginx/
+│   ├── terraform/
+│   ├── kubernetes/
+│   └── aws/
+│
+├── scripts/
+│
+├── docs/
+│
+└── tests/

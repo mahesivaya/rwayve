@@ -328,10 +328,10 @@ export default function Emails() {
             <button
               className="email-detail-back"
               onClick={() => setSelectedEmail(null)}
-              title="Back to inbox"
-              aria-label="Back to inbox"
+              title="Close email"
+              aria-label="Close email"
             >
-              ✕
+              ✕ Close email
             </button>
           )}
 

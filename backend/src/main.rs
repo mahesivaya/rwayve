@@ -29,7 +29,7 @@ mod test_support;
 // use crate::middleware::rate_limit::RateLimitMiddleware;
 
 use crate::observability::devlog::init_devlog;
-use crate::observability::logger::init_logger;
+use crate::observability::tracing::init_tracing;
 // 🚧 use crate::observability::tracing_root::AppRootSpanBuilder; // disabled
 
 use crate::chat::handler::{chat_ws, get_messages};
@@ -71,7 +71,7 @@ use tokio::time::{Duration, sleep};
 use dotenvy::dotenv;
 use std::env;
 use tracing::{error, info, warn};
-// 🚧 use tracing_actix_web::TracingLogger; // disabled
+use tracing_actix_web::TracingLogger;
 
 fn app_routes(cfg: &mut web::ServiceConfig) {
     cfg
@@ -143,10 +143,11 @@ fn start_sync_worker(pool: PgPool) {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    init_logger();
+    init_tracing();
     init_devlog();
     dotenv().ok();
     info!("Server starting...");
+    tracing::info!("Server starting...");
 
     let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| panic!("DATABASE_URL missing"));
     // Log the first failure verbosely; subsequent identical failures get a
@@ -208,7 +209,7 @@ async fn main() -> std::io::Result<()> {
             .supports_credentials();
 
         App::new()
-            // 🚧 .wrap(TracingLogger::<AppRootSpanBuilder>::new()) // disabled
+            .wrap(TracingLogger::default()) // 🚧
             .wrap(cors)
             // .wrap(LoggerMiddleware)        // observability
             // .wrap(MetricsMiddleware)       // performance

@@ -72,7 +72,10 @@ export default function Chat() {
     useEffect(() => {
         if (!user)
             return;
-        const ws = new WebSocket(`ws://${WS_BASE}/ws/chat?user_id=${user.id}`);
+        // Auth: backend now derives user_id from the JWT and rejects connections
+        // without a valid `?token=` query param. Don't send user_id — it's ignored.
+        const token = localStorage.getItem("token") ?? "";
+        const ws = new WebSocket(`ws://${WS_BASE}/ws/chat?token=${encodeURIComponent(token)}`);
         wsRef.current = ws;
         ws.onopen = () => {
             logger.log("✅ WS connected");

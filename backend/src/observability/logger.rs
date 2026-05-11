@@ -3,7 +3,7 @@
 // `tracing::info!/warn!/error!` calls stay valid (they emit nothing without a
 // subscriber, which is the intent for this temporary state). The original
 // implementation is preserved below in a block comment for easy restore.
-pub fn init_logger() {}
+// pub fn init_logger() {}
 
 /*
 use tracing_appender::rolling;
