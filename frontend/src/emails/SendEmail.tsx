@@ -1,5 +1,5 @@
 import { logger } from "../utils/logger";
-import {API_BASE} from "../utils/env";
+import {API_BASE} from "../config/env";
 
 import { useState, useEffect } from "react";
 import {buildEncryptedBody} from "./encryptEmail";

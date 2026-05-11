@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import "./emails.css";
 import "./loadMore.css";
 import SendEmail from "./SendEmail";
-import { API_BASE } from "../utils/env";
+import { API_BASE } from "../config/env";
 export default function Emails() {
     const [accounts, setAccounts] = useState([]);
     const [emails, setEmails] = useState([]);

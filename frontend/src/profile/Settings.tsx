@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import "./profile.css";
 
-import {API_BASE} from "../utils/env";
+import {API_BASE} from "../config/env";
 
 const authHeaders = () => {
   const token = localStorage.getItem("token");

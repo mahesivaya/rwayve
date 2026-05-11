@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./notes.css";
 
-import {API_BASE} from "../utils/env";
+import {API_BASE} from "../config/env";
 
 type Note = {
   id: number;

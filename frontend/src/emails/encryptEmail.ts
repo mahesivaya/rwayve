@@ -1,7 +1,7 @@
 import { encryptMessage } from "../crypto/crypto";
 import { logger } from "../utils/logger";
 
-import {API_BASE} from "../utils/env";
+import {API_BASE} from "../config/env";
 
 export async function buildEncryptedBody(
   to: string,

@@ -1,6 +1,6 @@
 import { logger } from "../utils/logger";
 const log = logger.scope("auth");
-import { API_BASE } from "../utils/env";
+import { API_BASE } from "../config/env";
 const newReqId = () => {
     const c = globalThis.crypto;
     if (c && "randomUUID" in c)

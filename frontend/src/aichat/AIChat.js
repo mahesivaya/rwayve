@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from "react";
 import "./aichat.css";
-import { API_BASE } from "../utils/env";
+import { API_BASE } from "../config/env";
 const authHeaders = () => {
     const token = localStorage.getItem("token");
     return {

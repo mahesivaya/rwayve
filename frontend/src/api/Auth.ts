@@ -1,7 +1,7 @@
 import { logger } from "../utils/logger";
 
 const log = logger.scope("auth");
-import {API_BASE} from "../utils/env";
+import {API_BASE} from "../config/env";
 
 const newReqId = (): string => {
   const c = (globalThis as { crypto?: Crypto }).crypto;

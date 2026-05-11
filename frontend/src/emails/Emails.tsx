@@ -15,7 +15,7 @@ type Email = {
 };
 
 
-import {API_BASE} from "../utils/env";
+import {API_BASE} from "../config/env";
 
 export default function Emails() {
   const [accounts, setAccounts] = useState<any[]>([]);

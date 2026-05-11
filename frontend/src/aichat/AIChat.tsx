@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./aichat.css";
 
-import {API_BASE} from "../utils/env";
+import {API_BASE} from "../config/env";
 
 type Role = "user" | "model";
 type Turn = { role: Role; content: string };

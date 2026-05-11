@@ -6,7 +6,7 @@ type Note = {
   content: string;
 };
 
-import {API_BASE} from "../utils/env";
+import {API_BASE} from "../config/env";
 
 export default function Notes() {
   const [notes, setNotes] = useState<Note[]>([]);
