@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./aichat.css";
 
-const API_BASE = import.meta.env.VITE_API_URL;
+import {API_BASE} from "../utils/env";
 
 type Role = "user" | "model";
 type Turn = { role: Role; content: string };

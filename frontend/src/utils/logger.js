@@ -12,7 +12,7 @@ const isDev = (() => {
         return false;
     }
 })();
-const minLevel = isDev ? "debug" : "warn";
+const minLevel = "debug";
 // Ring buffer so devtools can inspect the last N log lines — useful when
 // chasing a bug and you want to see what preceded the failure.
 const BUFFER_LIMIT = 500;

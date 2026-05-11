@@ -1,4 +1,4 @@
-import { logger } from "./utils/logger";
+import { logger } from "src/utils/logger";
 
 const log = logger.scope("api");
 const API_BASE = import.meta.env.VITE_API_URL;

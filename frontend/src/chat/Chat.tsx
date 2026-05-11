@@ -1,5 +1,5 @@
 import { logger } from "../utils/logger";
-const API_BASE = import.meta.env.VITE_API_URL;
+import {API_BASE} from "../utils/env";
 const WS_BASE = import.meta.env.VITE_WS_BASE_URL;
 
 import { useEffect, useState, useRef } from "react";

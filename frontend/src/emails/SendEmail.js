@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { logger } from "../utils/logger";
-import {API_BASE} from "../utils/env";
+import { API_BASE } from "../utils/env";
 import { useState, useEffect } from "react";
 import { buildEncryptedBody } from "./encryptEmail";
 export default function SendEmail({ accountId, onClose, onSent }) {

@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from "react";
 import "./aichat.css";
-const API_BASE = import.meta.env.VITE_API_URL;
+import { API_BASE } from "../utils/env";
 const authHeaders = () => {
     const token = localStorage.getItem("token");
     return {

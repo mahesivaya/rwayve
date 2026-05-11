@@ -1,7 +1,7 @@
 import { logger } from "../utils/logger";
 
 const log = logger.scope("auth");
-const API_BASE = import.meta.env.VITE_API_URL;
+import {API_BASE} from "../utils/env";
 
 const newReqId = (): string => {
   const c = (globalThis as { crypto?: Crypto }).crypto;

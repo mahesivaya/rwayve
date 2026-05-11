@@ -1,6 +1,6 @@
 import { logger } from "../utils/logger";
 const log = logger.scope("auth");
-const API_BASE = import.meta.env.VITE_API_URL;
+import { API_BASE } from "../utils/env";
 const newReqId = () => {
     const c = globalThis.crypto;
     if (c && "randomUUID" in c)

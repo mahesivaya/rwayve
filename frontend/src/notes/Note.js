@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useState } from "react";
-const API_BASE = import.meta.env.VITE_API_URL;
+import { API_BASE } from "../utils/env";
 export default function Notes() {
     const [notes, setNotes] = useState([]);
     const [selected, setSelected] = useState(null);

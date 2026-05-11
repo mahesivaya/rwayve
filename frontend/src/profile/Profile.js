@@ -2,7 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useEffect, useState } from "react";
 import { changePassword } from "../api/Auth";
 import "./profile.css";
-const API_BASE = import.meta.env.VITE_API_URL;
+import { API_BASE } from "../utils/env";
 const authHeaders = () => {
     const token = localStorage.getItem("token");
     return {

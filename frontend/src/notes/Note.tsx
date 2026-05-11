@@ -6,7 +6,7 @@ type Note = {
   content: string;
 };
 
-const API_BASE = import.meta.env.VITE_API_URL;
+import {API_BASE} from "../utils/env";
 
 export default function Notes() {
   const [notes, setNotes] = useState<Note[]>([]);
