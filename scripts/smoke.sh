@@ -56,8 +56,6 @@ trap cleanup EXIT
 
 if [[ -f "$ENV_FILE" ]]; then
   log "using env file: $ENV_FILE"
-  # shellcheck disable=SC1090
-  set -a; . "$ENV_FILE"; set +a
 fi
 
 log "building + starting stack"
@@ -75,6 +73,24 @@ while :; do
     log "backend logs (last 100 lines):"
     "${COMPOSE[@]}" logs --tail=100 backend || true
     fail "backend did not become healthy within ${HEALTH_TIMEOUT_S}s (last status=$status)"
+  fi
+  sleep 2
+done
+
+log "waiting for frontend through nginx at $WEB_HOST (up to ${HEALTH_TIMEOUT_S}s)"
+deadline=$(( $(date +%s) + HEALTH_TIMEOUT_S ))
+while :; do
+  status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$WEB_HOST/" || echo "000")
+  if [[ "$status" =~ ^(200|301|302)$ ]]; then
+    ok "frontend up through nginx (got $status from /)"
+    break
+  fi
+  if (( $(date +%s) >= deadline )); then
+    log "frontend logs (last 100 lines):"
+    "${COMPOSE[@]}" logs --tail=100 frontend || true
+    log "nginx logs (last 100 lines):"
+    "${COMPOSE[@]}" logs --tail=100 nginx || true
+    fail "frontend did not become reachable within ${HEALTH_TIMEOUT_S}s (last status=$status)"
   fi
   sleep 2
 done
@@ -117,6 +133,8 @@ assert_status 400 "POST /api/reset-password with bogus token returns 400" \
 if curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$WEB_HOST/" | grep -qE '^(200|301|302)$'; then
   ok "GET $WEB_HOST/ serves frontend"
 else
+  log "frontend logs (last 50 lines):"
+  "${COMPOSE[@]}" logs --tail=50 frontend || true
   log "nginx logs (last 50 lines):"
   "${COMPOSE[@]}" logs --tail=50 nginx || true
   fail "frontend not reachable at $WEB_HOST/"
