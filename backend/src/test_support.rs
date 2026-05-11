@@ -3,7 +3,7 @@
 // Tests connect to TEST_DATABASE_URL if set, otherwise DATABASE_URL.
 // Each test should use `random_email()` for the user identity so parallel
 // runs don't collide on the unique constraint.
-
+#![allow(dead_code)]
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
