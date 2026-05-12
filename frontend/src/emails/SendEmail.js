@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { logger } from "../utils/logger";
-import { API_BASE } from "../config/env";
+import { apiFetch } from "../api/client";
 import { useState, useEffect } from "react";
 import { buildEncryptedBody } from "./encryptEmail";
 export default function SendEmail({ accountId, onClose, onSent }) {
@@ -32,12 +32,8 @@ export default function SendEmail({ accountId, onClose, onSent }) {
             const finalBody = await buildEncryptedBody(to, body, token);
             logger.warn("🔐 AFTER ENCRYPT:", finalBody);
             // 🔥 2. Send email
-            const res = await fetch(`${API_BASE}/api/send`, {
+            const res = await apiFetch(`/api/send`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
                 body: JSON.stringify({
                     account_id: accountId,
                     to,
