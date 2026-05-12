@@ -1,18 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import "./aichat.css";
 
-import {API_BASE} from "../config/env";
+import { apiFetch } from "../api/client";
 
 type Role = "user" | "model";
 type Turn = { role: Role; content: string };
-
-const authHeaders = () => {
-  const token = localStorage.getItem("token");
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-};
 
 export default function AIChat() {
   const [messages, setMessages] = useState<Turn[]>([]);
@@ -39,15 +31,10 @@ export default function AIChat() {
     setBusy(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/ai/chat`, {
+      const res = await apiFetch("/api/ai/chat", {
         method: "POST",
-        headers: authHeaders(),
         body: JSON.stringify({ messages: next }),
       });
-
-      if (!res.ok) {
-        throw new Error((await res.text()) || `Error ${res.status}`);
-      }
 
       const data: { reply?: string } = await res.json();
       const reply = (data.reply ?? "").trim();

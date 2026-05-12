@@ -28,10 +28,13 @@ export async function apiFetch(
     localStorage.getItem(
       "token"
     );
+  const url = path.startsWith("http")
+    ? path
+    : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 
   const response =
     await fetch(
-      `${API_BASE}${path}`,
+      url,
       {
         ...rest,
 

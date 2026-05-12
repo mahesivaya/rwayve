@@ -1,14 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from "react";
 import "./aichat.css";
-import { API_BASE } from "../config/env";
-const authHeaders = () => {
-    const token = localStorage.getItem("token");
-    return {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-    };
-};
+import { apiFetch } from "../api/client";
 export default function AIChat() {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState("");
@@ -31,14 +24,10 @@ export default function AIChat() {
         setMessages(next);
         setBusy(true);
         try {
-            const res = await fetch(`${API_BASE}/api/ai/chat`, {
+            const res = await apiFetch("/api/ai/chat", {
                 method: "POST",
-                headers: authHeaders(),
                 body: JSON.stringify({ messages: next }),
             });
-            if (!res.ok) {
-                throw new Error((await res.text()) || `Error ${res.status}`);
-            }
             const data = await res.json();
             const reply = (data.reply ?? "").trim();
             if (!reply) {

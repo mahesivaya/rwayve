@@ -2,7 +2,10 @@ import { API_BASE } from "../config/env";
 export async function apiFetch(path, options = {}) {
     const { auth = true, preserve401 = false, headers, ...rest } = options;
     const token = localStorage.getItem("token");
-    const response = await fetch(`${API_BASE}${path}`, {
+    const url = path.startsWith("http")
+        ? path
+        : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+    const response = await fetch(url, {
         ...rest,
         headers: {
             "Content-Type": "application/json",

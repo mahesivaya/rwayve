@@ -42,6 +42,7 @@ export async function login(email, password) {
     try {
         const res = await apiFetch(`/api/login`, {
             auth: false,
+            preserve401: true,
             method: "POST",
             headers: {
                 "X-Request-ID": reqId,
@@ -78,6 +79,7 @@ export async function resetPassword(token, newPassword) {
 export async function changePassword(currentPassword, newPassword) {
     const res = await apiFetch("/api/profile/password", {
         method: "POST",
+        preserve401: true,
         body: JSON.stringify({
             current_password: currentPassword,
             new_password: newPassword,
