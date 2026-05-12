@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import ForgotPassword from "./ForgotPassword";
+import ForgotPassword from "../../auth/ForgotPassword";
 
-vi.mock("../api/Auth", () => ({
+vi.mock("../../api/Auth", () => ({
   forgotPassword: vi.fn(),
 }));
-import { forgotPassword as apiForgot } from "../api/Auth";
+import { forgotPassword as apiForgot } from "../../api/Auth";
 
 describe("ForgotPassword page", () => {
   afterEach(() => {

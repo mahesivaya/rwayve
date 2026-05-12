@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { changePassword, forgotPassword, login, register, resetPassword, } from "./Auth";
+import { changePassword, forgotPassword, login, register, resetPassword, } from "../../api/Auth";
 // Match whatever Vite picked up from .env so we don't hardcode a value.
 const API_BASE = (import.meta.env.VITE_API_URL ?? "");
 const mockFetch = (status, body) => {

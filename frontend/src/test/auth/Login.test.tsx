@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import Login from "./Login";
-import { AuthProvider } from "./AuthContext";
+import Login from "../../auth/Login";
+import { AuthProvider } from "../../auth/AuthContext";
 
-vi.mock("../api/Auth", () => ({
+vi.mock("../../api/Auth", () => ({
   login: vi.fn(),
 }));
-import { login as apiLogin } from "../api/Auth";
+import { login as apiLogin } from "../../api/Auth";
 
 const renderAt = (initialEntries: string[]) =>
   render(

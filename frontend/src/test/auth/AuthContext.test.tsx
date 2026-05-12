@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { AuthProvider, useAuth } from "./AuthContext";
+import { AuthProvider, useAuth } from "../../auth/AuthContext";
 
 // Tiny consumer that surfaces auth state for assertions.
 function AuthProbe() {

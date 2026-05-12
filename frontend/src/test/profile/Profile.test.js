@@ -2,11 +2,11 @@ import { jsx as _jsx } from "react/jsx-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import Profile from "./Profile";
-vi.mock("../api/Auth", () => ({
+import Profile from "../../profile/Profile";
+vi.mock("../../api/Auth", () => ({
     changePassword: vi.fn(),
 }));
-import { changePassword as apiChange } from "../api/Auth";
+import { changePassword as apiChange } from "../../api/Auth";
 const mockProfileFetch = (profile) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
         ok: true,

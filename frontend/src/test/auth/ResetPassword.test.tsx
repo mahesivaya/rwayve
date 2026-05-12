@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import ResetPassword from "./ResetPassword";
+import ResetPassword from "../../auth/ResetPassword";
 
-vi.mock("../api/Auth", () => ({
+vi.mock("../../api/Auth", () => ({
   resetPassword: vi.fn(),
 }));
-import { resetPassword as apiReset } from "../api/Auth";
+import { resetPassword as apiReset } from "../../api/Auth";
 
 const renderAt = (url: string) =>
   render(

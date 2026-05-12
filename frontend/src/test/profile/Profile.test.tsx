@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import Profile from "./Profile";
+import Profile from "../../profile/Profile";
 
-vi.mock("../api/Auth", () => ({
+vi.mock("../../api/Auth", () => ({
   changePassword: vi.fn(),
 }));
-import { changePassword as apiChange } from "../api/Auth";
+import { changePassword as apiChange } from "../../api/Auth";
 
 type ProfileShape = {
   id: number;

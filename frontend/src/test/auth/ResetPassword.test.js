@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import ResetPassword from "./ResetPassword";
-vi.mock("../api/Auth", () => ({
+import ResetPassword from "../../auth/ResetPassword";
+vi.mock("../../api/Auth", () => ({
     resetPassword: vi.fn(),
 }));
-import { resetPassword as apiReset } from "../api/Auth";
+import { resetPassword as apiReset } from "../../api/Auth";
 const renderAt = (url) => render(_jsx(MemoryRouter, { initialEntries: [url], children: _jsxs(Routes, { children: [_jsx(Route, { path: "/reset-password", element: _jsx(ResetPassword, {}) }), _jsx(Route, { path: "/login", element: _jsx("div", { children: "Login page" }) })] }) }));
 describe("ResetPassword page", () => {
     afterEach(() => {

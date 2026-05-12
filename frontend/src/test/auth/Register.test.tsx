@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import Register from "./Register";
-import { AuthProvider } from "./AuthContext";
+import Register from "../../auth/Register";
+import { AuthProvider } from "../../auth/AuthContext";
 
-vi.mock("../api/Auth", () => ({
+vi.mock("../../api/Auth", () => ({
   register: vi.fn(),
 }));
-import { register as apiRegister } from "../api/Auth";
+import { register as apiRegister } from "../../api/Auth";
 
 const renderAt = (initialEntries: string[]) =>
   render(
