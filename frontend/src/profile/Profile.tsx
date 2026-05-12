@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { changePassword } from "../api/Auth";
 import "./profile.css";
 
-import { apiFetch } from "@/api/client";
+import { apiFetch } from "../api/client";
 
 const authHeaders = () => {
   const token = localStorage.getItem("token");

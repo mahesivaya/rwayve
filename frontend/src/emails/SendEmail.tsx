@@ -1,5 +1,5 @@
 import { logger } from "../utils/logger";
-import { apiFetch } from "@/api/client";
+import { apiFetch } from "../api/client";
 
 import { useState, useEffect } from "react";
 import {buildEncryptedBody} from "./encryptEmail";

@@ -1,4 +1,4 @@
-import { apiFetch } from "@/api/client";
+import { apiFetch } from "../api/client";
 const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 // ================= FETCH =================
 export const getMeetings = async () => {

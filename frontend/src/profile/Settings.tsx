@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import "./profile.css";
 
-import { apiFetch } from "@/api/client";
+import { apiFetch } from "../api/client";
 
 type Account = {
   id: number;

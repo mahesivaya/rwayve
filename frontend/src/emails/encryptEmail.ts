@@ -1,7 +1,7 @@
 import { encryptMessage } from "../crypto/crypto";
 import { logger } from "../utils/logger";
 
-import { apiFetch } from "@/api/client";
+import { apiFetch } from "../api/client";
 
 export async function buildEncryptedBody(
   to: string,

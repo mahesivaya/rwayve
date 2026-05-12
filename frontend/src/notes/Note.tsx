@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import "./notes.css";
 
-import { apiFetch } from "@/api/client";
+import { apiFetch } from "../api/client";
 
 type Note = {
   id: number;

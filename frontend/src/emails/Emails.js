@@ -4,7 +4,7 @@ import "./emails.css";
 import "./loadMore.css";
 import SendEmail from "./SendEmail";
 import { API_BASE } from "../config/env";
-import { apiFetch } from "@/api/client";
+import { apiFetch } from "../api/client";
 export default function Emails() {
     const [accounts, setAccounts] = useState([]);
     const [emails, setEmails] = useState([]);
