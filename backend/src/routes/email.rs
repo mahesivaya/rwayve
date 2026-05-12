@@ -1,11 +1,13 @@
 use crate::cache::Cache;
+use crate::email::oauth::{load_google_secrets, refresh_access_token};
+use crate::email::sync::sync_account_before;
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
 
 use actix_web::{HttpRequest, HttpResponse, Responder, get, web};
 use serde_json::Value;
 use sqlx::{PgPool, QueryBuilder, Row};
-use tracing::{debug, error, info, instrument};
+use tracing::{error, info, instrument, warn};
 
 #[derive(Deserialize)]
 pub struct EmailQuery {
@@ -16,11 +18,11 @@ pub struct EmailQuery {
 }
 
 #[get("/emails")]
-#[instrument(target = "http", skip(req, pool, cache, query))]
+#[instrument(target = "http", skip(req, pool, _cache, query))]
 pub async fn get_emails(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    cache: web::Data<Option<Cache>>,
+    _cache: web::Data<Option<Cache>>,
     query: web::Query<EmailQuery>,
 ) -> impl Responder {
     let user_id = match get_user_id_from_request(&req) {
@@ -28,33 +30,20 @@ pub async fn get_emails(
         None => return HttpResponse::Unauthorized().finish(),
     };
 
-    let limit = 50;
+    let page_size = 50;
+    let query_limit = page_size + 1;
 
-    // Build a stable cache key from the query shape so different filters/pages
-    // get distinct entries.
-    let cache_key = format!(
-        "emails:list:u={}:a={}:f={}:bf={}:bid={}",
-        user_id,
-        query
-            .account_id
-            .map(|i| i.to_string())
-            .unwrap_or_else(|| "all".into()),
-        query.folder.as_deref().unwrap_or("all"),
-        query
-            .before
-            .map(|i| i.to_string())
-            .unwrap_or_else(|| "_".into()),
-        query
-            .before_id
-            .map(|i| i.to_string())
-            .unwrap_or_else(|| "_".into()),
-    );
-
-    if let Some(c) = cache.get_ref().as_ref()
-        && let Some(cached) = c.get_json::<Value>(&cache_key).await
+    if let Some(before) = query.before
+        && let Err(e) = sync_older_page(
+            pool.get_ref(),
+            user_id,
+            query.account_id,
+            before,
+            query_limit,
+        )
+        .await
     {
-        debug!(target: "cache", key = %cache_key, "emails list cache hit");
-        return HttpResponse::Ok().json(cached);
+        warn!(target: "gmail", user_id, error = ?e, "older email page sync failed");
     }
 
     // 🔥 Build query dynamically
@@ -101,14 +90,16 @@ pub async fn get_emails(
 
     // ✅ Order + limit
     qb.push(" ORDER BY e.created_at DESC, e.id DESC LIMIT ");
-    qb.push_bind(limit);
+    qb.push_bind(query_limit as i64);
 
     let result = qb.build().fetch_all(pool.get_ref()).await;
 
     match result {
         Ok(rows) => {
+            let has_more = rows.len() > page_size;
             let emails: Vec<Value> = rows
                 .into_iter()
+                .take(page_size)
                 .map(|row| {
                     let created_at: Option<NaiveDateTime> = row.get("created_at");
                     let created_at = created_at.map(|dt| {
@@ -129,16 +120,55 @@ pub async fn get_emails(
                 })
                 .collect();
 
-            if let Some(c) = cache.get_ref().as_ref() {
-                c.set_json_with_ttl(&cache_key, &emails, 30).await;
-            }
-
             info!(target: "http", user_id, count = emails.len(), "Fetched emails");
-            HttpResponse::Ok().json(emails)
+            HttpResponse::Ok()
+                .append_header(("x-has-more", has_more.to_string()))
+                .json(emails)
         }
         Err(e) => {
             error!(target: "db", user_id, error = ?e, "get_emails query failed");
             HttpResponse::InternalServerError().finish()
         }
     }
+}
+
+async fn sync_older_page(
+    pool: &PgPool,
+    user_id: i32,
+    account_id: Option<i32>,
+    before_timestamp: i64,
+    limit: usize,
+) -> anyhow::Result<()> {
+    let mut qb = QueryBuilder::new("SELECT id, refresh_token FROM email_accounts WHERE user_id = ");
+    qb.push_bind(user_id);
+
+    if let Some(account_id) = account_id {
+        qb.push(" AND id = ");
+        qb.push_bind(account_id);
+    }
+
+    let rows = qb.build().fetch_all(pool).await?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let secrets = load_google_secrets();
+    let client_id = secrets["web"]["client_id"].as_str().unwrap_or("");
+    let client_secret = secrets["web"]["client_secret"].as_str().unwrap_or("");
+
+    for row in rows {
+        let account_id: i32 = row.get("id");
+        let refresh_token: String = row.get("refresh_token");
+        let token = refresh_access_token(client_id, client_secret, &refresh_token).await?;
+
+        let _ = sqlx::query("UPDATE email_accounts SET access_token = $1 WHERE id = $2")
+            .bind(&token)
+            .bind(account_id)
+            .execute(pool)
+            .await;
+
+        sync_account_before(pool, account_id, &token, before_timestamp, limit).await?;
+    }
+
+    Ok(())
 }

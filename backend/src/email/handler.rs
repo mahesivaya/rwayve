@@ -2,6 +2,7 @@ use crate::prelude::*;
 
 use crate::email::oauth::HTTP_CLIENT;
 use crate::email::oauth::{load_google_secrets, refresh_access_token};
+use crate::email::sync::sync_account_recent;
 use crate::email::utils::extract_body;
 use crate::models::email_request::SendEmailRequest;
 use crate::security::encryption::{decrypt, encrypt};
@@ -267,6 +268,21 @@ pub async fn oauth_callback(
             return HttpResponse::InternalServerError().body("Failed to save account");
         }
     };
+
+    // ⚡ Prime the first inbox page immediately. The normal sync worker still
+    // does the complete mailbox walk later, but this makes a newly connected
+    // account visible in the UI within a few seconds instead of waiting for a
+    // full mailbox scan.
+    let pool_clone = pool.clone();
+    let token_clone = access_token.to_string();
+    actix_web::rt::spawn(async move {
+        match sync_account_recent(pool_clone.get_ref(), account_id, &token_clone, 51).await {
+            Ok(_) => info!(target: "gmail", user_id, account_id, "recent email sync primed"),
+            Err(e) => {
+                warn!(target: "gmail", user_id, account_id, error = ?e, "recent email sync failed")
+            }
+        }
+    });
 
     // 📅 Import Google Calendar events in the background — best-effort, do not
     // block redirect if calendar scope was denied or API call fails.

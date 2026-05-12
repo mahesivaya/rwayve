@@ -214,6 +214,9 @@ async fn main() -> std::io::Result<()> {
                 actix_web::http::header::AUTHORIZATION,
                 actix_web::http::header::HeaderName::from_static("x-request-id"),
             ])
+            .expose_headers(vec![actix_web::http::header::HeaderName::from_static(
+                "x-has-more",
+            )])
             .supports_credentials();
 
         App::new()

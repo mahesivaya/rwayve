@@ -86,6 +86,7 @@ export default function Emails() {
     const [activeFolder, setActiveFolder] = useState("inbox");
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [refreshTick, setRefreshTick] = useState(0);
     const [composeOpen, setComposeOpen] = useState(false);
     const emailCache = useRef({});
     // ================= NARROW MODE (split-pane / small viewport) =================
@@ -131,7 +132,17 @@ export default function Emails() {
         const params = new URLSearchParams(window.location.search);
         if (params.get("connected") === "true") {
             fetchAccounts();
+            setRefreshTick((tick) => tick + 1);
             window.history.replaceState({}, "", "/emails");
+            let attempts = 0;
+            const poll = window.setInterval(() => {
+                attempts += 1;
+                setRefreshTick((tick) => tick + 1);
+                if (attempts >= 12) {
+                    window.clearInterval(poll);
+                }
+            }, 2000);
+            return () => window.clearInterval(poll);
         }
     }, []);
     // ================= ADD ACCOUNT =================
@@ -150,12 +161,13 @@ export default function Emails() {
             }
             const res = await apiFetch(url);
             const data = await res.json();
+            const hasMorePage = res.headers.get("x-has-more") === "true";
             setEmails(data);
-            setHasMore(data.length === 50);
+            setHasMore(hasMorePage || data.length === 50);
             setSelectedEmail(null);
         };
         void fetchEmails();
-    }, [activeAccount, activeFolder]);
+    }, [activeAccount, activeFolder, refreshTick]);
     // ================= LOAD MORE =================
     const loadMore = async () => {
         if (!hasMore || emails.length === 0)
@@ -171,8 +183,9 @@ export default function Emails() {
             }
             const res = await apiFetch(url);
             const data = await res.json();
+            const hasMorePage = res.headers.get("x-has-more") === "true";
             setEmails((prev) => [...prev, ...data]);
-            setHasMore(data.length === 50);
+            setHasMore(hasMorePage);
         }
         finally {
             setLoadingMore(false);
@@ -235,7 +248,7 @@ export default function Emails() {
         emailCache.current[email.id] = data;
     };
     // ================= UI =================
-    return (_jsxs("div", { ref: mainRef, className: `main ${isNarrow ? "narrow" : ""}`, children: [_jsxs("div", { className: "sidebar", children: [_jsx("button", { className: "compose-btn", onClick: () => setComposeOpen(true), disabled: accounts.length === 0, title: accounts.length === 0 ? "Add an account first" : "Compose", children: "Compose" }), _jsx("div", { className: "mail-section-title", children: "Accounts" }), _jsx("button", { className: `filter-btn ${activeAccount === null ? "active" : ""}`, onClick: () => setActiveAccount(null), children: "\uD83C\uDF10 All Accounts" }), accounts.map((acc) => (_jsx("button", { className: `filter-btn ${activeAccount === acc.id ? "active" : ""}`, onClick: () => setActiveAccount(acc.id), children: acc.email }, acc.id))), _jsx("button", { className: "add-email-btn", onClick: addAccount, children: "\u2795 Add Account" }), _jsx("div", { className: "mail-section-title", children: "Folders" }), _jsxs("div", { className: "mail-filters", children: [_jsx("button", { className: `filter-btn ${activeFolder === "inbox" ? "active" : ""}`, onClick: () => setActiveFolder("inbox"), children: "\uD83D\uDCE5 Inbox" }), _jsx("button", { className: `filter-btn ${activeFolder === "sent" ? "active" : ""}`, onClick: () => setActiveFolder("sent"), children: "\uD83D\uDCE4 Sent" })] })] }), showList && (_jsxs("div", { className: "email-list", children: [emails.map((email) => (_jsxs("div", { className: `email-item ${selectedEmail?.id === email.id ? "active" : ""}`, onClick: () => openEmail(email), children: [_jsxs("div", { className: "email-top", children: [_jsx("span", { className: "email-sender", children: email.sender }), _jsx("span", { className: "email-time", children: new Date(email.created_at).toLocaleTimeString() })] }), _jsx("div", { className: "email-subject", children: email.subject }), _jsx("div", { className: "email-preview", children: email.preview || "" })] }, email.id))), hasMore && (_jsx("div", { className: "load-more-wrap", children: _jsx("button", { className: "load-more-btn", onClick: loadMore, disabled: loadingMore, children: loadingMore ? "Loading..." : "Load More" }) }))] })), composeOpen && accounts.length > 0 && (_jsx("div", { onClick: () => setComposeOpen(false), style: {
+    return (_jsxs("div", { ref: mainRef, className: `main ${isNarrow ? "narrow" : ""}`, children: [_jsxs("div", { className: "sidebar", children: [_jsx("button", { className: "compose-btn", onClick: () => setComposeOpen(true), disabled: accounts.length === 0, title: accounts.length === 0 ? "Add an account first" : "Compose", children: "Compose" }), _jsx("div", { className: "mail-section-title", children: "Accounts" }), _jsx("button", { className: `filter-btn ${activeAccount === null ? "active" : ""}`, onClick: () => setActiveAccount(null), children: "\uD83C\uDF10 All Accounts" }), accounts.map((acc) => (_jsx("button", { className: `filter-btn ${activeAccount === acc.id ? "active" : ""}`, onClick: () => setActiveAccount(acc.id), children: acc.email }, acc.id))), _jsx("button", { className: "add-email-btn", onClick: addAccount, children: "\u2795 Add Account" }), _jsx("div", { className: "mail-section-title", children: "Folders" }), _jsxs("div", { className: "mail-filters", children: [_jsx("button", { className: `filter-btn ${activeFolder === "inbox" ? "active" : ""}`, onClick: () => setActiveFolder("inbox"), children: "\uD83D\uDCE5 Inbox" }), _jsx("button", { className: `filter-btn ${activeFolder === "sent" ? "active" : ""}`, onClick: () => setActiveFolder("sent"), children: "\uD83D\uDCE4 Sent" })] })] }), showList && (_jsxs("div", { className: "email-list", children: [emails.map((email) => (_jsxs("div", { className: `email-item ${selectedEmail?.id === email.id ? "active" : ""}`, onClick: () => openEmail(email), children: [_jsxs("div", { className: "email-top", children: [_jsx("span", { className: "email-sender", children: email.sender }), _jsx("span", { className: "email-time", children: new Date(email.created_at).toLocaleTimeString() })] }), _jsx("div", { className: "email-subject", children: email.subject }), _jsx("div", { className: "email-preview", children: email.preview || "" })] }, email.id))), hasMore && (_jsx("div", { className: "load-more-wrap", children: _jsx("button", { className: "load-more-btn", onClick: loadMore, disabled: loadingMore, children: loadingMore ? "Loading..." : "Show more emails" }) }))] })), composeOpen && accounts.length > 0 && (_jsx("div", { onClick: () => setComposeOpen(false), style: {
                     position: "fixed",
                     inset: 0,
                     background: "rgba(0,0,0,0.4)",

@@ -139,6 +139,7 @@ export default function Emails() {
 
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const [composeOpen, setComposeOpen] = useState(false);
 
@@ -191,7 +192,20 @@ export default function Emails() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("connected") === "true") {
       fetchAccounts();
+      setRefreshTick((tick) => tick + 1);
       window.history.replaceState({}, "", "/emails");
+
+      let attempts = 0;
+      const poll = window.setInterval(() => {
+        attempts += 1;
+        setRefreshTick((tick) => tick + 1);
+
+        if (attempts >= 12) {
+          window.clearInterval(poll);
+        }
+      }, 2000);
+
+      return () => window.clearInterval(poll);
     }
   }, []);
 
@@ -215,14 +229,15 @@ export default function Emails() {
       const res = await apiFetch(url);
 
       const data = await res.json();
+      const hasMorePage = res.headers.get("x-has-more") === "true";
 
       setEmails(data);
-      setHasMore(data.length === 50);
+      setHasMore(hasMorePage || data.length === 50);
       setSelectedEmail(null);
     };
 
     void fetchEmails();
-  }, [activeAccount, activeFolder]);
+  }, [activeAccount, activeFolder, refreshTick]);
 
   // ================= LOAD MORE =================
   const loadMore = async () => {
@@ -245,9 +260,10 @@ export default function Emails() {
     const res = await apiFetch(url);
 
     const data = await res.json();
+    const hasMorePage = res.headers.get("x-has-more") === "true";
 
     setEmails((prev) => [...prev, ...data]);
-    setHasMore(data.length === 50);
+    setHasMore(hasMorePage);
   }finally{
     setLoadingMore(false);
     }
@@ -408,7 +424,7 @@ export default function Emails() {
                 onClick={loadMore}
                 disabled={loadingMore}
               >
-                {loadingMore ? "Loading..." : "Load More"}
+                {loadingMore ? "Loading..." : "Show more emails"}
               </button>
             </div>
           )}

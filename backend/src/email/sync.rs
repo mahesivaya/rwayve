@@ -151,6 +151,67 @@ pub async fn fetch_ids(token: &str, last_sync: Option<i64>) -> Result<Vec<String
     Ok(ids)
 }
 
+pub async fn fetch_recent_ids(token: &str, max_results: usize) -> Result<Vec<String>> {
+    let url = format!(
+        "{}/gmail/v1/users/me/messages?maxResults={}",
+        crate::external::gmail_api_base(),
+        max_results
+    );
+
+    let res: Value = HTTP_CLIENT
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    let ids = res["messages"]
+        .as_array()
+        .map(|messages| {
+            messages
+                .iter()
+                .filter_map(|m| m["id"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(ids)
+}
+
+pub async fn fetch_ids_before(
+    token: &str,
+    before_timestamp: i64,
+    max_results: usize,
+) -> Result<Vec<String>> {
+    let url = format!(
+        "{}/gmail/v1/users/me/messages?maxResults={}&q=before:{}",
+        crate::external::gmail_api_base(),
+        max_results,
+        before_timestamp
+    );
+
+    let res: Value = HTTP_CLIENT
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    let ids = res["messages"]
+        .as_array()
+        .map(|messages| {
+            messages
+                .iter()
+                .filter_map(|m| m["id"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(ids)
+}
+
 pub fn extract_headers(res: &Value) -> (String, String, String) {
     let mut sender: Option<String> = None;
     let mut receiver: Option<String> = None;
@@ -230,6 +291,74 @@ pub async fn sync_account(
         .bind(account_id)
         .execute(pool)
         .await?;
+
+    Ok(())
+}
+
+#[instrument(target = "worker", skip(pool, token), fields(account_id))]
+pub async fn sync_account_recent(
+    pool: &PgPool,
+    account_id: i32,
+    token: &str,
+    max_results: usize,
+) -> anyhow::Result<()> {
+    let ids = fetch_recent_ids(token, max_results).await?;
+    debug!(
+        target: "worker",
+        account_id,
+        count = ids.len(),
+        "fetched recent gmail ids"
+    );
+
+    let mut tasks = FuturesUnordered::new();
+
+    for id in ids {
+        let token = token.to_string();
+        tasks.push(async move { fetch_headers_only(&token, &id).await });
+
+        if tasks.len() >= MAX_EMAIL_CONCURRENCY {
+            process_batch(pool, account_id, &mut tasks).await?;
+        }
+    }
+
+    while !tasks.is_empty() {
+        process_batch(pool, account_id, &mut tasks).await?;
+    }
+
+    Ok(())
+}
+
+#[instrument(target = "worker", skip(pool, token), fields(account_id))]
+pub async fn sync_account_before(
+    pool: &PgPool,
+    account_id: i32,
+    token: &str,
+    before_timestamp: i64,
+    max_results: usize,
+) -> anyhow::Result<()> {
+    let ids = fetch_ids_before(token, before_timestamp, max_results).await?;
+    debug!(
+        target: "worker",
+        account_id,
+        count = ids.len(),
+        before_timestamp,
+        "fetched older gmail ids"
+    );
+
+    let mut tasks = FuturesUnordered::new();
+
+    for id in ids {
+        let token = token.to_string();
+        tasks.push(async move { fetch_headers_only(&token, &id).await });
+
+        if tasks.len() >= MAX_EMAIL_CONCURRENCY {
+            process_batch(pool, account_id, &mut tasks).await?;
+        }
+    }
+
+    while !tasks.is_empty() {
+        process_batch(pool, account_id, &mut tasks).await?;
+    }
 
     Ok(())
 }
