@@ -3,6 +3,8 @@ import "./emails.css";
 import "./loadMore.css";
 import SendEmail from "./SendEmail";
 
+import {API_BASE} from "../config/env";
+import { apiFetch } from "@/api/client";
 
 type Email = {
   id: number;
@@ -13,9 +15,6 @@ type Email = {
   body?: string;
   created_at: string;
 };
-
-
-import {API_BASE} from "../config/env";
 
 export default function Emails() {
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -57,14 +56,14 @@ export default function Emails() {
 
   // ================= FETCH ACCOUNTS =================
   const fetchAccounts = async () => {
-    const token = localStorage.getItem("token");
-
-    const res = await fetch(`${API_BASE}/api/accounts`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    const data = await res.json();
-    setAccounts(data);
+    try{
+      const res = await apiFetch("api/accounts");
+      const data = await res.json();
+      setAccounts(data);
+    }
+    catch(err){
+    console.error(err)
+    }
   };
 
   useEffect(() => {
@@ -93,17 +92,14 @@ export default function Emails() {
   // ================= FETCH EMAILS =================
   useEffect(() => {
     const fetchEmails = async () => {
-      const token = localStorage.getItem("token");
 
-      let url = `${API_BASE}/api/emails?folder=${activeFolder}`;
+      let url = `api/emails?folder=${activeFolder}`;
 
       if (activeAccount !== null) {
         url += `&account_id=${activeAccount}`;
       }
 
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await apiFetch(url);
 
       const data = await res.json();
 
@@ -112,7 +108,7 @@ export default function Emails() {
       setSelectedEmail(null);
     };
 
-    fetchEmails();
+    void fetchEmails();
   }, [activeAccount, activeFolder]);
 
   // ================= LOAD MORE =================
@@ -121,27 +117,27 @@ export default function Emails() {
 
     setLoadingMore(true);
 
-    const token = localStorage.getItem("token");
+    try{
     const last = emails[emails.length - 1];
 
     const before = Math.floor(new Date(last.created_at).getTime() / 1000);
     const before_id = last.id;
 
-    let url = `${API_BASE}/api/emails?folder=${activeFolder}&before=${before}&before_id=${before_id}`;
+    let url = `/api/emails?folder=${activeFolder}&before=${before}&before_id=${before_id}`;
 
     if (activeAccount !== null) {
       url += `&account_id=${activeAccount}`;
     }
 
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await apiFetch(url);
 
     const data = await res.json();
 
     setEmails((prev) => [...prev, ...data]);
     setHasMore(data.length === 50);
+  }finally{
     setLoadingMore(false);
+    }
   };
 
   // ================= OPEN EMAIL =================
@@ -151,13 +147,9 @@ export default function Emails() {
       return;
     }
 
-    const token = localStorage.getItem("token");
-
     // 1) Show metadata immediately. Body may be empty if body_worker hasn't
     //    fetched it yet — render the placeholder via bodyLoading.
-    const res = await fetch(`${API_BASE}/api/emails/${email.id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await apiFetch(`/api/emails/${email.id}`);
     const data = await res.json();
     setSelectedEmail({ ...data, _bodyLoading: !data.body });
 
@@ -165,20 +157,15 @@ export default function Emails() {
     //    Gmail fetch, encrypts, persists, and returns the body.
     if (!data.body) {
       try {
-        const bodyRes = await fetch(`${API_BASE}/api/emails/${email.id}/body`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (bodyRes.ok) {
-          const { body } = await bodyRes.json();
-          const merged = { ...data, body, _bodyLoading: false };
-          emailCache.current[email.id] = merged;
-          // Only update if user hasn't navigated away to a different email.
-          setSelectedEmail((cur: any) => (cur && cur.id === email.id ? merged : cur));
-          return;
-        }
-        setSelectedEmail((cur: any) =>
-          cur && cur.id === email.id ? { ...cur, _bodyLoading: false, _bodyError: true } : cur
-        );
+        const bodyRes = await apiFetch(`/api/emails/${email.id}/body`);
+        
+        const { body } = await bodyRes.json();
+        const merged = { ...data, body, _bodyLoading: false };
+        emailCache.current[email.id] = merged;
+        // Only update if user hasn't navigated away to a different email.
+        setSelectedEmail((cur: any) => (cur && cur.id === email.id ? merged : cur));
+        return;
+    
       } catch {
         setSelectedEmail((cur: any) =>
           cur && cur.id === email.id ? { ...cur, _bodyLoading: false, _bodyError: true } : cur

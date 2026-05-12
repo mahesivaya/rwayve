@@ -1,67 +1,38 @@
-import { API_BASE } from "../config/env";
-const getAuthHeaders = () => {
-    const token = localStorage.getItem("token");
-    return {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-    };
-};
+import { apiFetch } from "@/api/client";
+const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 // ================= FETCH =================
 export const getMeetings = async () => {
-    const res = await fetch(`${API_BASE}/api/meetings`, {
-        headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-    });
-    if (!res.ok) {
-        throw new Error(`Fetch failed: ${res.status}`);
-    }
+    const res = await apiFetch(`/api/meetings`);
     return res.json();
 };
-const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 // ================= CREATE =================
 export const createMeetingApi = async (data) => {
-    const res = await fetch(`${API_BASE}/api/meetings`, {
+    const res = await apiFetch(`/api/meetings`, {
         method: "POST",
-        headers: getAuthHeaders(),
         body: JSON.stringify({
             ...data,
             participants: data.participants ?? [], // ✅ safety
             tz: browserTz(),
         }),
     });
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Create failed");
-    }
     return res.json();
 };
 // ================= UPDATE =================
 export const updateMeetingApi = async (id, data) => {
-    const res = await fetch(`${API_BASE}/api/meetings/${id}`, {
+    const res = await apiFetch(`/api/meetings/${id}`, {
         method: "PUT",
-        headers: getAuthHeaders(),
         body: JSON.stringify({
             ...data,
             participants: data.participants ?? [], // safety
             tz: browserTz(),
         }),
     });
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Update failed");
-    }
     return res.json(); // { message: "Meeting updated" }
 };
 // ================= DELETE =================
 export const deleteMeetingApi = async (id) => {
-    const res = await fetch(`${API_BASE}/api/meetings/${id}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
+    const res = await apiFetch(`/api/meetings/${id}`, {
+        method: "DELETE"
     });
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Delete failed");
-    }
     return res.json(); // { message: "Meeting deleted" }
 };

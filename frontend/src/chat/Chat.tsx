@@ -1,5 +1,5 @@
 import { logger } from "../utils/logger";
-import {API_BASE} from "../config/env";
+import { apiFetch } from "@/api/client";
 const WS_BASE = import.meta.env.VITE_WS_BASE_URL;
 
 import { useEffect, useState, useRef } from "react";
@@ -63,11 +63,7 @@ export default function Chat() {
       const token = localStorage.getItem("token");
 
       try {
-        const res = await fetch(`${API_BASE}/api/users/all`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const res = await apiFetch(`/api/users/all`);
 
         const text = await res.text();
 
@@ -137,14 +133,8 @@ export default function Chat() {
     const token = localStorage.getItem("token");
 
     try {
-      const res = await fetch(
-        `${API_BASE}/api/messages?user1=${user.id}&user2=${otherUser.id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const res = await apiFetch(
+        `/api/messages?user1=${user.id}&user2=${otherUser.id}`);
 
       const data = await res.json();
 

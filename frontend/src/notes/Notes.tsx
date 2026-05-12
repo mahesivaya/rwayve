@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./notes.css";
 
-import {API_BASE} from "../config/env";
+import { apiFetch } from "@/api/client";
 
 type Note = {
   id: number;
@@ -10,13 +10,6 @@ type Note = {
   updated_at?: string | null;
 };
 
-const authHeaders = () => {
-  const token = localStorage.getItem("token");
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-};
 
 export default function Notes() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -43,14 +36,19 @@ export default function Notes() {
 
   // ================= LOAD =================
   const fetchNotes = async () => {
-    const res = await fetch(`${API_BASE}/api/notes`, { headers: authHeaders() });
-    if (!res.ok) return;
+    try {
+    const res = await apiFetch(`/api/notes`);
+
     const data: Note[] = await res.json();
     setNotes(data);
+    } catch(err)
+    {
+      console.error(err);
+    }
   };
 
   useEffect(() => {
-    fetchNotes();
+    void fetchNotes();
   }, []);
 
   // Drop transient status banners after a moment.
@@ -90,15 +88,12 @@ export default function Notes() {
     try {
       const isNew = selectedId === "new" || selectedId === null;
       const url = isNew
-        ? `${API_BASE}/api/notes`
-        : `${API_BASE}/api/notes/${selectedId}`;
-      const res = await fetch(url, {
+        ? `/api/notes`
+        : `/api/notes/${selectedId}`;
+      const res = await apiFetch(url, {
         method: isNew ? "POST" : "PUT",
-        headers: authHeaders(),
         body: JSON.stringify({ title, content }),
       });
-
-      if (!res.ok) throw new Error(await res.text());
 
       const saved: Note = await res.json();
       setSelectedId(saved.id);
@@ -118,20 +113,18 @@ export default function Notes() {
       return;
     }
     if (!confirm("Delete this note?")) return;
-
-    const res = await fetch(`${API_BASE}/api/notes/${selectedId}`, {
-      method: "DELETE",
-      headers: authHeaders(),
-    });
-
-    if (!res.ok) {
-      setStatus("Delete failed");
-      return;
-    }
+    try {
+      await apiFetch(`/api/notes/${selectedId}`, {
+        method: "DELETE",
+      });
 
     closeEditor();
     setStatus("Deleted");
-    fetchNotes();
+    await fetchNotes();
+    } catch(err)
+    {
+      setStatus("Delete failed")
+    }
   };
 
   const editorOpen = selectedId !== null;

@@ -1,7 +1,7 @@
 import { encryptMessage } from "../crypto/crypto";
 import { logger } from "../utils/logger";
 
-import {API_BASE} from "../config/env";
+import { apiFetch } from "@/api/client";
 
 export async function buildEncryptedBody(
   to: string,
@@ -17,8 +17,7 @@ export async function buildEncryptedBody(
   // =====================================
   // CHECK USER
   // =====================================
-  const checkRes = await fetch(
-    `${API_BASE}/api/users?email=${to}`,
+  const checkRes = await apiFetch(`/api/users?email=${to}`,
     {
       headers: {
         Authorization: `Bearer ${token}`,

@@ -1,126 +1,193 @@
 import { useEffect, useState } from "react";
 
+import "./notes.css";
+
+import { apiFetch } from "@/api/client";
+
 type Note = {
   id: number;
   title: string;
   content: string;
 };
 
-import {API_BASE} from "../config/env";
-
 export default function Notes() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [selected, setSelected] = useState<Note | null>(null);
 
   // ================= FETCH NOTES =================
+
   useEffect(() => {
-    fetch(`${API_BASE}/api/notes`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    })
-      .then((res) => res.json())
-      .then(setNotes);
+    const loadNotes = async () => {
+      try {
+        const res = await apiFetch("/api/notes");
+        const data: Note[] = await res.json();
+        setNotes(data);
+
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    void loadNotes();
   }, []);
 
   // ================= CREATE =================
-  const createNote = async () => {
-    const res = await fetch(`${API_BASE}/api/notes`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-      body: JSON.stringify({ title: "", content: "" }),
-    });
 
-    const newNote = await res.json();
-    setNotes((prev) => [newNote, ...prev]);
-    setSelected(newNote);
+  const createNote = async () => {
+    try {
+      const res = await apiFetch("/api/notes",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            title: "",
+            content: "",
+          }),
+        }
+      );
+      const newNote: Note = await res.json();
+      setNotes((prev) => [
+        newNote,
+        ...prev,
+      ]);
+      setSelected(newNote);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // ================= UPDATE (LOCAL STATE) =================
-  const handleChange = (value: string) => {
-    if (!selected) return;
 
-    const updated = { ...selected, content: value };
-
+    const handleChange = (value: string) => {if (!selected) {return;}
+    const updated = {...selected, content: value};
     setSelected(updated);
-
     setNotes((prev) =>
-      prev.map((n) => (n.id === updated.id ? updated : n))
+      prev.map((n) =>
+        n.id === updated.id
+          ? updated
+          : n
+      )
     );
   };
 
   // ================= AUTOSAVE =================
+
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {
+      return;
+    }
 
-    const timeout = setTimeout(() => {
-      saveNote(selected);
-    }, 800);
+    const timeout = setTimeout(() => {void saveNote(selected);}, 800);
+    return () =>
+      clearTimeout(timeout);
+  }, [selected]);
 
-    return () => clearTimeout(timeout);
-  }, [selected?.content]);
+  const saveNote = async (
+    note: Note
+  ) => {
+    try {
+      await apiFetch(`/api/notes/${note.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(
+            note
+          ),
+        }
+      );
 
-  const saveNote = async (note: Note) => {
-    await fetch(`${API_BASE}/api/notes/${note.id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-      body: JSON.stringify(note),
-    });
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // ================= DELETE =================
-  const deleteNote = async (id: number) => {
-    await fetch(`${API_BASE}/api/notes/${id}`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    });
 
-    setNotes((prev) => prev.filter((n) => n.id !== id));
-    if (selected?.id === id) setSelected(null);
+  const deleteNote = async (
+    id: number
+  ) => {
+    try {
+      await apiFetch(
+        `/api/notes/${id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      setNotes((prev) =>
+        prev.filter(
+          (n) => n.id !== id
+        )
+      );
+
+      if (selected?.id === id) {
+        setSelected(null);
+      }
+
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
     <div className="notes-container">
+
       {/* Sidebar */}
+
       <div className="notes-sidebar">
-        <button onClick={createNote}>+ New</button>
+        <button onClick={() => void createNote()}>
+          + New
+        </button>
 
         {notes.map((n) => (
-          <div key={n.id} onClick={() => setSelected(n)}>
-            {n.title || "Untitled"}
+          <div
+            key={n.id}
+
+            onClick={() =>
+              setSelected(n)
+            }
+          >
+            {n.title ||
+              "Untitled"}
           </div>
         ))}
       </div>
 
       {/* Editor */}
+
       <div className="notes-editor">
         {selected ? (
           <>
             <input
               placeholder="Title"
+
               value={selected.title}
+
               onChange={(e) =>
-                setSelected({ ...selected, title: e.target.value })
+                setSelected({
+                  ...selected,
+                  title:
+                    e.target.value,
+                })
               }
             />
 
             <textarea
               value={selected.content}
-              onChange={(e) => handleChange(e.target.value)}
+
+              onChange={(e) =>
+                handleChange(
+                  e.target.value
+                )
+              }
             />
 
-            <button onClick={() => deleteNote(selected.id)}>Delete</button>
+            <button onClick={() => void deleteNote(selected.id)}>
+              Delete
+            </button>
           </>
+
         ) : (
-          <div>Select a note</div>
+          <div>
+            Select a note
+          </div>
         )}
       </div>
     </div>

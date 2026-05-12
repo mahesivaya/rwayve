@@ -1,7 +1,7 @@
 import { logger } from "../utils/logger";
 
 const log = logger.scope("auth");
-import {API_BASE} from "../config/env";
+import { apiFetch } from "./client";
 
 const newReqId = (): string => {
   const c = (globalThis as { crypto?: Crypto }).crypto;
@@ -14,28 +14,31 @@ export async function register(email: string, password: string, confirm: string)
   log.info(`[${reqId}] register attempt`, { email });
   const start = performance.now();
 
-  const res = await fetch(`${API_BASE}/api/register`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Request-ID": reqId,
-    },
-    body: JSON.stringify({ email, password, confirm_password: confirm }),
-  });
-
-  const ms = Math.round(performance.now() - start);
-  const data = await res.json();
-
-  if (!res.ok) {
-    log.warn(`[${reqId}] register rejected (${res.status} in ${ms}ms)`, {
-      email,
-      message: data?.message,
+  try {
+    const res = await apiFetch("/api/register", {
+      auth: false,
+      method: "POST",
+      headers: {
+        "X-Request-ID": reqId,
+      },
+      body: JSON.stringify({ email, password, confirm_password: confirm }),
     });
-    throw new Error(data.message || "Register failed");
-  }
 
-  log.info(`[${reqId}] register ok in ${ms}ms`, { email });
-  return data;
+    const ms = Math.round(performance.now() - start);
+    const data = await res.json();
+    log.info(`[${reqId}] register ok in ${ms}ms`,{ email });
+    return data;
+  }
+  catch(err){
+    log.warn(`[${reqId}] register failed`, {
+      email,
+      error:
+          err instanceof Error
+            ? err.message
+            : "Unknown error",
+    });
+    throw err;
+  }
 }
 
 export async function login(email: string, password: string) {
@@ -44,25 +47,20 @@ export async function login(email: string, password: string) {
   const start = performance.now();
 
   try {
-    const res = await fetch(`${API_BASE}/api/login`, {
+    const res = await apiFetch(`/api/login`, {
+      auth: false,
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         "X-Request-ID": reqId,
       },
       body: JSON.stringify({ email, password }),
     });
 
     const ms = Math.round(performance.now() - start);
-    const text = await res.text();
+    const data = await res.json();
+    log.info(`[${reqId}] login ok in ${ms}ms`,{ email });
 
-    if (!res.ok) {
-      log.warn(`[${reqId}] login rejected (${res.status} in ${ms}ms)`, { email });
-      throw new Error(`Login failed: ${res.status} ${text}`);
-    }
-
-    log.info(`[${reqId}] login ok in ${ms}ms`, { email });
-    return text ? JSON.parse(text) : {};
+    return data;
   } catch (err) {
     log.error(`[${reqId}] login error`, err);
     throw err;
@@ -70,38 +68,37 @@ export async function login(email: string, password: string) {
 }
 
 export async function forgotPassword(email: string) {
-  const res = await fetch(`${API_BASE}/api/forgot-password`, {
+  const res = await apiFetch(`/api/forgot-password`, {
+    auth: false,
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Request failed");
-  return data;
+  return res.json();
 }
 
 export async function resetPassword(token: string, newPassword: string) {
-  const res = await fetch(`${API_BASE}/api/reset-password`, {
+  const res = await apiFetch(`/api/reset-password`, {
+    auth: false,
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, new_password: newPassword }),
+    body: JSON.stringify({ token,
+      new_password: newPassword }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Reset failed");
-  return data;
+  return res.json();
 }
 
-export async function changePassword(currentPassword: string, newPassword: string) {
-  const token = localStorage.getItem("token");
-  const res = await fetch(`${API_BASE}/api/profile/password`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Change failed");
-  return data;
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+) {
+  const res = await apiFetch(
+    "/api/profile/password",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    }
+  );
+  return res.json();
 }
