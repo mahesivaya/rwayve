@@ -1,14 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from "react";
 import "./notes.css";
-import { API_BASE } from "../config/env";
-const authHeaders = () => {
-    const token = localStorage.getItem("token");
-    return {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-    };
-};
+import { apiFetch } from "../api/client";
 export default function Notes() {
     const [notes, setNotes] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
@@ -33,14 +26,17 @@ export default function Notes() {
     }, []);
     // ================= LOAD =================
     const fetchNotes = async () => {
-        const res = await fetch(`${API_BASE}/api/notes`, { headers: authHeaders() });
-        if (!res.ok)
-            return;
-        const data = await res.json();
-        setNotes(data);
+        try {
+            const res = await apiFetch(`/api/notes`);
+            const data = await res.json();
+            setNotes(data);
+        }
+        catch (err) {
+            console.error(err);
+        }
     };
     useEffect(() => {
-        fetchNotes();
+        void fetchNotes();
     }, []);
     // Drop transient status banners after a moment.
     useEffect(() => {
@@ -75,15 +71,12 @@ export default function Notes() {
         try {
             const isNew = selectedId === "new" || selectedId === null;
             const url = isNew
-                ? `${API_BASE}/api/notes`
-                : `${API_BASE}/api/notes/${selectedId}`;
-            const res = await fetch(url, {
+                ? `/api/notes`
+                : `/api/notes/${selectedId}`;
+            const res = await apiFetch(url, {
                 method: isNew ? "POST" : "PUT",
-                headers: authHeaders(),
                 body: JSON.stringify({ title, content }),
             });
-            if (!res.ok)
-                throw new Error(await res.text());
             const saved = await res.json();
             setSelectedId(saved.id);
             setStatus(isNew ? "Created ✓" : "Saved ✓");
@@ -104,17 +97,17 @@ export default function Notes() {
         }
         if (!confirm("Delete this note?"))
             return;
-        const res = await fetch(`${API_BASE}/api/notes/${selectedId}`, {
-            method: "DELETE",
-            headers: authHeaders(),
-        });
-        if (!res.ok) {
-            setStatus("Delete failed");
-            return;
+        try {
+            await apiFetch(`/api/notes/${selectedId}`, {
+                method: "DELETE",
+            });
+            closeEditor();
+            setStatus("Deleted");
+            await fetchNotes();
         }
-        closeEditor();
-        setStatus("Deleted");
-        fetchNotes();
+        catch (err) {
+            setStatus("Delete failed");
+        }
     };
     const editorOpen = selectedId !== null;
     const showList = !isNarrow || !editorOpen;

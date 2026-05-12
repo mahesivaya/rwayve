@@ -4,6 +4,7 @@ import "./emails.css";
 import "./loadMore.css";
 import SendEmail from "./SendEmail";
 import { API_BASE } from "../config/env";
+import { apiFetch } from "../api/client";
 export default function Emails() {
     const [accounts, setAccounts] = useState([]);
     const [emails, setEmails] = useState([]);
@@ -37,12 +38,14 @@ export default function Emails() {
     const showDetail = !isNarrow || selectedEmail !== null;
     // ================= FETCH ACCOUNTS =================
     const fetchAccounts = async () => {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`${API_BASE}/api/accounts`, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        setAccounts(data);
+        try {
+            const res = await apiFetch("api/accounts");
+            const data = await res.json();
+            setAccounts(data);
+        }
+        catch (err) {
+            console.error(err);
+        }
     };
     useEffect(() => {
         fetchAccounts();
@@ -68,41 +71,39 @@ export default function Emails() {
     // ================= FETCH EMAILS =================
     useEffect(() => {
         const fetchEmails = async () => {
-            const token = localStorage.getItem("token");
-            let url = `${API_BASE}/api/emails?folder=${activeFolder}`;
+            let url = `api/emails?folder=${activeFolder}`;
             if (activeAccount !== null) {
                 url += `&account_id=${activeAccount}`;
             }
-            const res = await fetch(url, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const res = await apiFetch(url);
             const data = await res.json();
             setEmails(data);
             setHasMore(data.length === 50);
             setSelectedEmail(null);
         };
-        fetchEmails();
+        void fetchEmails();
     }, [activeAccount, activeFolder]);
     // ================= LOAD MORE =================
     const loadMore = async () => {
         if (!hasMore || emails.length === 0)
             return;
         setLoadingMore(true);
-        const token = localStorage.getItem("token");
-        const last = emails[emails.length - 1];
-        const before = Math.floor(new Date(last.created_at).getTime() / 1000);
-        const before_id = last.id;
-        let url = `${API_BASE}/api/emails?folder=${activeFolder}&before=${before}&before_id=${before_id}`;
-        if (activeAccount !== null) {
-            url += `&account_id=${activeAccount}`;
+        try {
+            const last = emails[emails.length - 1];
+            const before = Math.floor(new Date(last.created_at).getTime() / 1000);
+            const before_id = last.id;
+            let url = `/api/emails?folder=${activeFolder}&before=${before}&before_id=${before_id}`;
+            if (activeAccount !== null) {
+                url += `&account_id=${activeAccount}`;
+            }
+            const res = await apiFetch(url);
+            const data = await res.json();
+            setEmails((prev) => [...prev, ...data]);
+            setHasMore(data.length === 50);
         }
-        const res = await fetch(url, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        setEmails((prev) => [...prev, ...data]);
-        setHasMore(data.length === 50);
-        setLoadingMore(false);
+        finally {
+            setLoadingMore(false);
+        }
     };
     // ================= OPEN EMAIL =================
     const openEmail = async (email) => {
@@ -110,30 +111,22 @@ export default function Emails() {
             setSelectedEmail(emailCache.current[email.id]);
             return;
         }
-        const token = localStorage.getItem("token");
         // 1) Show metadata immediately. Body may be empty if body_worker hasn't
         //    fetched it yet — render the placeholder via bodyLoading.
-        const res = await fetch(`${API_BASE}/api/emails/${email.id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await apiFetch(`/api/emails/${email.id}`);
         const data = await res.json();
         setSelectedEmail({ ...data, _bodyLoading: !data.body });
         // 2) If body wasn't ready, hit the on-demand endpoint. Backend triggers a
         //    Gmail fetch, encrypts, persists, and returns the body.
         if (!data.body) {
             try {
-                const bodyRes = await fetch(`${API_BASE}/api/emails/${email.id}/body`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (bodyRes.ok) {
-                    const { body } = await bodyRes.json();
-                    const merged = { ...data, body, _bodyLoading: false };
-                    emailCache.current[email.id] = merged;
-                    // Only update if user hasn't navigated away to a different email.
-                    setSelectedEmail((cur) => (cur && cur.id === email.id ? merged : cur));
-                    return;
-                }
-                setSelectedEmail((cur) => cur && cur.id === email.id ? { ...cur, _bodyLoading: false, _bodyError: true } : cur);
+                const bodyRes = await apiFetch(`/api/emails/${email.id}/body`);
+                const { body } = await bodyRes.json();
+                const merged = { ...data, body, _bodyLoading: false };
+                emailCache.current[email.id] = merged;
+                // Only update if user hasn't navigated away to a different email.
+                setSelectedEmail((cur) => (cur && cur.id === email.id ? merged : cur));
+                return;
             }
             catch {
                 setSelectedEmail((cur) => cur && cur.id === email.id ? { ...cur, _bodyLoading: false, _bodyError: true } : cur);

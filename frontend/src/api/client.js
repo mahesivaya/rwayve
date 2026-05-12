@@ -7,27 +7,38 @@ export async function apiFetch(path, options = {}) {
         headers: {
             "Content-Type": "application/json",
             ...(auth && token
-                ? {
-                    Authorization: `Bearer ${token}`,
-                }
+                ? { Authorization: `Bearer ${token}` }
                 : {}),
             ...headers,
         },
     });
-    // Global error handling
     if (response.status === 401) {
+        const isChangePassword = path.includes("/profile/password");
+        let bodyMessage = "";
+        try {
+            const data = await response.clone().json();
+            bodyMessage = data?.error || data?.message || "";
+        }
+        catch { }
+        if (isChangePassword && bodyMessage) {
+            throw new Error(bodyMessage);
+        }
         console.error("Unauthorized");
         localStorage.removeItem("token");
-        window.location.href = "/login";
+        if (import.meta.env.MODE !== "test") {
+            window.location.href = "/login";
+        }
         throw new Error("Unauthorized");
     }
     if (!response.ok) {
         let message = "Request failed";
         try {
-            const data = await response.json();
-            message = data.error || message;
+            const data = await response.clone().json();
+            message = data.error || data.message || message;
         }
-        catch { }
+        catch {
+            // ignore json parse errors
+        }
         throw new Error(message);
     }
     return response;

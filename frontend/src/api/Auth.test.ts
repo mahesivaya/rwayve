@@ -11,12 +11,16 @@ import {
 const API_BASE = (import.meta.env.VITE_API_URL ?? "") as string;
 
 const mockFetch = (status: number, body: unknown) => {
-  const fn = vi.fn().mockResolvedValue({
+  const response = {
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
     text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
-  } as unknown as Response);
+    clone() {
+      return this;
+    },
+  };
+  const fn = vi.fn().mockResolvedValue(response as unknown as Response);
   vi.stubGlobal("fetch", fn);
   return fn;
 };

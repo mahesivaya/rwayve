@@ -1,71 +1,93 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useState } from "react";
-import { API_BASE } from "../config/env";
+import "./notes.css";
+import { apiFetch } from "../api/client";
 export default function Notes() {
     const [notes, setNotes] = useState([]);
     const [selected, setSelected] = useState(null);
     // ================= FETCH NOTES =================
     useEffect(() => {
-        fetch(`${API_BASE}/api/notes`, {
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-        })
-            .then((res) => res.json())
-            .then(setNotes);
+        const loadNotes = async () => {
+            try {
+                const res = await apiFetch("/api/notes");
+                const data = await res.json();
+                setNotes(data);
+            }
+            catch (err) {
+                console.error(err);
+            }
+        };
+        void loadNotes();
     }, []);
     // ================= CREATE =================
     const createNote = async () => {
-        const res = await fetch(`${API_BASE}/api/notes`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-            body: JSON.stringify({ title: "", content: "" }),
-        });
-        const newNote = await res.json();
-        setNotes((prev) => [newNote, ...prev]);
-        setSelected(newNote);
+        try {
+            const res = await apiFetch("/api/notes", {
+                method: "POST",
+                body: JSON.stringify({
+                    title: "",
+                    content: "",
+                }),
+            });
+            const newNote = await res.json();
+            setNotes((prev) => [
+                newNote,
+                ...prev,
+            ]);
+            setSelected(newNote);
+        }
+        catch (err) {
+            console.error(err);
+        }
     };
     // ================= UPDATE (LOCAL STATE) =================
     const handleChange = (value) => {
-        if (!selected)
+        if (!selected) {
             return;
+        }
         const updated = { ...selected, content: value };
         setSelected(updated);
-        setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+        setNotes((prev) => prev.map((n) => n.id === updated.id
+            ? updated
+            : n));
     };
     // ================= AUTOSAVE =================
     useEffect(() => {
-        if (!selected)
+        if (!selected) {
             return;
-        const timeout = setTimeout(() => {
-            saveNote(selected);
-        }, 800);
+        }
+        const timeout = setTimeout(() => { void saveNote(selected); }, 800);
         return () => clearTimeout(timeout);
-    }, [selected?.content]);
+    }, [selected]);
     const saveNote = async (note) => {
-        await fetch(`${API_BASE}/api/notes/${note.id}`, {
-            method: "PUT",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-            body: JSON.stringify(note),
-        });
+        try {
+            await apiFetch(`/api/notes/${note.id}`, {
+                method: "PUT",
+                body: JSON.stringify(note),
+            });
+        }
+        catch (err) {
+            console.error(err);
+        }
     };
     // ================= DELETE =================
     const deleteNote = async (id) => {
-        await fetch(`${API_BASE}/api/notes/${id}`, {
-            method: "DELETE",
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-        });
-        setNotes((prev) => prev.filter((n) => n.id !== id));
-        if (selected?.id === id)
-            setSelected(null);
+        try {
+            await apiFetch(`/api/notes/${id}`, {
+                method: "DELETE",
+            });
+            setNotes((prev) => prev.filter((n) => n.id !== id));
+            if (selected?.id === id) {
+                setSelected(null);
+            }
+        }
+        catch (err) {
+            console.error(err);
+        }
     };
-    return (_jsxs("div", { className: "notes-container", children: [_jsxs("div", { className: "notes-sidebar", children: [_jsx("button", { onClick: createNote, children: "+ New" }), notes.map((n) => (_jsx("div", { onClick: () => setSelected(n), children: n.title || "Untitled" }, n.id)))] }), _jsx("div", { className: "notes-editor", children: selected ? (_jsxs(_Fragment, { children: [_jsx("input", { placeholder: "Title", value: selected.title, onChange: (e) => setSelected({ ...selected, title: e.target.value }) }), _jsx("textarea", { value: selected.content, onChange: (e) => handleChange(e.target.value) }), _jsx("button", { onClick: () => deleteNote(selected.id), children: "Delete" })] })) : (_jsx("div", { children: "Select a note" })) })] }));
+    return (_jsxs("div", { className: "notes-container", children: [_jsxs("div", { className: "notes-sidebar", children: [_jsx("button", { onClick: () => void createNote(), children: "+ New" }), notes.map((n) => (_jsx("div", { onClick: () => setSelected(n), children: n.title ||
+                            "Untitled" }, n.id)))] }), _jsx("div", { className: "notes-editor", children: selected ? (_jsxs(_Fragment, { children: [_jsx("input", { placeholder: "Title", value: selected.title, onChange: (e) => setSelected({
+                                ...selected,
+                                title: e.target.value,
+                            }) }), _jsx("textarea", { value: selected.content, onChange: (e) => handleChange(e.target.value) }), _jsx("button", { onClick: () => void deleteNote(selected.id), children: "Delete" })] })) : (_jsx("div", { children: "Select a note" })) })] }));
 }

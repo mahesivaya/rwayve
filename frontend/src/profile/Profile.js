@@ -2,7 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useEffect, useState } from "react";
 import { changePassword } from "../api/Auth";
 import "./profile.css";
-import { API_BASE } from "../config/env";
+import { apiFetch } from "../api/client";
 const authHeaders = () => {
     const token = localStorage.getItem("token");
     return {
@@ -24,15 +24,18 @@ export default function Profile() {
     const [pwStatus, setPwStatus] = useState(null);
     useEffect(() => {
         const load = async () => {
-            const res = await fetch(`${API_BASE}/api/profile`, { headers: authHeaders() });
-            if (!res.ok)
-                return;
-            const data = await res.json();
-            setProfile(data);
-            setFirstName(data.first_name ?? "");
-            setLastName(data.last_name ?? "");
+            try {
+                const res = await apiFetch(`/api/profile`);
+                const data = await res.json();
+                setProfile(data);
+                setFirstName(data.first_name ?? "");
+                setLastName(data.last_name ?? "");
+            }
+            catch (err) {
+                console.error(err);
+            }
         };
-        load();
+        void load();
     }, []);
     useEffect(() => {
         if (!status)
@@ -74,13 +77,10 @@ export default function Profile() {
     const save = async () => {
         setSaving(true);
         try {
-            const res = await fetch(`${API_BASE}/api/profile`, {
+            const res = await apiFetch(`/api/profile`, {
                 method: "PUT",
-                headers: authHeaders(),
                 body: JSON.stringify({ first_name: firstName, last_name: lastName }),
             });
-            if (!res.ok)
-                throw new Error(await res.text());
             const data = await res.json();
             setProfile(data);
             setStatus("Saved ✓");
