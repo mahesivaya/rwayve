@@ -3,12 +3,16 @@ import { changePassword, forgotPassword, login, register, resetPassword, } from 
 // Match whatever Vite picked up from .env so we don't hardcode a value.
 const API_BASE = (import.meta.env.VITE_API_URL ?? "");
 const mockFetch = (status, body) => {
-    const fn = vi.fn().mockResolvedValue({
+    const response = {
         ok: status >= 200 && status < 300,
         status,
         json: async () => body,
         text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
-    });
+        clone() {
+            return this;
+        },
+    };
+    const fn = vi.fn().mockResolvedValue(response);
     vi.stubGlobal("fetch", fn);
     return fn;
 };

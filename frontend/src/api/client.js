@@ -1,40 +1,67 @@
 import { API_BASE } from "../config/env";
 export async function apiFetch(path, options = {}) {
-    const { auth = true, headers, ...rest } = options;
+    const { auth = true, preserve401 = false, headers, ...rest } = options;
     const token = localStorage.getItem("token");
     const response = await fetch(`${API_BASE}${path}`, {
         ...rest,
         headers: {
             "Content-Type": "application/json",
             ...(auth && token
-                ? { Authorization: `Bearer ${token}` }
+                ? {
+                    Authorization: `Bearer ${token}`,
+                }
                 : {}),
             ...headers,
         },
     });
+    // ================= 401 =================
     if (response.status === 401) {
-        const isChangePassword = path.includes("/profile/password");
-        let bodyMessage = "";
+        let message = "Unauthorized";
         try {
-            const data = await response.clone().json();
-            bodyMessage = data?.error || data?.message || "";
+            const data = await response
+                .clone()
+                .json();
+            message =
+                data?.error ||
+                    data?.message ||
+                    message;
         }
-        catch { }
-        if (isChangePassword && bodyMessage) {
-            throw new Error(bodyMessage);
+        catch {
+            // ignore
+        }
+        // Some endpoints intentionally
+        // return 401 without invalidating
+        // the session.
+        //
+        // Example:
+        // - wrong current password
+        // - MFA challenge
+        // - partial auth flows
+        if (preserve401) {
+            throw new Error(message);
         }
         console.error("Unauthorized");
         localStorage.removeItem("token");
-        if (import.meta.env.MODE !== "test") {
-            window.location.href = "/login";
+        // Avoid jsdom/Vitest
+        // navigation crashes.
+        if (import.meta.env.MODE !==
+            "test") {
+            window.location.href =
+                "/login";
         }
-        throw new Error("Unauthorized");
+        throw new Error(message);
     }
+    // ================= OTHER ERRORS =================
     if (!response.ok) {
         let message = "Request failed";
         try {
-            const data = await response.clone().json();
-            message = data.error || data.message || message;
+            const data = await response
+                .clone()
+                .json();
+            message =
+                data?.error ||
+                    data?.message ||
+                    message;
         }
         catch {
             // ignore json parse errors
