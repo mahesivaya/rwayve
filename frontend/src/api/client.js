@@ -1,4 +1,4 @@
-import { API_BASE } from "@/config/env";
+import { API_BASE } from "../config/env";
 export async function apiFetch(path, options = {}) {
     const { auth = true, headers, ...rest } = options;
     const token = localStorage.getItem("token");
