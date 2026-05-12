@@ -1,6 +1,16 @@
 const DB_NAME = "wayve_keys";
 const STORE_NAME = "keys";
 const DB_VERSION = 1;
+const LEGACY_PRIVATE_KEY_ID = "privateKey";
+const LEGACY_PUBLIC_KEY_ID = "publicKey";
+
+function privateKeyId(userId?: number | null) {
+  return userId ? `privateKey:${userId}` : LEGACY_PRIVATE_KEY_ID;
+}
+
+function publicKeyId(userId?: number | null) {
+  return userId ? `publicKey:${userId}` : LEGACY_PUBLIC_KEY_ID;
+}
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -19,7 +29,7 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 // 🔐 Save private key
-export async function savePrivateKey(key: CryptoKey) {
+export async function savePrivateKey(key: CryptoKey, userId?: number | null) {
   const db = await openDB();
 
   const exported = await crypto.subtle.exportKey("pkcs8", key);
@@ -28,7 +38,23 @@ export async function savePrivateKey(key: CryptoKey) {
     const tx = db.transaction(STORE_NAME, "readwrite");
     const store = tx.objectStore(STORE_NAME);
 
-    store.put(exported, "privateKey");
+    store.put(exported, privateKeyId(userId));
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// 🔐 Save public key bytes so we can re-publish the DB key after reload/login.
+export async function savePublicKey(publicKey: ArrayBuffer, userId?: number | null) {
+  const db = await openDB();
+  const publicKeyBytes = new Uint8Array(publicKey).slice().buffer;
+
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+
+    store.put(publicKeyBytes, publicKeyId(userId));
 
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
@@ -36,14 +62,14 @@ export async function savePrivateKey(key: CryptoKey) {
 }
 
 // 🔓 Load private key
-export async function loadPrivateKey(): Promise<CryptoKey | null> {
+export async function loadPrivateKey(userId?: number | null): Promise<CryptoKey | null> {
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readonly");
     const store = tx.objectStore(STORE_NAME);
 
-    const req = store.get("privateKey");
+    const req = store.get(privateKeyId(userId));
 
     req.onsuccess = async () => {
       if (!req.result) return resolve(null);
@@ -57,6 +83,30 @@ export async function loadPrivateKey(): Promise<CryptoKey | null> {
       );
 
       resolve(key);
+    };
+
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// 🔓 Load saved public key bytes for server registration.
+export async function loadPublicKey(userId?: number | null): Promise<ArrayBuffer | null> {
+  const db = await openDB();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+
+    const req = store.get(publicKeyId(userId));
+
+    req.onsuccess = () => {
+      if (!req.result) return resolve(null);
+
+      if (req.result instanceof ArrayBuffer) {
+        return resolve(req.result);
+      }
+
+      resolve(new Uint8Array(req.result).slice().buffer);
     };
 
     req.onerror = () => reject(req.error);

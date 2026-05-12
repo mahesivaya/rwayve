@@ -2,7 +2,7 @@ import { logger } from "../utils/logger";
 import { apiFetch } from "../api/client";
 
 import { useState, useEffect } from "react";
-import {buildEncryptedBody} from "./encryptEmail";
+import {buildEncryptedBody, type EmailEncryptionMode} from "./encryptEmail";
 
 type SendEmailProps = {
   accountId: number;
@@ -14,6 +14,8 @@ export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [encryptionMode, setEncryptionMode] =
+    useState<EmailEncryptionMode>("fully_encrypted");
 
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
@@ -46,7 +48,8 @@ export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps
         await buildEncryptedBody(
           to,
           body,
-          token
+          token,
+          encryptionMode
         );
     
       logger.warn("🔐 AFTER ENCRYPT:",finalBody);
@@ -72,6 +75,7 @@ export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps
       setTo("");
       setSubject("");
       setBody("");
+      setEncryptionMode("fully_encrypted");
       onSent?.();
       setTimeout(() => onClose?.(), 800);
     } catch (err: any) {
@@ -142,6 +146,83 @@ export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps
           resize: "none"
         }}
       />
+
+      <div
+        role="radiogroup"
+        aria-label="Email encryption type"
+        style={{
+          display: "grid",
+          gap: 8,
+          padding: "10px",
+          border: "1px solid #d1d5db",
+          borderRadius: 6,
+          background: "#f9fafb"
+        }}
+      >
+        <label
+          style={{
+            display: "grid",
+            gridTemplateColumns: "18px 1fr",
+            gap: 8,
+            alignItems: "start",
+            cursor: "pointer"
+          }}
+        >
+          <input
+            type="radio"
+            name="email-encryption"
+            value="fully_encrypted"
+            checked={encryptionMode === "fully_encrypted"}
+            onChange={() => setEncryptionMode("fully_encrypted")}
+            style={{ marginTop: 2 }}
+          />
+          <span>
+            <strong>Fully encrypted</strong>
+            <span
+              style={{
+                display: "block",
+                color: "#4b5563",
+                fontSize: 12,
+                lineHeight: 1.35
+              }}
+            >
+              Only Wayve users can decrypt and read this email inside Wayve.
+            </span>
+          </span>
+        </label>
+
+        <label
+          style={{
+            display: "grid",
+            gridTemplateColumns: "18px 1fr",
+            gap: 8,
+            alignItems: "start",
+            cursor: "pointer"
+          }}
+        >
+          <input
+            type="radio"
+            name="email-encryption"
+            value="standard"
+            checked={encryptionMode === "standard"}
+            onChange={() => setEncryptionMode("standard")}
+            style={{ marginTop: 2 }}
+          />
+          <span>
+            <strong>Standard encryption</strong>
+            <span
+              style={{
+                display: "block",
+                color: "#4b5563",
+                fontSize: 12,
+                lineHeight: 1.35
+              }}
+            >
+              Sends normal email content that can also be viewed in Gmail.
+            </span>
+          </span>
+        </label>
+      </div>
   
       <button
         onClick={sendEmail}

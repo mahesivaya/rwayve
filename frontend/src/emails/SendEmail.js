@@ -7,6 +7,7 @@ export default function SendEmail({ accountId, onClose, onSent }) {
     const [to, setTo] = useState("");
     const [subject, setSubject] = useState("");
     const [body, setBody] = useState("");
+    const [encryptionMode, setEncryptionMode] = useState("fully_encrypted");
     const [status, setStatus] = useState("");
     const [loading, setLoading] = useState(false);
     useEffect(() => {
@@ -29,7 +30,7 @@ export default function SendEmail({ accountId, onClose, onSent }) {
         setStatus("");
         try {
             logger.warn("📨 BEFORE ENCRYPT:", body);
-            const finalBody = await buildEncryptedBody(to, body, token);
+            const finalBody = await buildEncryptedBody(to, body, token, encryptionMode);
             logger.warn("🔐 AFTER ENCRYPT:", finalBody);
             // 🔥 2. Send email
             const res = await apiFetch(`/api/send`, {
@@ -49,6 +50,7 @@ export default function SendEmail({ accountId, onClose, onSent }) {
             setTo("");
             setSubject("");
             setBody("");
+            setEncryptionMode("fully_encrypted");
             onSent?.();
             setTimeout(() => onClose?.(), 800);
         }
@@ -84,7 +86,36 @@ export default function SendEmail({ accountId, onClose, onSent }) {
                     border: "1px solid #ccc",
                     minHeight: 120,
                     resize: "none"
-                } }), _jsx("button", { onClick: sendEmail, disabled: loading, style: {
+                } }), _jsxs("div", { role: "radiogroup", "aria-label": "Email encryption type", style: {
+                    display: "grid",
+                    gap: 8,
+                    padding: "10px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: 6,
+                    background: "#f9fafb"
+                }, children: [_jsxs("label", { style: {
+                            display: "grid",
+                            gridTemplateColumns: "18px 1fr",
+                            gap: 8,
+                            alignItems: "start",
+                            cursor: "pointer"
+                        }, children: [_jsx("input", { type: "radio", name: "email-encryption", value: "fully_encrypted", checked: encryptionMode === "fully_encrypted", onChange: () => setEncryptionMode("fully_encrypted"), style: { marginTop: 2 } }), _jsxs("span", { children: [_jsx("strong", { children: "Fully encrypted" }), _jsx("span", { style: {
+                                            display: "block",
+                                            color: "#4b5563",
+                                            fontSize: 12,
+                                            lineHeight: 1.35
+                                        }, children: "Only Wayve users can decrypt and read this email inside Wayve." })] })] }), _jsxs("label", { style: {
+                            display: "grid",
+                            gridTemplateColumns: "18px 1fr",
+                            gap: 8,
+                            alignItems: "start",
+                            cursor: "pointer"
+                        }, children: [_jsx("input", { type: "radio", name: "email-encryption", value: "standard", checked: encryptionMode === "standard", onChange: () => setEncryptionMode("standard"), style: { marginTop: 2 } }), _jsxs("span", { children: [_jsx("strong", { children: "Standard encryption" }), _jsx("span", { style: {
+                                            display: "block",
+                                            color: "#4b5563",
+                                            fontSize: 12,
+                                            lineHeight: 1.35
+                                        }, children: "Sends normal email content that can also be viewed in Gmail." })] })] })] }), _jsx("button", { onClick: sendEmail, disabled: loading, style: {
                     background: "#007bff",
                     color: "white",
                     padding: "10px",

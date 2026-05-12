@@ -1,5 +1,11 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { savePrivateKey, loadPrivateKey } from "../crypto/keyStore";
+import {
+  savePrivateKey,
+  savePublicKey,
+  loadPrivateKey,
+  loadPublicKey,
+} from "../crypto/keyStore";
+import { apiFetch } from "../api/client";
 import { logger } from "../utils/logger";
 
 const log = logger.scope("auth");
@@ -59,6 +65,15 @@ const resolveBootToken = (): string | null => {
   return localStorage.getItem("token");
 };
 
+async function publishPublicKey(publicKey: ArrayBuffer) {
+  await apiFetch("/api/save-public-key", {
+    method: "POST",
+    body: JSON.stringify({
+      public_key: Array.from(new Uint8Array(publicKey)),
+    }),
+  });
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Optimistic init: trust a non-expired JWT immediately so the app renders
   // without a round-trip. /api/me below confirms it and logs us out on 401.
@@ -71,10 +86,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const setupEncryption = async (token: string) => {
     try {
-      const existingKey = await loadPrivateKey();
+      const claims = parseJwt(token);
+      if (!claims) return;
 
-      if (existingKey) {
-        log.debug("private key already in IndexedDB");
+      const existingKey = await loadPrivateKey(claims.sub);
+      const existingPublicKey = await loadPublicKey(claims.sub);
+
+      if (existingKey && existingPublicKey) {
+        await publishPublicKey(existingPublicKey);
+        log.debug("encryption key already in IndexedDB; public key refreshed");
         return;
       }
 
@@ -91,20 +111,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ["encrypt", "decrypt"]
       );
 
-      await savePrivateKey(keyPair.privateKey);
+      await savePrivateKey(keyPair.privateKey, claims.sub);
 
       const publicKey = await crypto.subtle.exportKey("spki", keyPair.publicKey);
+      await savePublicKey(publicKey, claims.sub);
 
-      await fetch("/api/save-public-key", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          public_key: Array.from(new Uint8Array(publicKey)),
-        }),
-      });
+      await publishPublicKey(publicKey);
 
       log.info("encryption setup complete");
     } catch (err) {

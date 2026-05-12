@@ -5,7 +5,80 @@ import "./loadMore.css";
 import SendEmail from "./SendEmail";
 import { API_BASE } from "../config/env";
 import { apiFetch } from "../api/client";
+import { decryptMessage } from "../crypto/crypto";
+import { loadPrivateKey } from "../crypto/keyStore";
+import { useAuth } from "../auth/AuthContext";
+const WAYVE_SECURE_PREFIX = "WAYVE_SECURE_V1";
+function normalizeEmailBody(body) {
+    if (!/[<&][a-zA-Z#/!]/.test(body)) {
+        return body;
+    }
+    const doc = new DOMParser().parseFromString(body, "text/html");
+    return doc.body.textContent || body;
+}
+function parseWayveEncryptedBody(body) {
+    const trimmed = normalizeEmailBody(body).trim();
+    if (!trimmed.startsWith(WAYVE_SECURE_PREFIX)) {
+        return null;
+    }
+    const jsonStart = trimmed.indexOf("{");
+    if (jsonStart === -1) {
+        throw new Error("Encrypted Wayve email is missing its payload");
+    }
+    const jsonEnd = trimmed.lastIndexOf("}");
+    if (jsonEnd < jsonStart) {
+        throw new Error("Encrypted Wayve email payload is incomplete");
+    }
+    const parsed = JSON.parse(trimmed.slice(jsonStart, jsonEnd + 1));
+    if (parsed?.type !== "wayve_encrypted" ||
+        !Array.isArray(parsed.data) ||
+        !Array.isArray(parsed.key) ||
+        !Array.isArray(parsed.iv)) {
+        throw new Error("Encrypted Wayve email payload is invalid");
+    }
+    return parsed;
+}
+function emailBodyErrorMessage(err) {
+    const message = err instanceof Error ? err.message : "";
+    if (message.includes("private key") ||
+        message.includes("decrypt") ||
+        message.includes("operation failed")) {
+        return "Unable to decrypt this fully encrypted email on this device. Sign out and back in to refresh your Wayve encryption key, then ask the sender to resend it.";
+    }
+    return "Failed to load email body. Try again.";
+}
+async function decryptWayveBodyIfNeeded(body, userId) {
+    const encrypted = parseWayveEncryptedBody(body);
+    if (!encrypted) {
+        return body;
+    }
+    const privateKeys = [];
+    const scopedPrivateKey = await loadPrivateKey(userId);
+    if (scopedPrivateKey) {
+        privateKeys.push(scopedPrivateKey);
+    }
+    if (userId) {
+        const legacyPrivateKey = await loadPrivateKey();
+        if (legacyPrivateKey && legacyPrivateKey !== scopedPrivateKey) {
+            privateKeys.push(legacyPrivateKey);
+        }
+    }
+    if (privateKeys.length === 0) {
+        throw new Error("This device does not have your Wayve private key");
+    }
+    let lastError = null;
+    for (const privateKey of privateKeys) {
+        try {
+            return await decryptMessage(new Uint8Array(encrypted.data), new Uint8Array(encrypted.key), new Uint8Array(encrypted.iv), privateKey);
+        }
+        catch (err) {
+            lastError = err;
+        }
+    }
+    throw lastError || new Error("Unable to decrypt Wayve email");
+}
 export default function Emails() {
+    const { user } = useAuth();
     const [accounts, setAccounts] = useState([]);
     const [emails, setEmails] = useState([]);
     const [selectedEmail, setSelectedEmail] = useState(null);
@@ -115,21 +188,47 @@ export default function Emails() {
         //    fetched it yet — render the placeholder via bodyLoading.
         const res = await apiFetch(`/api/emails/${email.id}`);
         const data = await res.json();
-        setSelectedEmail({ ...data, _bodyLoading: !data.body });
+        if (data.body) {
+            try {
+                const decryptedBody = await decryptWayveBodyIfNeeded(data.body, user?.id);
+                const decryptedData = { ...data, body: decryptedBody };
+                emailCache.current[email.id] = decryptedData;
+                setSelectedEmail(decryptedData);
+                return;
+            }
+            catch (err) {
+                console.error("Wayve email decrypt failed", err);
+                setSelectedEmail({
+                    ...data,
+                    body: "",
+                    _bodyError: emailBodyErrorMessage(err),
+                });
+                return;
+            }
+        }
+        setSelectedEmail({ ...data, _bodyLoading: true });
         // 2) If body wasn't ready, hit the on-demand endpoint. Backend triggers a
         //    Gmail fetch, encrypts, persists, and returns the body.
         if (!data.body) {
             try {
                 const bodyRes = await apiFetch(`/api/emails/${email.id}/body`);
                 const { body } = await bodyRes.json();
-                const merged = { ...data, body, _bodyLoading: false };
+                const decryptedBody = await decryptWayveBodyIfNeeded(body || "", user?.id);
+                const merged = { ...data, body: decryptedBody, _bodyLoading: false };
                 emailCache.current[email.id] = merged;
                 // Only update if user hasn't navigated away to a different email.
                 setSelectedEmail((cur) => (cur && cur.id === email.id ? merged : cur));
                 return;
             }
-            catch {
-                setSelectedEmail((cur) => cur && cur.id === email.id ? { ...cur, _bodyLoading: false, _bodyError: true } : cur);
+            catch (err) {
+                console.error("Wayve email body load/decrypt failed", err);
+                setSelectedEmail((cur) => cur && cur.id === email.id
+                    ? {
+                        ...cur,
+                        _bodyLoading: false,
+                        _bodyError: emailBodyErrorMessage(err),
+                    }
+                    : cur);
             }
             return;
         }
@@ -151,5 +250,7 @@ export default function Emails() {
                         width: 480,
                         maxWidth: "90vw",
                         boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-                    }, children: _jsx(SendEmail, { accountId: activeAccount ?? accounts[0].id, onClose: () => setComposeOpen(false) }) }) })), showDetail && (_jsxs("div", { className: "email-detail", children: [isNarrow && selectedEmail && (_jsx("button", { className: "email-detail-back", onClick: () => setSelectedEmail(null), title: "Close email", "aria-label": "Close email", children: "\u2715 Close email" })), !selectedEmail ? (_jsx("p", { children: "Select an email" })) : (_jsxs(_Fragment, { children: [_jsx("h2", { children: selectedEmail.subject }), _jsxs("p", { children: [_jsx("b", { children: "From:" }), " ", selectedEmail.sender] }), _jsxs("p", { children: [_jsx("b", { children: "To:" }), " ", selectedEmail.receiver] }), _jsx("div", { className: "email-body", children: selectedEmail._bodyLoading ? (_jsxs("div", { className: "email-body-loading", children: [_jsx("span", { className: "spinner", "aria-hidden": "true" }), _jsx("span", { children: "Loading email \u2026" })] })) : selectedEmail._bodyError ? (_jsx("p", { className: "email-body-error", children: "Failed to load email body. Try again." })) : (selectedEmail.body) })] }))] }))] }));
+                    }, children: _jsx(SendEmail, { accountId: activeAccount ?? accounts[0].id, onClose: () => setComposeOpen(false) }) }) })), showDetail && (_jsxs("div", { className: "email-detail", children: [isNarrow && selectedEmail && (_jsx("button", { className: "email-detail-back", onClick: () => setSelectedEmail(null), title: "Close email", "aria-label": "Close email", children: "\u2715 Close email" })), !selectedEmail ? (_jsx("p", { children: "Select an email" })) : (_jsxs(_Fragment, { children: [_jsx("h2", { children: selectedEmail.subject }), _jsxs("p", { children: [_jsx("b", { children: "From:" }), " ", selectedEmail.sender] }), _jsxs("p", { children: [_jsx("b", { children: "To:" }), " ", selectedEmail.receiver] }), _jsx("div", { className: "email-body", children: selectedEmail._bodyLoading ? (_jsxs("div", { className: "email-body-loading", children: [_jsx("span", { className: "spinner", "aria-hidden": "true" }), _jsx("span", { children: "Loading email \u2026" })] })) : selectedEmail._bodyError ? (_jsx("p", { className: "email-body-error", children: typeof selectedEmail._bodyError === "string"
+                                        ? selectedEmail._bodyError
+                                        : "Failed to load email body. Try again." })) : (selectedEmail.body) })] }))] }))] }));
 }

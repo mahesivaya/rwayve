@@ -1,12 +1,16 @@
 import { encryptMessage } from "../crypto/crypto";
 import { logger } from "../utils/logger";
 import { apiFetch } from "../api/client";
-export async function buildEncryptedBody(to, body, token) {
+export async function buildEncryptedBody(to, body, token, encryptionMode) {
     // =====================================
     // LOG ORIGINAL BODY
     // =====================================
     logger.warn("📨 ORIGINAL BODY:");
     logger.warn(body);
+    if (encryptionMode === "standard") {
+        logger.warn("Standard encryption selected → sending Gmail-readable body");
+        return body;
+    }
     // =====================================
     // CHECK USER
     // =====================================
@@ -17,8 +21,7 @@ export async function buildEncryptedBody(to, body, token) {
     });
     // normal email
     if (!checkRes.ok) {
-        logger.warn("⚠️ User lookup failed → sending normal email");
-        return body;
+        throw new Error("Fully encrypted email requires a Wayve recipient. Choose Standard encryption for Gmail-readable email.");
     }
     const users = await checkRes.json();
     const user = Array.isArray(users)
@@ -26,8 +29,7 @@ export async function buildEncryptedBody(to, body, token) {
         : users;
     // no encryption
     if (!user?.public_key) {
-        logger.warn("⚠️ No public key → sending normal email");
-        return body;
+        throw new Error("Fully encrypted email requires the recipient to have Wayve encryption enabled. Choose Standard encryption for Gmail-readable email.");
     }
     // =====================================
     // IMPORT PUBLIC KEY

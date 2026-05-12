@@ -5,8 +5,8 @@ use crate::email::oauth::{HTTP_CLIENT, load_google_secrets, refresh_access_token
 use serde_json::Value;
 use tracing::{debug, error, info, instrument, warn};
 
-// (msg_id, sender, receiver, subject) — body is fetched later by body_worker
-pub type EmailHeader = (String, String, String, String);
+// (msg_id, sender, receiver, subject, gmail_timestamp) — body is fetched later by body_worker
+pub type EmailHeader = (String, String, String, String, NaiveDateTime);
 
 pub async fn fetch_headers_only(token: &str, msg_id: &str) -> Result<EmailHeader> {
     let url = format!(
@@ -24,7 +24,23 @@ pub async fn fetch_headers_only(token: &str, msg_id: &str) -> Result<EmailHeader
         .await?;
 
     let (sender, receiver, subject) = extract_headers(&res);
-    Ok((msg_id.to_string(), sender, receiver, subject))
+    let gmail_timestamp = extract_gmail_timestamp(&res);
+    Ok((
+        msg_id.to_string(),
+        sender,
+        receiver,
+        subject,
+        gmail_timestamp,
+    ))
+}
+
+fn extract_gmail_timestamp(res: &Value) -> NaiveDateTime {
+    res["internalDate"]
+        .as_str()
+        .and_then(|v| v.parse::<i64>().ok())
+        .and_then(chrono::DateTime::from_timestamp_millis)
+        .map(|dt| dt.naive_utc())
+        .unwrap_or_else(|| chrono::Utc::now().naive_utc())
 }
 
 #[instrument(target = "worker", skip(pool))]
@@ -244,34 +260,42 @@ where
 
     // Insert headers with empty body sentinel — body_worker will fill these in.
     let mut query = String::from(
-        "INSERT INTO emails(gmail_id, sender, receiver, subject, body_encrypted, body_iv, account_id) VALUES ",
+        "INSERT INTO emails(gmail_id, sender, receiver, subject, created_at, body_encrypted, body_iv, account_id) VALUES ",
     );
 
     for (i, _) in batch.iter().enumerate() {
-        let idx = i * 7;
+        let idx = i * 8;
         query.push_str(&format!(
-            "(${}, ${}, ${}, ${}, ${}, ${}, ${}),",
+            "(${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}),",
             idx + 1,
             idx + 2,
             idx + 3,
             idx + 4,
             idx + 5,
             idx + 6,
-            idx + 7
+            idx + 7,
+            idx + 8
         ));
     }
 
     query.pop();
-    query.push_str(" ON CONFLICT (account_id, gmail_id) DO NOTHING");
+    query.push_str(
+        " ON CONFLICT (account_id, gmail_id) DO UPDATE SET \
+         sender = EXCLUDED.sender, \
+         receiver = EXCLUDED.receiver, \
+         subject = EXCLUDED.subject, \
+         created_at = EXCLUDED.created_at",
+    );
 
     let mut q = sqlx::query(&query);
 
-    for (gmail_id, sender, receiver, subject) in batch.iter() {
+    for (gmail_id, sender, receiver, subject, gmail_timestamp) in batch.iter() {
         q = q
             .bind(gmail_id)
             .bind(sender)
             .bind(receiver)
             .bind(subject)
+            .bind(gmail_timestamp)
             .bind("") // body_encrypted — empty until body_worker fills it
             .bind("") // body_iv
             .bind(account_id);

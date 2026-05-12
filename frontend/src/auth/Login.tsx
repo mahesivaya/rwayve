@@ -18,7 +18,7 @@ export default function Login() {
   // Surface OAuth-side errors that the backend redirected here with.
   useEffect(() => {
     if (params.get("error") === "email_exists") {
-      setError("This email is already registered with a password. Please log in below.");
+      setError("This email is already registered with a password. Please login.");
     }
   }, [params]);
 

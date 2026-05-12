@@ -21,8 +21,14 @@ mod tests {
         }
     }
 
-    fn metadata_response(from: &str, to: &str, subject: &str) -> serde_json::Value {
+    fn metadata_response(
+        from: &str,
+        to: &str,
+        subject: &str,
+        internal_date_ms: i64,
+    ) -> serde_json::Value {
         json!({
+            "internalDate": internal_date_ms.to_string(),
             "payload": {
                 "headers": [
                     { "name": "From", "value": from },
@@ -73,15 +79,23 @@ mod tests {
                 "Alice <a@x.com>",
                 "Bob <b@y.com>",
                 "Hello world",
+                1_700_000_000_000,
             )))
             .mount(&server)
             .await;
 
-        let (id, from, to, subject) = fetch_headers_only("token", "msg-1").await.unwrap();
+        let (id, from, to, subject, created_at) =
+            fetch_headers_only("token", "msg-1").await.unwrap();
         assert_eq!(id, "msg-1");
         assert_eq!(from, "Alice <a@x.com>");
         assert_eq!(to, "Bob <b@y.com>");
         assert_eq!(subject, "Hello world");
+        assert_eq!(
+            created_at,
+            chrono::DateTime::from_timestamp_millis(1_700_000_000_000)
+                .unwrap()
+                .naive_utc()
+        );
     }
 
     #[tokio::test]
@@ -124,6 +138,7 @@ mod tests {
                 "from1@x.com",
                 "to1@x.com",
                 "Subject 1",
+                1_700_000_000_000,
             )))
             .mount(&server)
             .await;
@@ -133,6 +148,7 @@ mod tests {
                 "from2@x.com",
                 "to2@x.com",
                 "Subject 2",
+                1_700_000_100_000,
             )))
             .mount(&server)
             .await;
@@ -140,7 +156,7 @@ mod tests {
         sync_account(&pool, account_id, "tok", None).await.unwrap();
 
         let rows = sqlx::query(
-            "SELECT gmail_id, sender, receiver, subject, body_encrypted FROM emails WHERE account_id = $1 ORDER BY gmail_id",
+            "SELECT gmail_id, sender, receiver, subject, body_encrypted, created_at FROM emails WHERE account_id = $1 ORDER BY gmail_id",
         )
         .bind(account_id)
         .fetch_all(&pool)
@@ -150,6 +166,19 @@ mod tests {
         assert_eq!(rows.len(), 2);
         let gmail_ids: Vec<String> = rows.iter().map(|r| sqlx::Row::get(r, "gmail_id")).collect();
         assert_eq!(gmail_ids, vec!["m1".to_string(), "m2".to_string()]);
+        let created_at: Vec<chrono::NaiveDateTime> =
+            rows.iter().map(|r| sqlx::Row::get(r, "created_at")).collect();
+        assert_eq!(
+            created_at,
+            vec![
+                chrono::DateTime::from_timestamp_millis(1_700_000_000_000)
+                    .unwrap()
+                    .naive_utc(),
+                chrono::DateTime::from_timestamp_millis(1_700_000_100_000)
+                    .unwrap()
+                    .naive_utc(),
+            ]
+        );
         for r in &rows {
             let body: String = sqlx::Row::get(r, "body_encrypted");
             assert!(body.is_empty(), "sync_account leaves body empty for body_worker");

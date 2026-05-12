@@ -110,6 +110,12 @@ pub async fn get_emails(
             let emails: Vec<Value> = rows
                 .into_iter()
                 .map(|row| {
+                    let created_at: Option<NaiveDateTime> = row.get("created_at");
+                    let created_at = created_at.map(|dt| {
+                        chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
+                            .to_rfc3339()
+                    });
+
                     serde_json::json!({
                         "id": row.get::<i32,_>("id"),
                         "gmail_id": row.get::<String,_>("gmail_id"),
@@ -118,7 +124,7 @@ pub async fn get_emails(
                         "receiver": row.get::<Option<String>,_>("receiver"),
                         "has_body": row.get::<bool,_>("has_body"),
                         "account_id": row.get::<Option<i32>,_>("account_id"),
-                        "created_at": row.get::<Option<NaiveDateTime>,_>("created_at"),
+                        "created_at": created_at,
                     })
                 })
                 .collect();
