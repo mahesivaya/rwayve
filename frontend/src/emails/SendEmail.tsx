@@ -1,5 +1,5 @@
 import { logger } from "../utils/logger";
-import { apiFetch } from "../api/client";
+import { sendEmail as sendEmailApi } from "../api/email";
 
 import { useState, useEffect } from "react";
 import {buildEncryptedBody, type EmailEncryptionMode} from "./encryptEmail";
@@ -54,22 +54,12 @@ export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps
     
       logger.warn("🔐 AFTER ENCRYPT:",finalBody);
 
-      // 🔥 2. Send email
-      const res = await apiFetch(`/api/send`, {
-        method: "POST",
-        body: JSON.stringify({
-          account_id: accountId,
-          to,
-          subject,
-          body: finalBody,
-        }),
+      await sendEmailApi({
+        account_id: accountId,
+        to,
+        subject,
+        body: finalBody,
       });
-
-      const text = await res.text();
-
-      if (!res.ok) {
-        throw new Error(text || "Failed to send");
-      }
 
       setStatus("Email sent successfully ✅");
       setTo("");

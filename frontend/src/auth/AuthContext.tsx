@@ -5,7 +5,7 @@ import {
   loadPrivateKey,
   loadPublicKey,
 } from "../crypto/keyStore";
-import { apiFetch } from "../api/client";
+import { getMe, saveUserPublicKey } from "../api/Auth";
 import { logger } from "../utils/logger";
 
 const log = logger.scope("auth");
@@ -66,12 +66,7 @@ const resolveBootToken = (): string | null => {
 };
 
 async function publishPublicKey(publicKey: ArrayBuffer) {
-  await apiFetch("/api/save-public-key", {
-    method: "POST",
-    body: JSON.stringify({
-      public_key: Array.from(new Uint8Array(publicKey)),
-    }),
-  });
+  await saveUserPublicKey(publicKey);
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -134,10 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       try {
-        const res = await fetch("/api/me", {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: ctrl.signal,
-        });
+        const res = await getMe(token, ctrl.signal);
 
         if (res.status === 401) {
           log.warn("/api/me rejected stored token; clearing session");

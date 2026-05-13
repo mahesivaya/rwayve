@@ -3,8 +3,13 @@ import "./emails.css";
 import "./loadMore.css";
 import SendEmail from "./SendEmail";
 
-import {API_BASE} from "../config/env";
-import { apiFetch } from "../api/client";
+import {
+  getAccounts,
+  getEmail,
+  getEmailBody,
+  getEmails,
+  getGmailLoginUrl,
+} from "../api/email";
 import { decryptMessage } from "../crypto/crypto";
 import { loadPrivateKey } from "../crypto/keyStore";
 import { useAuth } from "../auth/AuthContext";
@@ -35,7 +40,32 @@ function normalizeEmailBody(body: string) {
   }
 
   const doc = new DOMParser().parseFromString(body, "text/html");
-  return doc.body.textContent || body;
+
+  doc
+    .querySelectorAll("script, style, noscript, svg")
+    .forEach((node) => node.remove());
+
+  doc
+    .querySelectorAll("br")
+    .forEach((node) => node.replaceWith(doc.createTextNode("\n")));
+
+  doc
+    .querySelectorAll("p, div, section, article, header, footer, tr, table")
+    .forEach((node) => node.append(doc.createTextNode("\n")));
+
+  doc
+    .querySelectorAll("li")
+    .forEach((node) => node.prepend(doc.createTextNode("\n- ")));
+
+  const text = doc.body.textContent || body;
+
+  return text
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function parseWayveEncryptedBody(body: string): WayveEncryptedBody | null {
@@ -80,6 +110,10 @@ function emailBodyErrorMessage(err: unknown) {
     return "Unable to decrypt this fully encrypted email on this device. Sign out and back in to refresh your Wayve encryption key, then ask the sender to resend it.";
   }
 
+  if (message) {
+    return message;
+  }
+
   return "Failed to load email body. Try again.";
 }
 
@@ -90,7 +124,7 @@ async function decryptWayveBodyIfNeeded(
   const encrypted = parseWayveEncryptedBody(body);
 
   if (!encrypted) {
-    return body;
+    return normalizeEmailBody(body);
   }
 
   const privateKeys: CryptoKey[] = [];
@@ -120,7 +154,7 @@ async function decryptWayveBodyIfNeeded(
         new Uint8Array(encrypted.key),
         new Uint8Array(encrypted.iv),
         privateKey
-      );
+      ).then(normalizeEmailBody);
     } catch (err) {
       lastError = err;
     }
@@ -173,8 +207,7 @@ export default function Emails() {
   // ================= FETCH ACCOUNTS =================
   const fetchAccounts = async () => {
     try{
-      const res = await apiFetch("api/accounts");
-      const data = await res.json();
+      const data = await getAccounts();
       setAccounts(data);
     }
     catch(err){
@@ -215,27 +248,17 @@ export default function Emails() {
   const addAccount = () => {
     const token = localStorage.getItem("token");
     if (!token) return;
-    window.location.href = `${API_BASE}/gmail/login?token=${encodeURIComponent(token)}`;
+    window.location.href = getGmailLoginUrl(token);
   };
 
   // ================= FETCH EMAILS =================
   useEffect(() => {
     const fetchEmails = async () => {
-
-      let url = `api/emails?folder=${activeFolder}`;
-
-      if (activeAccount !== null) {
-        url += `&account_id=${activeAccount}`;
-      }
-
-      if (normalizedSearchQuery) {
-        url += `&q=${encodeURIComponent(normalizedSearchQuery)}`;
-      }
-
-      const res = await apiFetch(url);
-
-      const data = await res.json();
-      const hasMorePage = res.headers.get("x-has-more") === "true";
+      const { emails: data, hasMore: hasMorePage } = await getEmails({
+        folder: activeFolder,
+        accountId: activeAccount,
+        query: normalizedSearchQuery,
+      });
 
       setEmails(data);
       setHasMore(hasMorePage || data.length === 50);
@@ -257,20 +280,13 @@ export default function Emails() {
     const before = Math.floor(new Date(last.created_at).getTime() / 1000);
     const before_id = last.id;
 
-    let url = `/api/emails?folder=${activeFolder}&before=${before}&before_id=${before_id}`;
-
-    if (activeAccount !== null) {
-      url += `&account_id=${activeAccount}`;
-    }
-
-    if (normalizedSearchQuery) {
-      url += `&q=${encodeURIComponent(normalizedSearchQuery)}`;
-    }
-
-    const res = await apiFetch(url);
-
-    const data = await res.json();
-    const hasMorePage = res.headers.get("x-has-more") === "true";
+    const { emails: data, hasMore: hasMorePage } = await getEmails({
+      folder: activeFolder,
+      accountId: activeAccount,
+      query: normalizedSearchQuery,
+      before,
+      beforeId: before_id,
+    });
 
     setEmails((prev) => [...prev, ...data]);
     setHasMore(hasMorePage);
@@ -291,8 +307,7 @@ export default function Emails() {
     try {
       // 1) Show metadata immediately. Body may be empty if body_worker hasn't
       //    fetched it yet — render the placeholder via bodyLoading.
-      const res = await apiFetch(`/api/emails/${email.id}`);
-      data = await res.json();
+      data = await getEmail(email.id);
     } catch (err) {
       console.error("Email detail load failed", err);
       setSelectedEmail({
@@ -327,9 +342,7 @@ export default function Emails() {
     //    Gmail fetch, encrypts, persists, and returns the body.
     if (!data.body) {
       try {
-        const bodyRes = await apiFetch(`/api/emails/${email.id}/body`);
-        
-        const { body } = await bodyRes.json();
+        const { body } = await getEmailBody(email.id);
         const decryptedBody = await decryptWayveBodyIfNeeded(body || "", user?.id);
         const merged = { ...data, body: decryptedBody, _bodyLoading: false };
         emailCache.current[email.id] = merged;

@@ -2,26 +2,36 @@ import { useEffect, useState } from "react";
 
 import "./notes.css";
 
-import { apiFetch } from "../api/client";
+import {
+  createNoteApi,
+  deleteNoteApi,
+  getNotes,
+  updateNoteApi,
+  type Note,
+} from "../api/notes";
 
-type Note = {
-  id: number;
+type EditableNote = Note & {
   title: string;
   content: string;
 };
 
 export default function Notes() {
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [selected, setSelected] = useState<Note | null>(null);
+  const [notes, setNotes] = useState<EditableNote[]>([]);
+  const [selected, setSelected] = useState<EditableNote | null>(null);
 
   // ================= FETCH NOTES =================
 
   useEffect(() => {
     const loadNotes = async () => {
       try {
-        const res = await apiFetch("/api/notes");
-        const data: Note[] = await res.json();
-        setNotes(data);
+        const data = await getNotes();
+        setNotes(
+          data.map((note) => ({
+            ...note,
+            title: note.title ?? "",
+            content: note.content ?? "",
+          }))
+        );
 
       } catch (err) {
         console.error(err);
@@ -34,16 +44,15 @@ export default function Notes() {
 
   const createNote = async () => {
     try {
-      const res = await apiFetch("/api/notes",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            title: "",
-            content: "",
-          }),
-        }
-      );
-      const newNote: Note = await res.json();
+      const saved = await createNoteApi({
+        title: "",
+        content: "",
+      });
+      const newNote: EditableNote = {
+        ...saved,
+        title: saved.title ?? "",
+        content: saved.content ?? "",
+      };
       setNotes((prev) => [
         newNote,
         ...prev,
@@ -81,17 +90,13 @@ export default function Notes() {
   }, [selected]);
 
   const saveNote = async (
-    note: Note
+    note: EditableNote
   ) => {
     try {
-      await apiFetch(`/api/notes/${note.id}`,
-        {
-          method: "PUT",
-          body: JSON.stringify(
-            note
-          ),
-        }
-      );
+      await updateNoteApi(note.id, {
+        title: note.title,
+        content: note.content,
+      });
 
     } catch (err) {
       console.error(err);
@@ -104,12 +109,7 @@ export default function Notes() {
     id: number
   ) => {
     try {
-      await apiFetch(
-        `/api/notes/${id}`,
-        {
-          method: "DELETE",
-        }
-      );
+      await deleteNoteApi(id);
 
       setNotes((prev) =>
         prev.filter(

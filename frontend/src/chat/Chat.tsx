@@ -1,31 +1,23 @@
 import { logger } from "../utils/logger";
-import { apiFetch } from "../api/client";
+import {
+  getChatMessages,
+  getChatUsers,
+  type ChatMessage,
+  type ChatUser,
+} from "../api/chat";
 const WS_BASE = import.meta.env.VITE_WS_BASE_URL;
 
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useGlobalSearch } from "../search/SearchContext";
 
-type User = {
-  id: number;
-  email: string;
-};
-
-type Message = {
-  sender_id: number;
-  receiver_id: number;
-  content: string;
-  status: "sent" | "delivered" | "read";
-  created_at: string;
-};
-
 export default function Chat() {
   const { user } = useAuth();
   const { normalizedSearchQuery } = useGlobalSearch();
 
-  const [users, setUsers] = useState<User[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [users, setUsers] = useState<ChatUser[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [selectedUser, setSelectedUser] = useState<ChatUser | null>(null);
   const [input, setInput] = useState("");
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -62,23 +54,9 @@ export default function Chat() {
   // =============================
   useEffect(() => {
     const fetchUsers = async () => {
-      const token = localStorage.getItem("token");
-
       try {
-        const res = await apiFetch(`/api/users/all`);
-
-        const text = await res.text();
-
-        try {
-          const data = JSON.parse(text);
-
-          // remove current user
-          const filtered = data.filter((u: User) => u.id !== user?.id);
-
-          setUsers(filtered);
-        } catch {
-          logger.error("Users error:", text);
-        }
+        const data = await getChatUsers();
+        setUsers(data.filter((u) => u.id !== user?.id));
 
       } catch (err) {
         logger.error("Fetch users failed", err);
@@ -107,7 +85,7 @@ export default function Chat() {
     };
 
     ws.onmessage = (event) => {
-      const msg: Message = JSON.parse(event.data);
+      const msg: ChatMessage = JSON.parse(event.data);
 
       // Echoes of our own sends are already shown optimistically — skip them
       // (they also tend to arrive with a missing/renamed timestamp, which
@@ -129,18 +107,11 @@ export default function Chat() {
   // =============================
   // 🔥 LOAD MESSAGES
   // =============================
-  const loadMessages = async (otherUser: User) => {
+  const loadMessages = async (otherUser: ChatUser) => {
     if (!user) return;
 
-    const token = localStorage.getItem("token");
-
     try {
-      const res = await apiFetch(
-        `/api/messages?user1=${user.id}&user2=${otherUser.id}`);
-
-      const data = await res.json();
-
-      setMessages(data);
+      setMessages(await getChatMessages(user.id, otherUser.id));
       setSelectedUser(otherUser);
 
     } catch (err) {
@@ -156,7 +127,7 @@ export default function Chat() {
 
     const now = new Date().toISOString();
 
-    const message: Message = {
+    const message: ChatMessage = {
       sender_id: user.id,
       receiver_id: selectedUser.id,
       content: input,

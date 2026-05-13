@@ -1,7 +1,7 @@
 import { encryptMessage } from "../crypto/crypto";
 import { logger } from "../utils/logger";
 
-import { apiFetch } from "../api/client";
+import { getWayveRecipientByEmail } from "../api/email";
 
 export type EmailEncryptionMode = "fully_encrypted" | "standard";
 
@@ -25,22 +25,7 @@ export async function buildEncryptedBody(
   // =====================================
   // CHECK USER
   // =====================================
-  const checkRes = await apiFetch(`/api/users?email=${to}`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  // normal email
-  if (!checkRes.ok) {
-    throw new Error(
-      "Fully encrypted email requires a Wayve recipient. Choose Standard encryption for Gmail-readable email."
-    );
-  }
-
-  const users = await checkRes.json();
+  const users = await getWayveRecipientByEmail(to, token);
 
   const user = Array.isArray(users)
     ? users[0]

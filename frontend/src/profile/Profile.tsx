@@ -1,24 +1,7 @@
 import { useEffect, useState } from "react";
 import { changePassword } from "../api/Auth";
+import { getProfile, updateProfile, type ProfileData } from "../api/profile";
 import "./profile.css";
-
-import { apiFetch } from "../api/client";
-
-const authHeaders = () => {
-  const token = localStorage.getItem("token");
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-};
-
-type ProfileData = {
-  id: number;
-  email: string;
-  first_name: string | null;
-  last_name: string | null;
-  auth_provider: string;
-};
 
 export default function Profile() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -37,9 +20,7 @@ export default function Profile() {
   useEffect(() => {
     const load = async () => {
       try {
-      const res = await apiFetch(`/api/profile`);
-
-      const data: ProfileData = await res.json();
+      const data = await getProfile();
       setProfile(data);
       setFirstName(data.first_name ?? "");
       setLastName(data.last_name ?? "");
@@ -94,12 +75,10 @@ export default function Profile() {
   const save = async () => {
     setSaving(true);
     try {
-      const res = await apiFetch(`/api/profile`, {
-        method: "PUT",
-        body: JSON.stringify({ first_name: firstName, last_name: lastName }),
+      const data = await updateProfile({
+        first_name: firstName,
+        last_name: lastName,
       });
-
-      const data: ProfileData = await res.json();
       setProfile(data);
       setStatus("Saved ✓");
     } catch {

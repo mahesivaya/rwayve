@@ -1,7 +1,7 @@
 use crate::prelude::*;
 
 use crate::email::oauth::HTTP_CLIENT;
-use crate::email::oauth::{load_google_secrets, refresh_access_token};
+use crate::email::oauth::{load_google_secrets, refresh_access_token, try_load_google_secrets};
 use crate::email::sync::sync_account_recent;
 use crate::email::utils::extract_body;
 use crate::models::email_request::SendEmailRequest;
@@ -511,8 +511,13 @@ pub async fn get_email_by_id(
                 match crate::security::encryption::decrypt(&body_iv, &body_encrypted) {
                     Ok(text) => text,
                     Err(e) => {
-                        warn!(target: "gmail", email_id, error = %e, "email body decrypt failed");
-                        "Failed to decrypt".to_string()
+                        warn!(
+                            target: "gmail",
+                            email_id,
+                            error = %e,
+                            "email body decrypt failed; returning empty body so client can refetch"
+                        );
+                        String::new()
                     }
                 }
             };
@@ -576,30 +581,76 @@ pub async fn get_email_body(
     let body_iv: String = row.get("body_iv");
 
     // Cached path: body already fetched.
-    if !body_encrypted.is_empty() {
-        return match decrypt(&body_iv, &body_encrypted) {
-            Ok(body) => HttpResponse::Ok().json(serde_json::json!({ "body": body })),
-            Err(e) => {
-                error!(target: "gmail", email_id, error = %e, "get_email_body decrypt failed");
-                HttpResponse::InternalServerError().finish()
+    if !body_encrypted.is_empty() && !body_iv.is_empty() {
+        match decrypt(&body_iv, &body_encrypted) {
+            Ok(body) => {
+                return HttpResponse::Ok().json(serde_json::json!({ "body": body }));
             }
-        };
+            Err(e) => {
+                warn!(
+                    target: "gmail",
+                    email_id,
+                    error = %e,
+                    "cached email body decrypt failed; refetching from Gmail"
+                );
+            }
+        }
     }
 
     // On-demand path: fetch from Gmail, encrypt, persist.
-    let gmail_id: String = row.get("gmail_id");
+    let gmail_id: Option<String> = row.get("gmail_id");
     let account_id: i32 = row.get("account_id");
-    let refresh_token: String = row.get("refresh_token");
+    let refresh_token: Option<String> = row.get("refresh_token");
 
-    let secrets = load_google_secrets();
-    let client_id = secrets["web"]["client_id"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    let client_secret = secrets["web"]["client_secret"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let gmail_id = match gmail_id.filter(|value| !value.trim().is_empty()) {
+        Some(value) => value,
+        None => {
+            error!(target: "gmail", email_id, "email body request missing gmail_id");
+            return HttpResponse::Conflict().json(serde_json::json!({
+                "error": "Email is missing its Gmail message id. Re-sync this account."
+            }));
+        }
+    };
+
+    let refresh_token = match refresh_token.filter(|value| !value.trim().is_empty()) {
+        Some(value) => value,
+        None => {
+            error!(target: "gmail", account_id, "email account missing refresh_token");
+            return HttpResponse::Conflict().json(serde_json::json!({
+                "error": "This Gmail account needs to be reconnected before Wayve can load message bodies."
+            }));
+        }
+    };
+
+    let secrets = match try_load_google_secrets() {
+        Ok(secrets) => secrets,
+        Err(e) => {
+            error!(target: "gmail", error = %e, "google secrets unavailable for body fetch");
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Google OAuth client secret is not configured"
+            }));
+        }
+    };
+
+    let client_id = match secrets["web"]["client_id"].as_str() {
+        Some(value) if !value.trim().is_empty() => value.to_string(),
+        _ => {
+            error!(target: "gmail", "google client_id missing for body fetch");
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Google OAuth client id is not configured"
+            }));
+        }
+    };
+
+    let client_secret = match secrets["web"]["client_secret"].as_str() {
+        Some(value) if !value.trim().is_empty() => value.to_string(),
+        _ => {
+            error!(target: "gmail", "google client_secret missing for body fetch");
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Google OAuth client secret is not configured"
+            }));
+        }
+    };
 
     let token = match refresh_access_token(&client_id, &client_secret, &refresh_token).await {
         Ok(t) => t,
@@ -637,13 +688,25 @@ pub async fn get_email_body(
     let body = extract_body(&res["payload"])
         .unwrap_or_else(|| res["snippet"].as_str().unwrap_or("").to_string());
 
-    if let Ok((iv, encrypted)) = encrypt(&body) {
-        let _ = sqlx::query("UPDATE emails SET body_encrypted = $1, body_iv = $2 WHERE id = $3")
-            .bind(&encrypted)
-            .bind(&iv)
-            .bind(email_id)
-            .execute(pool.get_ref())
-            .await;
+    match encrypt(&body) {
+        Ok((iv, encrypted)) => {
+            if let Err(e) =
+                sqlx::query("UPDATE emails SET body_encrypted = $1, body_iv = $2 WHERE id = $3")
+                    .bind(&encrypted)
+                    .bind(&iv)
+                    .bind(email_id)
+                    .execute(pool.get_ref())
+                    .await
+            {
+                error!(target: "db", email_id, error = ?e, "persisting email body failed");
+            }
+        }
+        Err(e) => {
+            error!(target: "gmail", email_id, error = %e, "email body encrypt failed");
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to secure email body: {}", e)
+            }));
+        }
     }
 
     HttpResponse::Ok().json(serde_json::json!({ "body": body }))

@@ -1,17 +1,13 @@
 import { logger } from "../utils/logger";
 import { useEffect, useState } from "react";
 import "./drive.css";
+import {
+  getDriveFiles,
+  uploadDriveFiles,
+  type UploadedFile,
+} from "../api/drive";
 import { useAuth } from "../auth/AuthContext";
 import { useGlobalSearch } from "../search/SearchContext";
-
-type UploadedFile = {
-  id: number;
-  name: string;
-  file_type: string;
-  size: number;
-  drive_url?: string;
-  created_at: string;
-};
 
 export default function Drive() {
   const { user } = useAuth();
@@ -31,13 +27,7 @@ export default function Drive() {
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/files?user_id=${user.id}`);
-
-      if (!res.ok) {
-        throw new Error("Failed to fetch files");
-      }
-
-      const data = await res.json();
+      const data = await getDriveFiles(user.id);
 
       logger.log("🔥 API DATA:", data);
       logger.log("👤 USER ID:", user.id);
@@ -95,20 +85,8 @@ export default function Drive() {
 
     setUploading(true);
 
-    const formData = new FormData();
-
-    // 🔥 IMPORTANT: user_id FIRST (backend reads it)
-    formData.append("user_id", user.id.toString());
-
-    files.forEach((f) => formData.append("files", f));
-
     try {
-      const res = await fetch("/api/files/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error("Upload failed");
+      await uploadDriveFiles(user.id, files);
 
       logger.log("✅ Upload success");
 

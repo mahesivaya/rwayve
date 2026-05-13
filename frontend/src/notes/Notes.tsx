@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import "./notes.css";
 
-import { apiFetch } from "../api/client";
+import {
+  createNoteApi,
+  deleteNoteApi,
+  getNotes,
+  updateNoteApi,
+  type Note,
+} from "../api/notes";
 import { useGlobalSearch } from "../search/SearchContext";
-
-type Note = {
-  id: number;
-  title: string | null;
-  content: string | null;
-  updated_at?: string | null;
-};
 
 
 export default function Notes() {
@@ -39,10 +38,7 @@ export default function Notes() {
   // ================= LOAD =================
   const fetchNotes = async () => {
     try {
-    const res = await apiFetch(`/api/notes`);
-
-    const data: Note[] = await res.json();
-    setNotes(data);
+      setNotes(await getNotes());
     } catch(err)
     {
       console.error(err);
@@ -86,18 +82,12 @@ export default function Notes() {
       return;
     }
 
-    setSaving(true);
+      setSaving(true);
     try {
       const isNew = selectedId === "new" || selectedId === null;
-      const url = isNew
-        ? `/api/notes`
-        : `/api/notes/${selectedId}`;
-      const res = await apiFetch(url, {
-        method: isNew ? "POST" : "PUT",
-        body: JSON.stringify({ title, content }),
-      });
-
-      const saved: Note = await res.json();
+      const saved = isNew
+        ? await createNoteApi({ title, content })
+        : await updateNoteApi(selectedId, { title, content });
       setSelectedId(saved.id);
       setStatus(isNew ? "Created ✓" : "Saved ✓");
       await fetchNotes();
@@ -116,9 +106,7 @@ export default function Notes() {
     }
     if (!confirm("Delete this note?")) return;
     try {
-      await apiFetch(`/api/notes/${selectedId}`, {
-        method: "DELETE",
-      });
+      await deleteNoteApi(selectedId);
 
     closeEditor();
     setStatus("Deleted");

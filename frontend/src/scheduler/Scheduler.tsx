@@ -1,7 +1,12 @@
 import { logger } from "../utils/logger";
 import { useEffect, useState } from "react";
 import "./scheduler.css";
-import { getMeetings, createMeetingApi, updateMeetingApi, deleteMeetingApi } from "./SchedulerService";
+import {
+  createMeetingApi,
+  deleteMeetingApi,
+  getMeetings,
+  updateMeetingApi,
+} from "../api/scheduler";
 import { useGlobalSearch } from "../search/SearchContext";
 
 

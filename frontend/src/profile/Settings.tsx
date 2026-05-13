@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import "./profile.css";
 
-import { apiFetch } from "../api/client";
+import { deleteAccount, getAccounts } from "../api/email";
 
 type Account = {
   id: number;
@@ -14,12 +14,7 @@ export default function Settings() {
   const [loaded, setLoaded] = useState(false);
   const fetchAccounts = async () => {
     try {
-      const res = await apiFetch(
-        "/api/accounts"
-      );
-
-      const data: Account[] = await res.json();
-      setAccounts(data);
+      setAccounts(await getAccounts<Account>());
 
     } finally {
       setLoaded(true);
@@ -43,12 +38,7 @@ export default function Settings() {
     }
 
     try {
-      await apiFetch(
-        `/api/accounts/${id}`,
-        {
-          method: "DELETE",
-        }
-      );
+      await deleteAccount(id);
 
       setAccounts((prev) =>
         prev.filter(

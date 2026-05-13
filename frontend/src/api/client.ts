@@ -32,27 +32,37 @@ export async function apiFetch(
     ? path
     : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 
-  const response =
-    await fetch(
-      url,
-      {
-        ...rest,
+  let response: Response;
 
-        headers: {
-          "Content-Type":
-            "application/json",
+  try {
+    response =
+      await fetch(
+        url,
+        {
+          ...rest,
 
-          ...(auth && token
-            ? {
-                Authorization:
-                  `Bearer ${token}`,
-              }
-            : {}),
+          headers: {
+            "Content-Type":
+              "application/json",
 
-          ...headers,
-        },
-      }
+            ...(auth && token
+              ? {
+                  Authorization:
+                    `Bearer ${token}`,
+                }
+              : {}),
+
+            ...headers,
+          },
+        }
+      );
+  } catch (err) {
+    throw new Error(
+      err instanceof TypeError
+        ? "Backend did not return a response. Check that the backend is running and not panicking for this request."
+        : "Network request failed"
     );
+  }
 
   // ================= 401 =================
 

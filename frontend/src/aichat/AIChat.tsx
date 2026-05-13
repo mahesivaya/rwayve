@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import "./aichat.css";
 
-import { apiFetch } from "../api/client";
+import { sendAiChat, type AiTurn } from "../api/ai";
 import { useGlobalSearch } from "../search/SearchContext";
-
-type Role = "user" | "model";
-type Turn = { role: Role; content: string };
 
 export default function AIChat() {
   const { normalizedSearchQuery } = useGlobalSearch();
-  const [messages, setMessages] = useState<Turn[]>([]);
+  const [messages, setMessages] = useState<AiTurn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,17 +25,12 @@ export default function AIChat() {
     setError(null);
     setInput("");
 
-    const next: Turn[] = [...messages, { role: "user", content: text }];
+    const next: AiTurn[] = [...messages, { role: "user", content: text }];
     setMessages(next);
     setBusy(true);
 
     try {
-      const res = await apiFetch("/api/ai/chat", {
-        method: "POST",
-        body: JSON.stringify({ messages: next }),
-      });
-
-      const data: { reply?: string } = await res.json();
+      const data = await sendAiChat(next);
       const reply = (data.reply ?? "").trim();
 
       if (!reply) {

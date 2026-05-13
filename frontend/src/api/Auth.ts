@@ -1,4 +1,5 @@
 import { logger } from "../utils/logger";
+import { API_BASE } from "../config/env";
 
 const log = logger.scope("auth");
 import { apiFetch } from "./client";
@@ -108,4 +109,20 @@ export async function changePassword(
     }
   );
   return res.json();
+}
+
+export async function saveUserPublicKey(publicKey: ArrayBuffer) {
+  await apiFetch("/api/save-public-key", {
+    method: "POST",
+    body: JSON.stringify({
+      public_key: Array.from(new Uint8Array(publicKey)),
+    }),
+  });
+}
+
+export async function getMe(token: string, signal?: AbortSignal) {
+  return fetch(`${API_BASE}/api/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal,
+  });
 }
