@@ -42,9 +42,12 @@ mod tests {
     #[tokio::test]
     #[serial_test::serial]
     async fn process_account_fills_bodies_for_pending_emails() {
-        // Required env: client secret + AES key (encrypt() needs it).
+        // Required env: client secret + Hex64 AES key (encrypt() needs it).
         set_env("GOOGLE_CLIENT_SECRET_PATH", &write_fake_client_secret());
-        set_env("AES_KEY", "0123456789abcdef0123456789abcdef");
+        set_env(
+            "AES_KEY",
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        );
 
         let server = MockServer::start().await;
         set_env("GMAIL_API_BASE", &server.uri());

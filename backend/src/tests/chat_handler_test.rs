@@ -28,7 +28,10 @@ mod tests {
 
     fn ensure_aes_key() {
         unsafe {
-            std::env::set_var("AES_KEY", "0123456789abcdef0123456789abcdef");
+            std::env::set_var(
+                "AES_KEY",
+                "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+            );
         }
     }
 

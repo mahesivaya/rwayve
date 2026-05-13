@@ -69,7 +69,39 @@ pub fn decrypt(nonce_b64: &str, cipher_b64: &str) -> Result<String, String> {
 
 fn get_key() -> [u8; 32] {
     let key = std::env::var("AES_KEY").unwrap_or_else(|_| panic!("AES_KEY not set"));
-    key.as_bytes()
+    let trimmed = key.trim();
+
+    if trimmed.len() == 64 && trimmed.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return decode_hex64(trimmed).unwrap_or_else(|e| panic!("{e}"));
+    }
+
+    trimmed
+        .as_bytes()
         .try_into()
-        .unwrap_or_else(|_| panic!("AES_KEY must be 32 bytes"))
+        .unwrap_or_else(|_| panic!("AES_KEY must be Hex64 (64 hex chars for 32 bytes)"))
+}
+
+fn decode_hex64(hex: &str) -> Result<[u8; 32], String> {
+    if hex.len() != 64 {
+        return Err("AES_KEY Hex64 must be exactly 64 hex characters".to_string());
+    }
+
+    let mut bytes = [0u8; 32];
+
+    for (idx, chunk) in hex.as_bytes().chunks_exact(2).enumerate() {
+        let hi = hex_value(chunk[0])?;
+        let lo = hex_value(chunk[1])?;
+        bytes[idx] = (hi << 4) | lo;
+    }
+
+    Ok(bytes)
+}
+
+fn hex_value(byte: u8) -> Result<u8, String> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        b'A'..=b'F' => Ok(byte - b'A' + 10),
+        _ => Err("AES_KEY Hex64 contains a non-hex character".to_string()),
+    }
 }

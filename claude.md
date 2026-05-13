@@ -64,7 +64,7 @@ Per-recipient delivery state is intended to live in a separate `message_recipien
 
 ### Encryption
 
-`security/encryption.rs` provides `encrypt`/`decrypt` (AES-256-GCM, random 12-byte nonce). The 32-byte key is hex-decoded from `AES_KEY`. Stored ciphertext columns come in pairs: `*_iv` (base64 nonce) + `*_encrypted` (base64 ciphertext) — used for `messages.content_*` and `emails.body_*`.
+`security/encryption.rs` provides `encrypt`/`decrypt` (AES-256-GCM, random 12-byte nonce). `AES_KEY` should be Hex64: 64 hex characters decoded into the 32-byte AES-256 key. Stored ciphertext columns come in pairs: `*_iv` (base64 nonce) + `*_encrypted` (base64 ciphertext) — used for `messages.content_*` and `emails.body_*`.
 
 `security/jwt.rs` mints HS256 JWTs from `JWT_SECRET`. The WebSocket endpoints (`chat_ws`, `call_ws`) authenticate from `?token=...` and **derive `user_id` from the verified claims, not from the query string** — preserve that when adding WS routes.
 

@@ -19,6 +19,8 @@ pub mod security;
 
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod tests;
 
 // ==============================
 // 🔹 USE INTERNAL MODULES
