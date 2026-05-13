@@ -23,6 +23,18 @@ export type SendEmailPayload = {
   body: string;
 };
 
+export type EmailAttachment = {
+  id: number;
+  email_id: number;
+  filename: string;
+  mime_type?: string | null;
+  size?: number | null;
+  created_at?: string | null;
+  subject?: string | null;
+  sender?: string | null;
+  receiver?: string | null;
+};
+
 const emailListPath = ({
   folder,
   accountId,
@@ -85,6 +97,30 @@ export const getEmail = async <T = unknown>(id: number) => {
 export const getEmailBody = async (id: number) => {
   const res = await apiFetch(`/api/emails/${id}/body`);
   return res.json() as Promise<{ body?: string }>;
+};
+
+export const getEmailAttachments = async (emailId: number) => {
+  const res = await apiFetch(`/api/emails/${emailId}/attachments`);
+  return res.json() as Promise<EmailAttachment[]>;
+};
+
+export const getAllEmailAttachments = async () => {
+  const res = await apiFetch("/api/emails/attachments");
+  return res.json() as Promise<EmailAttachment[]>;
+};
+
+export const downloadEmailAttachment = async (attachment: EmailAttachment) => {
+  const res = await apiFetch(`/api/email-attachments/${attachment.id}/download`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = attachment.filename || "attachment";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 };
 
 export const sendEmail = async (payload: SendEmailPayload) => {

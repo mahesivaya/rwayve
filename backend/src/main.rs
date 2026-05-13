@@ -34,30 +34,8 @@ use crate::observability::devlog::init_devlog;
 use crate::observability::tracing::init_tracing;
 // 🚧 use crate::observability::tracing_root::AppRootSpanBuilder; // disabled
 
-use crate::chat::handler::{chat_ws, get_messages};
-
-use crate::drive::handler::{get_files, upload_file};
-
-use crate::scheduler::handler::{create_meeting, delete_meeting, get_meetings, update_meeting};
-
-use crate::call::handler::call_ws;
-
-use crate::notes::handler::{create_note, delete_note, list_notes, update_note};
-
-use crate::ai::handler::ai_chat;
-
 use crate::email::body_worker::start_body_worker;
-use crate::email::handler::{
-    get_email_body, get_email_by_id, get_me, gmail_login, oauth_callback, save_public_key, send,
-};
 use crate::email::sync::sync_all;
-
-use crate::routes::account::{delete_account, get_accounts};
-use crate::routes::auth::{forgot_password, login, register, reset_password};
-use crate::routes::email::get_emails;
-use crate::routes::user::{
-    change_password, get_all_users, get_profile, get_user_by_email, update_profile,
-};
 
 // ==============================
 // 🔹 EXTERNAL CRATES
@@ -88,42 +66,19 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
         // 🔥 GROUP API ROUTES
         .service(
             web::scope("/api")
-                .service(register)
-                .service(login)
-                .service(forgot_password)
-                .service(reset_password)
-                .service(change_password)
-                .service(get_emails)
-                .service(get_email_body)
-                .service(get_email_by_id)
-                .service(get_accounts)
-                .service(get_messages)
-                .service(get_user_by_email)
-                .service(get_all_users)
-                .service(create_meeting)
-                .service(get_meetings)
-                .service(update_meeting)
-                .service(delete_meeting)
-                .service(upload_file)
-                .service(get_files)
-                .service(send)
-                .service(get_me)
-                .service(save_public_key)
-                .service(list_notes)
-                .service(create_note)
-                .service(update_note)
-                .service(delete_note)
-                .service(get_profile)
-                .service(update_profile)
-                .service(delete_account)
-                .service(ai_chat),
+                .configure(routes::routes)
+                .configure(email::routes)
+                .configure(chat::routes)
+                .configure(scheduler::routes)
+                .configure(drive::routes)
+                .configure(notes::routes)
+                .configure(ai::routes),
         )
         // 🔥 AUTH / GOOGLE
-        .route("/gmail/login", web::get().to(gmail_login))
-        .route("/oauth/callback", web::get().to(oauth_callback))
+        .configure(email::public_routes)
         // 🔥 WEBSOCKETS
-        .route("/ws/chat", web::get().to(chat_ws))
-        .route("/ws/call", web::get().to(call_ws))
+        .configure(chat::ws_routes)
+        .configure(call::routes)
         // 🔥 STATIC FILES
         .service(Files::new("/uploads", "./uploads").show_files_listing());
 }
@@ -149,6 +104,42 @@ fn start_sync_worker(pool: PgPool) {
             sleep(interval).await;
         }
     });
+}
+
+async fn ensure_schema(pool: &PgPool) {
+    if let Err(e) = sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS email_attachments (
+            id SERIAL PRIMARY KEY,
+            email_id INTEGER NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
+            account_id INTEGER NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+            gmail_id TEXT NOT NULL,
+            attachment_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            mime_type TEXT,
+            size BIGINT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(email_id, attachment_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    {
+        error!("Failed to ensure email_attachments table: {:?}", e);
+    }
+
+    if let Err(e) = sqlx::query(
+        "ALTER TABLE emails ADD COLUMN IF NOT EXISTS attachments_checked BOOLEAN DEFAULT FALSE",
+    )
+    .execute(pool)
+    .await
+    {
+        error!(
+            "Failed to ensure emails.attachments_checked column: {:?}",
+            e
+        );
+    }
 }
 
 #[actix_web::main]
@@ -190,6 +181,8 @@ async fn main() -> std::io::Result<()> {
             }
         }
     };
+
+    ensure_schema(&pool).await;
 
     start_sync_worker(pool.clone());
     start_body_worker(pool.clone());

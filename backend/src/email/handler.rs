@@ -1,9 +1,10 @@
 use crate::prelude::*;
 
+use crate::email::attachments::save_email_attachments;
 use crate::email::oauth::HTTP_CLIENT;
 use crate::email::oauth::{load_google_secrets, refresh_access_token, try_load_google_secrets};
 use crate::email::sync::sync_account_recent;
-use crate::email::utils::extract_body;
+use crate::email::utils::{extract_attachments, extract_body};
 use crate::models::email_request::SendEmailRequest;
 use crate::security::encryption::{decrypt, encrypt};
 use crate::security::jwt::{create_jwt, get_user_id_from_request};
@@ -486,7 +487,8 @@ pub async fn get_email_by_id(
 
     let result = sqlx::query(
         r#"
-        SELECT e.id, e.subject, e.sender, e.receiver, e.body_encrypted, e.body_iv
+        SELECT e.id, e.subject, e.sender, e.receiver, e.body_encrypted, e.body_iv,
+               e.attachments_checked
         FROM emails e
         JOIN email_accounts a ON e.account_id = a.id
         WHERE e.id = $1 AND a.user_id = $2
@@ -527,7 +529,8 @@ pub async fn get_email_by_id(
                 "subject": row.get::<Option<String>, _>("subject").unwrap_or_default(),
                 "sender": row.get::<Option<String>, _>("sender").unwrap_or_default(),
                 "receiver": row.get::<Option<String>, _>("receiver").unwrap_or_default(),
-                "body": body
+                "body": body,
+                "attachments_checked": row.get::<Option<bool>, _>("attachments_checked").unwrap_or(false)
             }))
         }
 
@@ -556,7 +559,7 @@ pub async fn get_email_body(
 
     let row = sqlx::query(
         r#"
-        SELECT e.id, e.gmail_id, e.body_encrypted, e.body_iv,
+        SELECT e.id, e.gmail_id, e.body_encrypted, e.body_iv, e.attachments_checked,
                a.id AS account_id, a.refresh_token
         FROM emails e
         JOIN email_accounts a ON e.account_id = a.id
@@ -579,12 +582,21 @@ pub async fn get_email_body(
 
     let body_encrypted: String = row.get("body_encrypted");
     let body_iv: String = row.get("body_iv");
+    let attachments_checked: Option<bool> = row.get("attachments_checked");
 
     // Cached path: body already fetched.
     if !body_encrypted.is_empty() && !body_iv.is_empty() {
         match decrypt(&body_iv, &body_encrypted) {
             Ok(body) => {
-                return HttpResponse::Ok().json(serde_json::json!({ "body": body }));
+                if attachments_checked.unwrap_or(false) {
+                    return HttpResponse::Ok().json(serde_json::json!({ "body": body }));
+                }
+
+                info!(
+                    target: "gmail",
+                    email_id,
+                    "cached email body has no attachment metadata; refreshing Gmail payload"
+                );
             }
             Err(e) => {
                 warn!(
@@ -687,11 +699,14 @@ pub async fn get_email_body(
 
     let body = extract_body(&res["payload"])
         .unwrap_or_else(|| res["snippet"].as_str().unwrap_or("").to_string());
+    let attachments = extract_attachments(&res["payload"]);
 
     match encrypt(&body) {
         Ok((iv, encrypted)) => {
             if let Err(e) =
-                sqlx::query("UPDATE emails SET body_encrypted = $1, body_iv = $2 WHERE id = $3")
+                sqlx::query(
+                    "UPDATE emails SET body_encrypted = $1, body_iv = $2, attachments_checked = true WHERE id = $3",
+                )
                     .bind(&encrypted)
                     .bind(&iv)
                     .bind(email_id)
@@ -708,6 +723,15 @@ pub async fn get_email_body(
             }));
         }
     }
+
+    save_email_attachments(
+        pool.get_ref(),
+        email_id,
+        account_id,
+        &gmail_id,
+        &attachments,
+    )
+    .await;
 
     HttpResponse::Ok().json(serde_json::json!({ "body": body }))
 }

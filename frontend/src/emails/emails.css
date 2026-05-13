@@ -227,6 +227,12 @@ body {
   white-space: pre-wrap;
 }
 
+.email-body a {
+  color: #1a73e8;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
 .email-body-loading {
   display: flex;
   align-items: center;
@@ -240,6 +246,52 @@ body {
   color: #b91c1c;
   font-size: 14px;
   padding: 12px 0;
+}
+
+.email-attachments {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(17, 24, 39, 0.12);
+}
+
+.email-attachments-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.email-attachment {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.55);
+  color: #111827;
+  text-align: left;
+  cursor: pointer;
+}
+
+.email-attachment:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.email-attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-attachment-size {
+  color: #6b7280;
+  font-size: 12px;
 }
 
 .spinner {

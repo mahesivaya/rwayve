@@ -59,7 +59,21 @@ CREATE TABLE IF NOT EXISTS emails (
     body_iv TEXT,
     body_cached TEXT,
     body_cached_at TIMESTAMP,
+    attachments_checked BOOLEAN DEFAULT FALSE,
     UNIQUE(account_id, gmail_id)
+);
+
+CREATE TABLE IF NOT EXISTS email_attachments (
+    id SERIAL PRIMARY KEY,
+    email_id INTEGER NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+    gmail_id TEXT NOT NULL,
+    attachment_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    mime_type TEXT,
+    size BIGINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(email_id, attachment_id)
 );
 
 

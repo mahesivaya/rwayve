@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import "./emails.css";
 import "./loadMore.css";
 import SendEmail from "./SendEmail";
 
 import {
+  downloadEmailAttachment,
+  type EmailAttachment,
   getAccounts,
   getEmail,
+  getEmailAttachments,
   getEmailBody,
   getEmails,
   getGmailLoginUrl,
@@ -33,6 +38,7 @@ type WayveEncryptedBody = {
 };
 
 const WAYVE_SECURE_PREFIX = "WAYVE_SECURE_V1";
+const LINK_PATTERN = /((?:https?:\/\/|www\.)[^\s<>()]+|mailto:[^\s<>()]+)/gi;
 
 function normalizeEmailBody(body: string) {
   if (!/[<&][a-zA-Z#/!]/.test(body)) {
@@ -117,6 +123,55 @@ function emailBodyErrorMessage(err: unknown) {
   return "Failed to load email body. Try again.";
 }
 
+function formatFileSize(size?: number | null) {
+  if (!size) return "";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderEmailBody(body: string) {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of body.matchAll(LINK_PATTERN)) {
+    const raw = match[0];
+    const index = match.index ?? 0;
+
+    if (index > lastIndex) {
+      parts.push(body.slice(lastIndex, index));
+    }
+
+    const href = raw.startsWith("www.") ? `https://${raw}` : raw;
+    const trailing = href.match(/[.,;:!?)]$/)?.[0] ?? "";
+    const cleanHref = trailing ? href.slice(0, -1) : href;
+    const cleanLabel = trailing ? raw.slice(0, -1) : raw;
+
+    parts.push(
+      <a
+        key={`${cleanHref}-${index}`}
+        href={cleanHref}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {cleanLabel}
+      </a>
+    );
+
+    if (trailing) {
+      parts.push(trailing);
+    }
+
+    lastIndex = index + raw.length;
+  }
+
+  if (lastIndex < body.length) {
+    parts.push(body.slice(lastIndex));
+  }
+
+  return parts;
+}
+
 async function decryptWayveBodyIfNeeded(
   body: string,
   userId?: number | null
@@ -166,6 +221,7 @@ async function decryptWayveBodyIfNeeded(
 export default function Emails() {
   const { user } = useAuth();
   const { normalizedSearchQuery } = useGlobalSearch();
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [emails, setEmails] = useState<any[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
@@ -303,6 +359,7 @@ export default function Emails() {
     }
 
     let data: any;
+    let attachments: EmailAttachment[] = [];
 
     try {
       // 1) Show metadata immediately. Body may be empty if body_worker hasn't
@@ -321,7 +378,12 @@ export default function Emails() {
     if (data.body) {
       try {
         const decryptedBody = await decryptWayveBodyIfNeeded(data.body, user?.id);
-        const decryptedData = { ...data, body: decryptedBody };
+        attachments = await getEmailAttachments(email.id);
+        if (!data.attachments_checked) {
+          await getEmailBody(email.id);
+          attachments = await getEmailAttachments(email.id);
+        }
+        const decryptedData = { ...data, body: decryptedBody, attachments };
         emailCache.current[email.id] = decryptedData;
         setSelectedEmail(decryptedData);
         return;
@@ -344,7 +406,8 @@ export default function Emails() {
       try {
         const { body } = await getEmailBody(email.id);
         const decryptedBody = await decryptWayveBodyIfNeeded(body || "", user?.id);
-        const merged = { ...data, body: decryptedBody, _bodyLoading: false };
+        attachments = await getEmailAttachments(email.id);
+        const merged = { ...data, body: decryptedBody, attachments, _bodyLoading: false };
         emailCache.current[email.id] = merged;
         // Only update if user hasn't navigated away to a different email.
         setSelectedEmail((cur: any) => (cur && cur.id === email.id ? merged : cur));
@@ -422,6 +485,10 @@ export default function Emails() {
             onClick={() => setActiveFolder("sent")}
           >
             📤 Sent
+          </button>
+
+          <button className="filter-btn" onClick={() => navigate("/email-files")}>
+            📎 Files
           </button>
         </div>
       </div>
@@ -535,9 +602,30 @@ export default function Emails() {
                       : "Failed to load email body. Try again."}
                   </p>
                 ) : (
-                  selectedEmail.body
+                  renderEmailBody(selectedEmail.body || "")
                 )}
               </div>
+
+              {selectedEmail.attachments?.length > 0 && (
+                <div className="email-attachments">
+                  <div className="email-attachments-title">Attachments</div>
+                  {selectedEmail.attachments.map((attachment: EmailAttachment) => (
+                    <button
+                      key={attachment.id}
+                      className="email-attachment"
+                      onClick={() => downloadEmailAttachment(attachment)}
+                    >
+                      <span className="email-attachment-icon">📎</span>
+                      <span className="email-attachment-name">
+                        {attachment.filename}
+                      </span>
+                      <span className="email-attachment-size">
+                        {formatFileSize(attachment.size)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>

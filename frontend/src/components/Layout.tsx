@@ -31,6 +31,7 @@ const SPLIT_APPS = [
 const SEARCH_LABELS: Record<string, string> = {
   "/home": "home",
   "/emails": "all emails",
+  "/email-files": "email files",
   "/chat": "users and messages",
   "/call": "calls",
   "/scheduler": "meetings",

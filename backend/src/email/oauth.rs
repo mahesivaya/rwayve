@@ -6,11 +6,10 @@ pub fn try_load_google_secrets() -> Result<serde_json::Value> {
     // override the path. Defaults to the production location.
     let path = std::env::var("GOOGLE_CLIENT_SECRET_PATH")
         .unwrap_or_else(|_| "client_secret.json".to_string());
-    let data = fs::read_to_string(&path)
-        .map_err(|e| anyhow::anyhow!("Failed to read {path}: {e}"))?;
+    let data =
+        fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("Failed to read {path}: {e}"))?;
 
-    serde_json::from_str(&data)
-        .map_err(|e| anyhow::anyhow!("Failed to parse {path}: {e}"))
+    serde_json::from_str(&data).map_err(|e| anyhow::anyhow!("Failed to parse {path}: {e}"))
 }
 
 pub fn load_google_secrets() -> serde_json::Value {

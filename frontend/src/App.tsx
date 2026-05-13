@@ -20,6 +20,7 @@ const AIChat = lazy(() => import("./aichat/AIChat"));
 const Profile = lazy(() => import("./profile/Profile"));
 const Settings = lazy(() => import("./profile/Settings"));
 const Business = lazy(() => import("./business/Business"));
+const EmailFiles = lazy(() => import("./files/EmailFiles"));
 
 export default function App() {
   const { user } = useAuth();
@@ -57,6 +58,7 @@ export default function App() {
 
             <Route path="/home" element={<Home />} />
             <Route path="/emails" element={<Emails />} />
+            <Route path="/email-files" element={<EmailFiles />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/scheduler" element={<Scheduler />} />
             <Route path="/drive" element={<Drive />} />

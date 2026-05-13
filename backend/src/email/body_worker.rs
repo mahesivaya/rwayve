@@ -1,14 +1,23 @@
 use crate::prelude::*;
 
+use crate::email::attachments::save_email_attachments;
 use crate::email::oauth::{HTTP_CLIENT, load_google_secrets, refresh_access_token};
-use crate::email::utils::extract_body;
+use crate::email::utils::{AttachmentMeta, extract_attachments, extract_body};
 use crate::security::encryption::encrypt;
 
 use serde_json::Value;
 use tokio::time::{Duration, sleep};
 use tracing::{debug, error, info};
 
-type FetchTask = std::pin::Pin<Box<dyn std::future::Future<Output = Result<(i32, String)>> + Send>>;
+type FetchTask = std::pin::Pin<Box<dyn std::future::Future<Output = Result<FetchedBody>> + Send>>;
+
+struct FetchedBody {
+    id: i32,
+    account_id: i32,
+    gmail_id: String,
+    body: String,
+    attachments: Vec<AttachmentMeta>,
+}
 
 const BODY_CONCURRENCY: usize = 40;
 const BODY_BATCH_SIZE: i64 = 200;
@@ -138,27 +147,36 @@ pub(crate) async fn process_account(
     fn spawn_fetch(
         tasks: &mut FuturesUnordered<FetchTask>,
         token: String,
+        account_id: i32,
         id: i32,
         gmail_id: String,
     ) {
-        tasks.push(Box::pin(
-            async move { fetch_one(&token, id, &gmail_id).await },
-        ));
+        tasks.push(Box::pin(async move {
+            fetch_one(&token, account_id, id, &gmail_id).await
+        }));
     }
 
     // Prime the pump with up to BODY_CONCURRENCY in-flight requests.
     for row in iter.by_ref().take(BODY_CONCURRENCY) {
         let id: i32 = row.get("id");
         let gmail_id: String = row.get("gmail_id");
-        spawn_fetch(&mut tasks, token.clone(), id, gmail_id);
+        spawn_fetch(&mut tasks, token.clone(), account_id, id, gmail_id);
     }
 
     while let Some(res) = tasks.next().await {
         match res {
-            Ok((id, body)) => {
-                if let Err(e) = update_body(pool, id, &body).await {
-                    println!("body_worker update {} failed: {:?}", id, e);
+            Ok(fetched) => {
+                if let Err(e) = update_body(pool, fetched.id, &fetched.body).await {
+                    println!("body_worker update {} failed: {:?}", fetched.id, e);
                 } else {
+                    save_email_attachments(
+                        pool,
+                        fetched.id,
+                        fetched.account_id,
+                        &fetched.gmail_id,
+                        &fetched.attachments,
+                    )
+                    .await;
                     count += 1;
                 }
             }
@@ -168,14 +186,14 @@ pub(crate) async fn process_account(
         if let Some(row) = iter.next() {
             let id: i32 = row.get("id");
             let gmail_id: String = row.get("gmail_id");
-            spawn_fetch(&mut tasks, token.clone(), id, gmail_id);
+            spawn_fetch(&mut tasks, token.clone(), account_id, id, gmail_id);
         }
     }
 
     Ok(count)
 }
 
-async fn fetch_one(token: &str, id: i32, gmail_id: &str) -> Result<(i32, String)> {
+async fn fetch_one(token: &str, account_id: i32, id: i32, gmail_id: &str) -> Result<FetchedBody> {
     let url = format!(
         "{}/gmail/v1/users/me/messages/{}?format=full",
         crate::external::gmail_api_base(),
@@ -192,14 +210,23 @@ async fn fetch_one(token: &str, id: i32, gmail_id: &str) -> Result<(i32, String)
 
     let body = extract_body(&res["payload"])
         .unwrap_or_else(|| res["snippet"].as_str().unwrap_or("").to_string());
+    let attachments = extract_attachments(&res["payload"]);
 
-    Ok((id, body))
+    Ok(FetchedBody {
+        id,
+        account_id,
+        gmail_id: gmail_id.to_string(),
+        body,
+        attachments,
+    })
 }
 
 async fn update_body(pool: &PgPool, id: i32, body: &str) -> Result<()> {
     let (iv, encrypted) = encrypt(body)?;
 
-    sqlx::query("UPDATE emails SET body_encrypted = $1, body_iv = $2 WHERE id = $3")
+    sqlx::query(
+        "UPDATE emails SET body_encrypted = $1, body_iv = $2, attachments_checked = true WHERE id = $3",
+    )
         .bind(encrypted)
         .bind(iv)
         .bind(id)
