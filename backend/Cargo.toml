@@ -42,6 +42,8 @@ bcrypt = "0.15"
 jsonwebtoken = "9"
 base64 = "0.21"
 aes-gcm = "0.10.3"
+hkdf = "0.12"
+sha2 = "0.10"
 rand = { version = "0.8", features = ["std"] }
 actix-multipart = "0.6"
 futures-util = "0.3"

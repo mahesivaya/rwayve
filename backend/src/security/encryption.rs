@@ -5,7 +5,12 @@ use aes_gcm::{
 use anyhow::Result;
 use base64::Engine;
 use base64::engine::general_purpose;
+use hkdf::Hkdf;
 use rand::{RngCore, thread_rng};
+use sha2::Sha512;
+
+const HKDF_INFO: &[u8] = b"rwayve:v1:aes-256-gcm:messages-email-bodies";
+const DEFAULT_HKDF_SALT: &[u8] = b"rwayve:v1:hkdf-sha512";
 
 pub fn encrypt(text: &str) -> Result<(String, String)> {
     let key_bytes = get_key();
@@ -29,8 +34,6 @@ pub fn encrypt(text: &str) -> Result<(String, String)> {
 
 pub fn decrypt(nonce_b64: &str, cipher_b64: &str) -> Result<String, String> {
     let key_bytes = get_key();
-    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-    let cipher = Aes256Gcm::new(key);
 
     // decode nonce
     let nonce = general_purpose::STANDARD
@@ -56,10 +59,15 @@ pub fn decrypt(nonce_b64: &str, cipher_b64: &str) -> Result<String, String> {
         return Err("Empty ciphertext".to_string());
     }
 
-    // decrypt
-    let decrypted = cipher
-        .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
-        .map_err(|e| format!("Decrypt error: {:?}", e))?;
+    let decrypted = decrypt_bytes(&key_bytes, &nonce, &ciphertext).or_else(|hkdf_error| {
+        let legacy_key = get_key_material();
+
+        if legacy_key == key_bytes {
+            return Err(hkdf_error);
+        }
+
+        decrypt_bytes(&legacy_key, &nonce, &ciphertext).map_err(|_| hkdf_error)
+    })?;
 
     // utf8 conversion
     let text = String::from_utf8(decrypted).map_err(|e| format!("UTF8 error: {:?}", e))?;
@@ -68,6 +76,11 @@ pub fn decrypt(nonce_b64: &str, cipher_b64: &str) -> Result<String, String> {
 }
 
 fn get_key() -> [u8; 32] {
+    let key_material = get_key_material();
+    derive_hkdf_sha512_key(&key_material)
+}
+
+fn get_key_material() -> [u8; 32] {
     let key = std::env::var("AES_KEY").unwrap_or_else(|_| panic!("AES_KEY not set"));
     let trimmed = key.trim();
 
@@ -79,6 +92,33 @@ fn get_key() -> [u8; 32] {
         .as_bytes()
         .try_into()
         .unwrap_or_else(|_| panic!("AES_KEY must be Hex64 (64 hex chars for 32 bytes)"))
+}
+
+fn derive_hkdf_sha512_key(input_key_material: &[u8; 32]) -> [u8; 32] {
+    let salt = hkdf_salt();
+    let hk = Hkdf::<Sha512>::new(Some(&salt), input_key_material);
+    let mut output_key_material = [0u8; 32];
+
+    hk.expand(HKDF_INFO, &mut output_key_material)
+        .unwrap_or_else(|_| panic!("HKDF-SHA512 key derivation failed"));
+
+    output_key_material
+}
+
+fn hkdf_salt() -> Vec<u8> {
+    match std::env::var("AES_HKDF_SALT") {
+        Ok(value) if !value.trim().is_empty() => value.trim().as_bytes().to_vec(),
+        _ => DEFAULT_HKDF_SALT.to_vec(),
+    }
+}
+
+fn decrypt_bytes(key_bytes: &[u8; 32], nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
+    let key = Key::<Aes256Gcm>::from_slice(key_bytes);
+    let cipher = Aes256Gcm::new(key);
+
+    cipher
+        .decrypt(Nonce::from_slice(nonce), ciphertext.as_ref())
+        .map_err(|e| format!("Decrypt error: {:?}", e))
 }
 
 fn decode_hex64(hex: &str) -> Result<[u8; 32], String> {
