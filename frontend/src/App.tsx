@@ -19,6 +19,7 @@ const Notes = lazy(() => import("./notes/Notes"));
 const AIChat = lazy(() => import("./aichat/AIChat"));
 const Profile = lazy(() => import("./profile/Profile"));
 const Settings = lazy(() => import("./profile/Settings"));
+const Business = lazy(() => import("./business/Business"));
 
 export default function App() {
   const { user } = useAuth();
@@ -48,6 +49,7 @@ export default function App() {
         />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/business" element={<Business />} />
 
         {/* PROTECTED */}
         <Route element={<ProtectedRoute />}>

@@ -34,9 +34,9 @@ export default function Home() {
         <p>Your all-in-one platform for Email, Chat, and Scheduling.</p>
 
         <div className="auth-buttons">
-          <button onClick={() => navigate("/")}>Login</button>
           <button onClick={() => navigate("/login")}>Login</button>
           <button onClick={() => navigate("/register")}>Register</button>
+          <button onClick={() => navigate("/business")}>Business</button>
         </div>
       </div>
     );
@@ -57,6 +57,10 @@ export default function Home() {
             <p>{card.description}</p>
           </div>
         ))}
+        <div className="card" onClick={() => navigate("/business")}>
+          <h3>Business</h3>
+          <p>Welcome to Wayve Business</p>
+        </div>
       </div>
     </div>
   );

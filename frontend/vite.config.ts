@@ -10,6 +10,9 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    // Prefer the TypeScript source files over stale compiled JS siblings.
+    // This lets imports like `./App` resolve to `App.tsx` instead of `App.js`.
+    extensions: [".mjs", ".tsx", ".ts", ".jsx", ".js", ".json"],
   },
 
   server: {

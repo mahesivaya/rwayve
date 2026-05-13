@@ -28,5 +28,9 @@ node_modules/
 client_secret.json
 .env
 uploads/
+
+# Frontend source is TypeScript. Ignore accidentally emitted JS siblings.
+frontend/src/**/*.js
+frontend/src/**/*.jsx
 *.pem
 docs/
