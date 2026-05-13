@@ -110,31 +110,32 @@ pub async fn change_password(
             .json(serde_json::json!({ "message": "New password must be at least 6 characters" }));
     }
 
-    let row = sqlx::query("SELECT password FROM users WHERE id = $1")
+    let row = sqlx::query("SELECT password, auth_provider FROM users WHERE id = $1")
         .bind(user_id)
         .fetch_optional(pool.get_ref())
         .await;
 
-    let stored: Option<String> = match row {
-        Ok(Some(r)) => r.try_get("password").ok().flatten(),
+    let (stored, auth_provider): (Option<String>, String) = match row {
+        Ok(Some(r)) => (
+            r.try_get("password").ok().flatten(),
+            r.try_get("auth_provider")
+                .unwrap_or_else(|_| "local".to_string()),
+        ),
         _ => return HttpResponse::Unauthorized().finish(),
     };
 
-    let stored = match stored {
-        Some(p) => p,
-        None => {
-            warn!(target: "auth", user_id, "change-password rejected: google account");
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "message": "This account uses Google sign-in and has no password to change"
-            }));
+    if let Some(stored) = stored {
+        let current_password = data.current_password.as_deref().unwrap_or("");
+        let valid = verify(current_password, &stored).unwrap_or(false);
+        if !valid {
+            warn!(target: "auth", user_id, "change-password: wrong current password");
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({ "message": "Current password is incorrect" }));
         }
-    };
-
-    let valid = verify(&data.current_password, &stored).unwrap_or(false);
-    if !valid {
-        warn!(target: "auth", user_id, "change-password: wrong current password");
-        return HttpResponse::Unauthorized()
-            .json(serde_json::json!({ "message": "Current password is incorrect" }));
+    } else if auth_provider != "google" {
+        warn!(target: "auth", user_id, "change-password rejected: missing password");
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "message": "This account has no password to change" }));
     }
 
     let hashed = match hash(&data.new_password, DEFAULT_COST) {
@@ -155,7 +156,7 @@ pub async fn change_password(
         return HttpResponse::InternalServerError().finish();
     }
 
-    info!(target: "auth", user_id, "password changed");
+    info!(target: "auth", user_id, had_password = data.current_password.is_some(), "password updated");
     HttpResponse::Ok().json(serde_json::json!({ "message": "Password updated" }))
 }
 

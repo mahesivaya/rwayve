@@ -50,6 +50,7 @@ export default function Profile() {
         return () => clearTimeout(t);
     }, [pwStatus]);
     const submitPasswordChange = async () => {
+        const isCreatingPassword = profile?.auth_provider === "google";
         if (newPw !== confirmPw) {
             setPwStatus("New passwords do not match");
             return;
@@ -60,12 +61,13 @@ export default function Profile() {
         }
         setPwSaving(true);
         try {
-            await changePassword(currentPw, newPw);
-            setPwStatus("Password updated ✓");
+            await changePassword(isCreatingPassword ? null : currentPw, newPw);
+            setPwStatus(isCreatingPassword ? "Password created ✓" : "Password updated ✓");
             setCurrentPw("");
             setNewPw("");
             setConfirmPw("");
             setShowPwForm(false);
+            setProfile((prev) => prev ? { ...prev, auth_provider: "local" } : prev);
         }
         catch (err) {
             setPwStatus(err instanceof Error ? err.message : "Update failed");
@@ -95,10 +97,20 @@ export default function Profile() {
     if (!profile) {
         return (_jsx("div", { className: "profile-page", children: _jsx("div", { className: "profile-loading", children: "Loading\u2026" }) }));
     }
-    return (_jsx("div", { className: "profile-page", children: _jsxs("div", { className: "profile-card", children: [_jsx("h2", { className: "profile-title", children: "My Profile" }), _jsxs("div", { className: "profile-row", children: [_jsx("label", { children: "Username" }), _jsx("div", { className: "profile-readonly", children: profile.email })] }), _jsxs("div", { className: "profile-row", children: [_jsx("label", { htmlFor: "profile-first", children: "First name" }), _jsx("input", { id: "profile-first", value: firstName, onChange: (e) => setFirstName(e.target.value), placeholder: "First name" })] }), _jsxs("div", { className: "profile-row", children: [_jsx("label", { htmlFor: "profile-last", children: "Last name" }), _jsx("input", { id: "profile-last", value: lastName, onChange: (e) => setLastName(e.target.value), placeholder: "Last name" })] }), _jsxs("div", { className: "profile-actions", children: [_jsx("button", { className: "profile-save", onClick: save, disabled: saving, children: saving ? "Saving…" : "Save" }), status && _jsx("span", { className: "profile-status", children: status })] }), profile.auth_provider !== "google" && (_jsxs("div", { className: "profile-password-section", children: [_jsx("h3", { className: "profile-section-title", children: "Password" }), !showPwForm ? (_jsx("button", { type: "button", className: "profile-save", onClick: () => setShowPwForm(true), children: "Change Password" })) : (_jsxs(_Fragment, { children: [_jsxs("div", { className: "profile-row", children: [_jsx("label", { htmlFor: "profile-current-pw", children: "Current password" }), _jsx("input", { id: "profile-current-pw", type: "password", value: currentPw, onChange: (e) => setCurrentPw(e.target.value) })] }), _jsxs("div", { className: "profile-row", children: [_jsx("label", { htmlFor: "profile-new-pw", children: "New password" }), _jsx("input", { id: "profile-new-pw", type: "password", value: newPw, onChange: (e) => setNewPw(e.target.value) })] }), _jsxs("div", { className: "profile-row", children: [_jsx("label", { htmlFor: "profile-confirm-pw", children: "Confirm new password" }), _jsx("input", { id: "profile-confirm-pw", type: "password", value: confirmPw, onChange: (e) => setConfirmPw(e.target.value) })] }), _jsxs("div", { className: "profile-actions", children: [_jsx("button", { type: "button", className: "profile-save", onClick: submitPasswordChange, disabled: pwSaving, children: pwSaving ? "Saving…" : "Update password" }), _jsx("button", { type: "button", className: "profile-cancel", onClick: () => {
+    return (_jsx("div", { className: "profile-page", children: _jsxs("div", { className: "profile-card", children: [_jsx("h2", { className: "profile-title", children: "My Profile" }), _jsxs("div", { className: "profile-row", children: [_jsx("label", { children: "Username" }), _jsx("div", { className: "profile-readonly", children: profile.email })] }), _jsxs("div", { className: "profile-row", children: [_jsx("label", { htmlFor: "profile-first", children: "First name" }), _jsx("input", { id: "profile-first", value: firstName, onChange: (e) => setFirstName(e.target.value), placeholder: "First name" })] }), _jsxs("div", { className: "profile-row", children: [_jsx("label", { htmlFor: "profile-last", children: "Last name" }), _jsx("input", { id: "profile-last", value: lastName, onChange: (e) => setLastName(e.target.value), placeholder: "Last name" })] }), _jsxs("div", { className: "profile-actions", children: [_jsx("button", { className: "profile-save", onClick: save, disabled: saving, children: saving ? "Saving…" : "Save" }), status && _jsx("span", { className: "profile-status", children: status })] }), _jsxs("div", { className: "profile-password-section", children: [_jsx("h3", { className: "profile-section-title", children: "Password" }), !showPwForm ? (_jsx("button", { type: "button", className: "profile-save", onClick: () => setShowPwForm(true), children: profile.auth_provider === "google"
+                                ? "Create Password"
+                                : "Change Password" })) : (_jsxs(_Fragment, { children: [profile.auth_provider !== "google" && (_jsxs("div", { className: "profile-row", children: [_jsx("label", { htmlFor: "profile-current-pw", children: "Current password" }), _jsx("input", { id: "profile-current-pw", type: "password", value: currentPw, onChange: (e) => setCurrentPw(e.target.value) })] })), _jsxs("div", { className: "profile-row", children: [_jsx("label", { htmlFor: "profile-new-pw", children: profile.auth_provider === "google"
+                                                ? "Password"
+                                                : "New password" }), _jsx("input", { id: "profile-new-pw", type: "password", value: newPw, onChange: (e) => setNewPw(e.target.value) })] }), _jsxs("div", { className: "profile-row", children: [_jsx("label", { htmlFor: "profile-confirm-pw", children: profile.auth_provider === "google"
+                                                ? "Confirm password"
+                                                : "Confirm new password" }), _jsx("input", { id: "profile-confirm-pw", type: "password", value: confirmPw, onChange: (e) => setConfirmPw(e.target.value) })] }), _jsxs("div", { className: "profile-actions", children: [_jsx("button", { type: "button", className: "profile-save", onClick: submitPasswordChange, disabled: pwSaving, children: pwSaving
+                                                ? "Saving…"
+                                                : profile.auth_provider === "google"
+                                                    ? "Create password"
+                                                    : "Update password" }), _jsx("button", { type: "button", className: "profile-cancel", onClick: () => {
                                                 setShowPwForm(false);
                                                 setCurrentPw("");
                                                 setNewPw("");
                                                 setConfirmPw("");
-                                            }, disabled: pwSaving, children: "Cancel" })] })] })), pwStatus && _jsx("p", { className: "profile-status", children: pwStatus })] }))] }) }));
+                                            }, disabled: pwSaving, children: "Cancel" })] })] })), pwStatus && _jsx("p", { className: "profile-status", children: pwStatus })] })] }) }));
 }

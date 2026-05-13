@@ -126,6 +126,38 @@
   color: white;
 }
 
+.split-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f172a;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: 0.15s;
+}
+
+.split-toggle-btn:hover {
+  background: #eef2ff;
+  border-color: #818cf8;
+}
+
+.split-toggle-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+
+.split-toggle-text {
+  line-height: 1;
+}
+
 .user-email {
   font-size: 14px;
   color: black;
@@ -275,6 +307,7 @@
   background: #f5f7fb;
 
   border-right: 1px solid #e5e7eb;
+  position: relative;
 
   display: flex;
   flex-direction: column;
@@ -285,34 +318,64 @@
   padding-bottom: 12px;
 }
 
-/* Pushes the split-screen button to the bottom of the icon sidebar. */
 .icon-sidebar-spacer {
   flex: 1;
 }
 
 .icon-split-btn {
+  position: fixed;
+  left: 8px;
+  bottom: 16px;
+  z-index: 60;
   width: 44px;
-  height: 34px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  font-size: 20px;
+  border-radius: 8px;
   cursor: pointer;
-  background: transparent;
-  border: 1px solid transparent;
-  color: black;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
   transition: 0.15s;
 }
 
 .icon-split-btn:hover {
-  background: #e5e7eb;
+  background: #eef2ff;
+  border-color: #818cf8;
 }
 
 .icon-split-btn.active {
   background: #2563eb;
-  color: white;
   border-color: #2563eb;
+  color: white;
+}
+
+.split-btn-icon {
+  display: grid;
+  grid-template-columns: 12px 12px 12px;
+  align-items: center;
+  justify-items: center;
+  height: 18px;
+}
+
+.split-btn-pane {
+  width: 11px;
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.9;
+}
+
+.split-btn-divider {
+  font-size: 17px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.split-btn-label {
+  font-size: 10px;
+  line-height: 1;
 }
 
 /* ICON BUTTON */
@@ -367,7 +430,7 @@
 }
 
 /* =============================
-   ⫼ SPLIT VIEW
+   ◫ SPLIT VIEW
 ============================== */
 .split-pane {
   flex: 1;

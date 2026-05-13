@@ -169,7 +169,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn change_password_rejects_google_user() {
+    async fn change_password_creates_password_for_google_user() {
         let pool = test_pool().await;
         let email = random_email();
         let user_id = insert_google_user(&pool, &email).await;
@@ -185,12 +185,20 @@ mod tests {
             .uri("/profile/password")
             .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
             .set_json(json!({
-                "current_password": "anything",
                 "new_password": "fresh-pw-123",
             }))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let row = sqlx::query("SELECT password FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let stored: Option<String> = sqlx::Row::try_get(&row, "password").unwrap_or(None);
+        let stored = stored.expect("password set");
+        assert!(verify("fresh-pw-123", &stored).unwrap());
 
         delete_user(&pool, user_id).await;
     }

@@ -88,18 +88,23 @@ export async function resetPassword(token: string, newPassword: string) {
 }
 
 export async function changePassword(
-  currentPassword: string,
+  currentPassword: string | null,
   newPassword: string
 ) {
+  const body =
+    currentPassword === null
+      ? { new_password: newPassword }
+      : {
+          current_password: currentPassword,
+          new_password: newPassword,
+        };
+
   const res = await apiFetch(
     "/api/profile/password",
     {
       method: "POST",
       preserve401: true,
-      body: JSON.stringify({
-        current_password: currentPassword,
-        new_password: newPassword,
-      }),
+      body: JSON.stringify(body),
     }
   );
   return res.json();

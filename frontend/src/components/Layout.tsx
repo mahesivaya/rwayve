@@ -93,6 +93,25 @@ export default function Layout() {
     );
   };
 
+  const splitToggleButton = (
+    <button
+      type="button"
+      className={`split-toggle-btn ${splitOpen ? "active" : ""}`}
+      onClick={() => {
+        setSplitOpen((s) => !s);
+        if (splitOpen) setSplitView(null);
+      }}
+      title={splitOpen ? "Close split view" : "Open split view"}
+      aria-label={splitOpen ? "Close split view" : "Open split view"}
+    >
+      <span className="split-btn-icon" aria-hidden="true">
+        <span className="split-btn-pane" />
+        <span className="split-btn-divider">◫</span>
+        <span className="split-btn-pane" />
+      </span>
+    </button>
+  );
+
   return (
     <div className="app">
       {/* 🔝 HEADER */}
@@ -136,6 +155,8 @@ export default function Layout() {
               ↗ {splitLabel}
             </span>
           )}
+
+          {splitToggleButton}
 
           <div className="profile-menu" ref={menuRef}>
             <button
@@ -221,7 +242,11 @@ export default function Layout() {
             title={splitOpen ? "Close split view" : "Open split view"}
             aria-label={splitOpen ? "Close split view" : "Open split view"}
           >
-            ⫼
+            <span className="split-btn-icon" aria-hidden="true">
+              <span className="split-btn-pane" />
+              <span className="split-btn-divider">◫</span>
+              <span className="split-btn-pane" />
+            </span>
           </button>
         </div>
 
@@ -260,7 +285,7 @@ export default function Layout() {
                   </Suspense>
                 ) : (
                   <div className="split-empty">
-                    <div className="split-empty-icon">⫼</div>
+                    <div className="split-empty-icon">◫</div>
                     <div className="split-empty-title">Split view ready</div>
                     <div className="split-empty-hint">
                       Pick an app from the top header to load it here.

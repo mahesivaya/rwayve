@@ -31,6 +31,6 @@ pub struct ResetInput {
 
 #[derive(Deserialize)]
 pub struct ChangePasswordInput {
-    pub current_password: String,
+    pub current_password: Option<String>,
     pub new_password: String,
 }

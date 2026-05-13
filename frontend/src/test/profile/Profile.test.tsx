@@ -54,7 +54,7 @@ describe("Profile page", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides the password section for Google-auth users", async () => {
+  it("shows Create Password for Google-auth users", async () => {
     mockProfileFetch({
       id: 2,
       email: "g@b.c",
@@ -71,6 +71,45 @@ describe("Profile page", () => {
     expect(
       screen.queryByRole("button", { name: /change password/i }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /create password/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("creates password for Google-auth users without current password", async () => {
+    mockProfileFetch({
+      id: 2,
+      email: "g@b.c",
+      first_name: null,
+      last_name: null,
+      auth_provider: "google",
+    });
+    (apiChange as unknown as { mockResolvedValue: (v: unknown) => void })
+      .mockResolvedValue({ message: "Password updated" });
+
+    render(<Profile />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /create password/i }),
+    );
+
+    expect(screen.queryByLabelText(/current password/i)).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/^password$/i), "fresh-pw");
+    await userEvent.type(
+      screen.getByLabelText(/confirm password/i),
+      "fresh-pw",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /create password/i }),
+    );
+
+    await waitFor(() => {
+      expect(apiChange).toHaveBeenCalledWith(null, "fresh-pw");
+    });
+    expect(
+      await screen.findByText(/password created/i),
+    ).toBeInTheDocument();
   });
 
   it("submits change-password form and shows success", async () => {

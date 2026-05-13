@@ -63,6 +63,8 @@ export default function Profile() {
   }, [pwStatus]);
 
   const submitPasswordChange = async () => {
+    const isCreatingPassword = profile?.auth_provider === "google";
+
     if (newPw !== confirmPw) {
       setPwStatus("New passwords do not match");
       return;
@@ -73,12 +75,15 @@ export default function Profile() {
     }
     setPwSaving(true);
     try {
-      await changePassword(currentPw, newPw);
-      setPwStatus("Password updated ✓");
+      await changePassword(isCreatingPassword ? null : currentPw, newPw);
+      setPwStatus(isCreatingPassword ? "Password created ✓" : "Password updated ✓");
       setCurrentPw("");
       setNewPw("");
       setConfirmPw("");
       setShowPwForm(false);
+      setProfile((prev) =>
+        prev ? { ...prev, auth_provider: "local" } : prev
+      );
     } catch (err: unknown) {
       setPwStatus(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -153,22 +158,26 @@ export default function Profile() {
           {status && <span className="profile-status">{status}</span>}
         </div>
 
-        {profile.auth_provider !== "google" && (
-          <div className="profile-password-section">
-            <h3 className="profile-section-title">Password</h3>
+        <div className="profile-password-section">
+          <h3 className="profile-section-title">Password</h3>
 
-            {!showPwForm ? (
-              <button
-                type="button"
-                className="profile-save"
-                onClick={() => setShowPwForm(true)}
-              >
-                Change Password
-              </button>
-            ) : (
-              <>
+          {!showPwForm ? (
+            <button
+              type="button"
+              className="profile-save"
+              onClick={() => setShowPwForm(true)}
+            >
+              {profile.auth_provider === "google"
+                ? "Create Password"
+                : "Change Password"}
+            </button>
+          ) : (
+            <>
+              {profile.auth_provider !== "google" && (
                 <div className="profile-row">
-                  <label htmlFor="profile-current-pw">Current password</label>
+                  <label htmlFor="profile-current-pw">
+                    Current password
+                  </label>
                   <input
                     id="profile-current-pw"
                     type="password"
@@ -176,56 +185,68 @@ export default function Profile() {
                     onChange={(e) => setCurrentPw(e.target.value)}
                   />
                 </div>
+              )}
 
-                <div className="profile-row">
-                  <label htmlFor="profile-new-pw">New password</label>
-                  <input
-                    id="profile-new-pw"
-                    type="password"
-                    value={newPw}
-                    onChange={(e) => setNewPw(e.target.value)}
-                  />
-                </div>
+              <div className="profile-row">
+                <label htmlFor="profile-new-pw">
+                  {profile.auth_provider === "google"
+                    ? "Password"
+                    : "New password"}
+                </label>
+                <input
+                  id="profile-new-pw"
+                  type="password"
+                  value={newPw}
+                  onChange={(e) => setNewPw(e.target.value)}
+                />
+              </div>
 
-                <div className="profile-row">
-                  <label htmlFor="profile-confirm-pw">Confirm new password</label>
-                  <input
-                    id="profile-confirm-pw"
-                    type="password"
-                    value={confirmPw}
-                    onChange={(e) => setConfirmPw(e.target.value)}
-                  />
-                </div>
+              <div className="profile-row">
+                <label htmlFor="profile-confirm-pw">
+                  {profile.auth_provider === "google"
+                    ? "Confirm password"
+                    : "Confirm new password"}
+                </label>
+                <input
+                  id="profile-confirm-pw"
+                  type="password"
+                  value={confirmPw}
+                  onChange={(e) => setConfirmPw(e.target.value)}
+                />
+              </div>
 
-                <div className="profile-actions">
-                  <button
-                    type="button"
-                    className="profile-save"
-                    onClick={submitPasswordChange}
-                    disabled={pwSaving}
-                  >
-                    {pwSaving ? "Saving…" : "Update password"}
-                  </button>
-                  <button
-                    type="button"
-                    className="profile-cancel"
-                    onClick={() => {
-                      setShowPwForm(false);
-                      setCurrentPw("");
-                      setNewPw("");
-                      setConfirmPw("");
-                    }}
-                    disabled={pwSaving}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
+              <div className="profile-actions">
+                <button
+                  type="button"
+                  className="profile-save"
+                  onClick={submitPasswordChange}
+                  disabled={pwSaving}
+                >
+                  {pwSaving
+                    ? "Saving…"
+                    : profile.auth_provider === "google"
+                      ? "Create password"
+                      : "Update password"}
+                </button>
+                <button
+                  type="button"
+                  className="profile-cancel"
+                  onClick={() => {
+                    setShowPwForm(false);
+                    setCurrentPw("");
+                    setNewPw("");
+                    setConfirmPw("");
+                  }}
+                  disabled={pwSaving}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
 
-            {pwStatus && <p className="profile-status">{pwStatus}</p>}
-          </div>
-        )}
+          {pwStatus && <p className="profile-status">{pwStatus}</p>}
+        </div>
       </div>
     </div>
   );
