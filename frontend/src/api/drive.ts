@@ -1,4 +1,5 @@
 import { API_BASE } from "../config/env";
+import { getAuthToken } from "../auth/token";
 import { apiFetch } from "./client";
 
 export type UploadedFile = {
@@ -21,7 +22,7 @@ export const uploadDriveFiles = async (userId: number, files: File[]) => {
   formData.append("user_id", userId.toString());
   files.forEach((file) => formData.append("files", file));
 
-  const token = localStorage.getItem("token");
+  const token = getAuthToken();
   const res = await fetch(`${API_BASE}/api/files/upload`, {
     method: "POST",
     body: formData,

@@ -33,7 +33,6 @@ export default function Login() {
         throw new Error("No token returned");
       }
 
-      localStorage.setItem("token", data.token);
       authLogin(data.token);
 
       navigate("/emails");

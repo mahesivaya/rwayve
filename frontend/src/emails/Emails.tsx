@@ -18,6 +18,7 @@ import {
 import { decryptMessage } from "../crypto/crypto";
 import { loadPrivateKey } from "../crypto/keyStore";
 import { useAuth } from "../auth/AuthContext";
+import { getAuthToken } from "../auth/token";
 import { useGlobalSearch } from "../search/SearchContext";
 
 type Email = {
@@ -302,7 +303,7 @@ export default function Emails() {
 
   // ================= ADD ACCOUNT =================
   const addAccount = () => {
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) return;
     window.location.href = getGmailLoginUrl(token);
   };
@@ -506,8 +507,15 @@ export default function Emails() {
             >
               <div className="email-top">
                 <span className="email-sender">{email.sender}</span>
-                <span className="email-time">
-                  {new Date(email.created_at).toLocaleTimeString()}
+                <span className="email-row-meta">
+                  {email.has_attachments && (
+                    <span className="email-attachment-pin" title="Has attachments">
+                      📎
+                    </span>
+                  )}
+                  <span className="email-time">
+                    {new Date(email.created_at).toLocaleTimeString()}
+                  </span>
                 </span>
               </div>
 

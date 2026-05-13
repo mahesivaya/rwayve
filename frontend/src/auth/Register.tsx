@@ -44,7 +44,6 @@ export default function Register() {
         throw new Error("No token returned from server");
       }
 
-      localStorage.setItem("token", data.token);
       login(data.token);
 
       navigate("/emails");

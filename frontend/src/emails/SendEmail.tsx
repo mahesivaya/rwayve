@@ -1,5 +1,6 @@
 import { logger } from "../utils/logger";
 import { sendEmail as sendEmailApi } from "../api/email";
+import { getAuthToken } from "../auth/token";
 
 import { useState, useEffect } from "react";
 import {buildEncryptedBody, type EmailEncryptionMode} from "./encryptEmail";
@@ -32,7 +33,7 @@ export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps
       return;
     }
 
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) {
       setStatus("You must login first ❌");
       return;

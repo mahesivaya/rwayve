@@ -6,6 +6,7 @@ import {
   loadPublicKey,
 } from "../crypto/keyStore";
 import { getMe, saveUserPublicKey } from "../api/Auth";
+import { clearAuthToken, getAuthToken, setAuthToken } from "./token";
 import { logger } from "../utils/logger";
 
 const log = logger.scope("auth");
@@ -54,7 +55,7 @@ const resolveBootToken = (): string | null => {
 
   if (tokenFromUrl && isOAuthLanding) {
     log.info("restoring token from OAuth redirect");
-    localStorage.setItem("token", tokenFromUrl);
+    setAuthToken(tokenFromUrl);
     params.delete("token");
     const qs = params.toString();
     const path = window.location.pathname || "/home";
@@ -62,7 +63,7 @@ const resolveBootToken = (): string | null => {
     return tokenFromUrl;
   }
 
-  return localStorage.getItem("token");
+  return getAuthToken();
 };
 
 async function publishPublicKey(publicKey: ArrayBuffer) {
@@ -120,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) return;
 
     // Validate in the background. AbortController makes StrictMode's
@@ -133,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (res.status === 401) {
           log.warn("/api/me rejected stored token; clearing session");
-          localStorage.removeItem("token");
+          clearAuthToken();
           setUser(null);
           // No hard redirect: ProtectedRoute already sends unauthenticated
           // users away from protected pages, and public pages (/login,
@@ -169,7 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = (token: string) => {
-    localStorage.setItem("token", token);
+    setAuthToken(token);
 
     const decoded = parseJwt(token);
 
@@ -186,7 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
+    clearAuthToken();
     setUser(null);
     window.location.href = "/login";
   };

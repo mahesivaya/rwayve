@@ -1,4 +1,5 @@
 import { API_BASE } from "../config/env";
+import { clearAuthToken, getAuthToken } from "../auth/token";
 
 type ApiOptions =
   RequestInit & {
@@ -24,10 +25,7 @@ export async function apiFetch(
     ...rest
   } = options;
 
-  const token =
-    localStorage.getItem(
-      "token"
-    );
+  const token = getAuthToken();
   const url = path.startsWith("http")
     ? path
     : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
@@ -106,9 +104,7 @@ export async function apiFetch(
       "Unauthorized"
     );
 
-    localStorage.removeItem(
-      "token"
-    );
+    clearAuthToken();
 
     // Avoid jsdom/Vitest
     // navigation crashes.

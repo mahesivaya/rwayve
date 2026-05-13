@@ -65,6 +65,9 @@ pub async fn get_emails(
         r#"
         SELECT e.id, e.gmail_id, e.subject, e.sender, e.receiver,
                (e.body_encrypted <> '') AS has_body,
+               EXISTS (
+                   SELECT 1 FROM email_attachments ea WHERE ea.email_id = e.id
+               ) AS has_attachments,
                e.account_id, e.created_at
         FROM emails e
         JOIN email_accounts a ON e.account_id = a.id
@@ -146,6 +149,7 @@ pub async fn get_emails(
                         "sender": row.get::<Option<String>,_>("sender"),
                         "receiver": row.get::<Option<String>,_>("receiver"),
                         "has_body": row.get::<bool,_>("has_body"),
+                        "has_attachments": row.get::<bool,_>("has_attachments"),
                         "account_id": row.get::<Option<i32>,_>("account_id"),
                         "created_at": created_at,
                     })

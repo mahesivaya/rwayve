@@ -1,4 +1,5 @@
 import { logger } from "../utils/logger";
+import { getAuthToken } from "../auth/token";
 import { useEffect, useRef, useState } from "react";
 
 const WS_BASE = import.meta.env.VITE_WS_BASE_URL ?? window.location.host;
@@ -46,7 +47,7 @@ export default function Call() {
   useEffect(() => {
     // Auth: backend derives user_id from the JWT and rejects connections
     // without a valid `?token=`.
-    const token = localStorage.getItem("token") ?? "";
+    const token = getAuthToken() ?? "";
     const ws = new WebSocket(
       `ws://${WS_BASE}/ws/call?token=${encodeURIComponent(token)}`,
     );

@@ -5,6 +5,7 @@ import {
   type ChatMessage,
   type ChatUser,
 } from "../api/chat";
+import { getAuthToken } from "../auth/token";
 const WS_BASE = import.meta.env.VITE_WS_BASE_URL;
 
 import { useEffect, useState, useRef } from "react";
@@ -74,7 +75,7 @@ export default function Chat() {
 
     // Auth: backend now derives user_id from the JWT and rejects connections
     // without a valid `?token=` query param. Don't send user_id — it's ignored.
-    const token = localStorage.getItem("token") ?? "";
+    const token = getAuthToken() ?? "";
     const ws = new WebSocket(
       `ws://${WS_BASE}/ws/chat?token=${encodeURIComponent(token)}`,
     );
