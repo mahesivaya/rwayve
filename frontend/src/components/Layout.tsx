@@ -1,6 +1,7 @@
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { SearchContext } from "../search/SearchContext";
 import "./Layout.css";
 
 // Lazy-loaded so the split pane doesn't bloat the initial bundle and only
@@ -27,6 +28,19 @@ const SPLIT_APPS = [
   { key: "aichat" as AppKey, label: "AI Chat", path: "/aichat", icon: "✨", Comp: AIChatView },
 ];
 
+const SEARCH_LABELS: Record<string, string> = {
+  "/home": "home",
+  "/emails": "all emails",
+  "/chat": "users and messages",
+  "/call": "calls",
+  "/scheduler": "meetings",
+  "/drive": "files",
+  "/notes": "notes",
+  "/aichat": "AI chat",
+  "/profile": "profile",
+  "/settings": "settings",
+};
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -42,6 +56,7 @@ export default function Layout() {
   // preventDefault and set splitView. Default to "right" so opening split
   // and clicking an app feels like adding a second view.
   const [splitTarget, setSplitTarget] = useState<"left" | "right">("right");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Profile dropdown (replaces the standalone Logout button).
   const [menuOpen, setMenuOpen] = useState(false);
@@ -64,6 +79,12 @@ export default function Layout() {
   const splitApp = SPLIT_APPS.find((a) => a.key === splitView) ?? null;
   const SplitComp = splitApp?.Comp ?? null;
   const splitLabel = splitApp?.label ?? null;
+  const searchLabel = SEARCH_LABELS[location.pathname] ?? "this page";
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const searchValue = useMemo(
+    () => ({ searchQuery, normalizedSearchQuery, setSearchQuery }),
+    [searchQuery, normalizedSearchQuery]
+  );
 
   // When the split is open, header link clicks target the right pane instead
   // of navigating the URL. When closed, the link behaves normally.
@@ -219,6 +240,31 @@ export default function Layout() {
         </div>
       </div>
 
+      <SearchContext.Provider value={searchValue}>
+      <div className="global-search-row">
+        <div className="global-search-box">
+          <span className="global-search-icon" aria-hidden="true">⌕</span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={`Search ${searchLabel}`}
+            aria-label={`Search ${searchLabel}`}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              className="global-search-clear"
+              onClick={() => setSearchQuery("")}
+              title="Clear search"
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* 🔥 BODY */}
       <div className="body">
         {/* LEFT ICON BAR */}
@@ -297,6 +343,7 @@ export default function Layout() {
           )}
         </div>
       </div>
+      </SearchContext.Provider>
     </div>
   );
 }

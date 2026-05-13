@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import "./aichat.css";
 
 import { apiFetch } from "../api/client";
+import { useGlobalSearch } from "../search/SearchContext";
 
 type Role = "user" | "model";
 type Turn = { role: Role; content: string };
 
 export default function AIChat() {
+  const { normalizedSearchQuery } = useGlobalSearch();
   const [messages, setMessages] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -63,6 +65,15 @@ export default function AIChat() {
     setError(null);
   };
 
+  const visibleMessages = normalizedSearchQuery
+    ? messages.filter((m) =>
+        [m.role, m.content]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearchQuery)
+      )
+    : messages;
+
   return (
     <div className="ai-chat">
       <div className="ai-chat-header">
@@ -89,7 +100,7 @@ export default function AIChat() {
           </div>
         )}
 
-        {messages.map((m, i) => (
+        {visibleMessages.map((m, i) => (
           <div
             key={i}
             className={`ai-msg ${m.role === "user" ? "ai-msg-user" : "ai-msg-model"}`}

@@ -2,9 +2,11 @@ import { logger } from "../utils/logger";
 import { useEffect, useState } from "react";
 import "./scheduler.css";
 import { getMeetings, createMeetingApi, updateMeetingApi, deleteMeetingApi } from "./SchedulerService";
+import { useGlobalSearch } from "../search/SearchContext";
 
 
 export default function Scheduler() {
+  const { normalizedSearchQuery } = useGlobalSearch();
 
   // Format a Date as YYYY-MM-DD in the user's local timezone. Calendars
   // should always show events in the viewer's wall clock — using a hardcoded
@@ -217,6 +219,21 @@ export default function Scheduler() {
     setView("day");
   };
 
+  const visibleEvents = normalizedSearchQuery
+    ? events.filter((event) =>
+        [
+          event.title,
+          event.date,
+          event.source,
+          event.zoom_join_url ?? "",
+          ...(event.participants ?? []),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearchQuery)
+      )
+    : events;
+
   // ================= MINI CALENDAR =================
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -308,7 +325,7 @@ export default function Scheduler() {
 
         const dayDate = formatDateLocal(currentDate);
 
-        const slotEvents = events.filter(
+        const slotEvents = visibleEvents.filter(
           (e) =>
             e.date === dayDate &&
             e.start >= mins &&
@@ -399,7 +416,7 @@ export default function Scheduler() {
                 .toString()
                 .padStart(2, "0")}`;
 
-              const slotEvents = events.filter(
+              const slotEvents = visibleEvents.filter(
                 (e) =>
                   e.date === dayDate &&
                   e.start >= mins &&
@@ -460,7 +477,7 @@ export default function Scheduler() {
                   >
                     <div className="date">{i + 1}</div>
                     <div className="events">
-                      {events
+                      {visibleEvents
                         .filter((e) => e.date === dayDate)
                         .sort((a, b) => a.start - b.start)
                         .map((e) => (

@@ -8,6 +8,7 @@ import { apiFetch } from "../api/client";
 import { decryptMessage } from "../crypto/crypto";
 import { loadPrivateKey } from "../crypto/keyStore";
 import { useAuth } from "../auth/AuthContext";
+import { useGlobalSearch } from "../search/SearchContext";
 
 type Email = {
   id: number;
@@ -130,6 +131,7 @@ async function decryptWayveBodyIfNeeded(
 
 export default function Emails() {
   const { user } = useAuth();
+  const { normalizedSearchQuery } = useGlobalSearch();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [emails, setEmails] = useState<any[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
@@ -226,6 +228,10 @@ export default function Emails() {
         url += `&account_id=${activeAccount}`;
       }
 
+      if (normalizedSearchQuery) {
+        url += `&q=${encodeURIComponent(normalizedSearchQuery)}`;
+      }
+
       const res = await apiFetch(url);
 
       const data = await res.json();
@@ -237,7 +243,7 @@ export default function Emails() {
     };
 
     void fetchEmails();
-  }, [activeAccount, activeFolder, refreshTick]);
+  }, [activeAccount, activeFolder, refreshTick, normalizedSearchQuery]);
 
   // ================= LOAD MORE =================
   const loadMore = async () => {
@@ -255,6 +261,10 @@ export default function Emails() {
 
     if (activeAccount !== null) {
       url += `&account_id=${activeAccount}`;
+    }
+
+    if (normalizedSearchQuery) {
+      url += `&q=${encodeURIComponent(normalizedSearchQuery)}`;
     }
 
     const res = await apiFetch(url);
@@ -276,10 +286,22 @@ export default function Emails() {
       return;
     }
 
-    // 1) Show metadata immediately. Body may be empty if body_worker hasn't
-    //    fetched it yet — render the placeholder via bodyLoading.
-    const res = await apiFetch(`/api/emails/${email.id}`);
-    const data = await res.json();
+    let data: any;
+
+    try {
+      // 1) Show metadata immediately. Body may be empty if body_worker hasn't
+      //    fetched it yet — render the placeholder via bodyLoading.
+      const res = await apiFetch(`/api/emails/${email.id}`);
+      data = await res.json();
+    } catch (err) {
+      console.error("Email detail load failed", err);
+      setSelectedEmail({
+        ...email,
+        body: "",
+        _bodyError: "Failed to load email body. Try again.",
+      });
+      return;
+    }
 
     if (data.body) {
       try {

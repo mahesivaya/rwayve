@@ -1,10 +1,31 @@
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useGlobalSearch } from "../search/SearchContext";
 import "./home.css";
 
 export default function Home() {
   const { user, logout } = useAuth();
+  const { normalizedSearchQuery } = useGlobalSearch();
   const navigate = useNavigate();
+
+  const cards = [
+    { path: "/emails", title: "📧 Emails", description: "View and send emails" },
+    { path: "/chat", title: "💬 Chat", description: "Real-time messaging" },
+    { path: "/call", title: " 📞  🎥 Call", description: "Real-time calling" },
+    { path: "/scheduler", title: "📅 Scheduler", description: "Manage your meetings" },
+    { path: "/drive", title: "📁 Drive", description: "Store and manage files" },
+    { path: "/notes", title: "📝 Notes", description: "Store and manage notes" },
+    { path: "/aichat", title: "✨ AI Chat", description: "Chat with AI" },
+  ];
+
+  const visibleCards = normalizedSearchQuery
+    ? cards.filter((card) =>
+        [card.title, card.description]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearchQuery)
+      )
+    : cards;
 
   if (!user) {
     return (
@@ -13,6 +34,7 @@ export default function Home() {
         <p>Your all-in-one platform for Email, Chat, and Scheduling.</p>
 
         <div className="auth-buttons">
+          <button onClick={() => navigate("/")}>Login</button>
           <button onClick={() => navigate("/login")}>Login</button>
           <button onClick={() => navigate("/register")}>Register</button>
         </div>
@@ -29,41 +51,12 @@ export default function Home() {
 
       {/* GRID */}
       <div className="dashboard-grid">
-        <div className="card" onClick={() => navigate("/emails")}>
-          <h3>📧 Emails</h3>
-          <p>View and send emails</p>
-        </div>
-
-        <div className="card" onClick={() => navigate("/chat")}>
-          <h3>💬 Chat</h3>
-          <p>Real-time messaging</p>
-        </div>
-
-        <div className="card" onClick={() => navigate("/call")}>
-          <h3> 📞  🎥 Call</h3>
-          <p>Real-time calling</p>
-        </div>
-
-        <div className="card" onClick={() => navigate("/scheduler")}>
-          <h3>📅 Scheduler</h3>
-          <p>Manage your meetings</p>
-        </div>
-
-        <div className="card" onClick={() => navigate("/drive")}>
-          <h3>📁 Drive</h3>
-          <p>Store and manage files</p>
-        </div>
-
-        <div className="card" onClick={() => navigate("/notes")}>
-          <h3>📝 Notes</h3>
-          <p>Store and manage notes</p>
-        </div>
-
-        <div className="card" onClick={() => navigate("/aichat")}>
-          <h3>✨ AI Chat</h3>
-          <p>Chat with AI</p>
-        </div>
-
+        {visibleCards.map((card) => (
+          <div key={card.path} className="card" onClick={() => navigate(card.path)}>
+            <h3>{card.title}</h3>
+            <p>{card.description}</p>
+          </div>
+        ))}
       </div>
     </div>
   );

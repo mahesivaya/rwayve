@@ -8,6 +8,7 @@ import { apiFetch } from "../api/client";
 import { decryptMessage } from "../crypto/crypto";
 import { loadPrivateKey } from "../crypto/keyStore";
 import { useAuth } from "../auth/AuthContext";
+import { useGlobalSearch } from "../search/SearchContext";
 const WAYVE_SECURE_PREFIX = "WAYVE_SECURE_V1";
 function normalizeEmailBody(body) {
     if (!/[<&][a-zA-Z#/!]/.test(body)) {
@@ -79,6 +80,7 @@ async function decryptWayveBodyIfNeeded(body, userId) {
 }
 export default function Emails() {
     const { user } = useAuth();
+    const { normalizedSearchQuery } = useGlobalSearch();
     const [accounts, setAccounts] = useState([]);
     const [emails, setEmails] = useState([]);
     const [selectedEmail, setSelectedEmail] = useState(null);
@@ -159,6 +161,9 @@ export default function Emails() {
             if (activeAccount !== null) {
                 url += `&account_id=${activeAccount}`;
             }
+            if (normalizedSearchQuery) {
+                url += `&q=${encodeURIComponent(normalizedSearchQuery)}`;
+            }
             const res = await apiFetch(url);
             const data = await res.json();
             const hasMorePage = res.headers.get("x-has-more") === "true";
@@ -167,7 +172,7 @@ export default function Emails() {
             setSelectedEmail(null);
         };
         void fetchEmails();
-    }, [activeAccount, activeFolder, refreshTick]);
+    }, [activeAccount, activeFolder, refreshTick, normalizedSearchQuery]);
     // ================= LOAD MORE =================
     const loadMore = async () => {
         if (!hasMore || emails.length === 0)
@@ -180,6 +185,9 @@ export default function Emails() {
             let url = `/api/emails?folder=${activeFolder}&before=${before}&before_id=${before_id}`;
             if (activeAccount !== null) {
                 url += `&account_id=${activeAccount}`;
+            }
+            if (normalizedSearchQuery) {
+                url += `&q=${encodeURIComponent(normalizedSearchQuery)}`;
             }
             const res = await apiFetch(url);
             const data = await res.json();
@@ -197,10 +205,22 @@ export default function Emails() {
             setSelectedEmail(emailCache.current[email.id]);
             return;
         }
-        // 1) Show metadata immediately. Body may be empty if body_worker hasn't
-        //    fetched it yet — render the placeholder via bodyLoading.
-        const res = await apiFetch(`/api/emails/${email.id}`);
-        const data = await res.json();
+        let data;
+        try {
+            // 1) Show metadata immediately. Body may be empty if body_worker hasn't
+            //    fetched it yet — render the placeholder via bodyLoading.
+            const res = await apiFetch(`/api/emails/${email.id}`);
+            data = await res.json();
+        }
+        catch (err) {
+            console.error("Email detail load failed", err);
+            setSelectedEmail({
+                ...email,
+                body: "",
+                _bodyError: "Failed to load email body. Try again.",
+            });
+            return;
+        }
         if (data.body) {
             try {
                 const decryptedBody = await decryptWayveBodyIfNeeded(data.body, user?.id);

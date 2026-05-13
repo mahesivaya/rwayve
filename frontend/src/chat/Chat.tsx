@@ -4,6 +4,7 @@ const WS_BASE = import.meta.env.VITE_WS_BASE_URL;
 
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { useGlobalSearch } from "../search/SearchContext";
 
 type User = {
   id: number;
@@ -20,6 +21,7 @@ type Message = {
 
 export default function Chat() {
   const { user } = useAuth();
+  const { normalizedSearchQuery } = useGlobalSearch();
 
   const [users, setUsers] = useState<User[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -168,6 +170,24 @@ export default function Chat() {
     setInput("");
   };
 
+  const filteredUsers = normalizedSearchQuery
+    ? users.filter((u) => u.email.toLowerCase().includes(normalizedSearchQuery))
+    : users;
+
+  const filteredMessages = normalizedSearchQuery
+    ? messages.filter((msg) =>
+        [
+          msg.content,
+          msg.status,
+          msg.created_at,
+          selectedUser?.email ?? "",
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearchQuery)
+      )
+    : messages;
+
   // =============================
   // UI
   // =============================
@@ -185,7 +205,7 @@ export default function Chat() {
       >
         <h3 style={{ padding: 10 }}>Users</h3>
 
-        {users.map((u) => (
+        {filteredUsers.map((u) => (
           <div
             key={u.id}
             style={{
@@ -213,7 +233,7 @@ export default function Chat() {
 
         {/* MESSAGES */}
         <div style={{ flex: 1, padding: 10, overflowY: "auto" }}>
-          {messages.map((msg, i) => (
+          {filteredMessages.map((msg, i) => (
             <div
               key={i}
               style={{

@@ -2,6 +2,7 @@ import { logger } from "../utils/logger";
 import { useEffect, useState } from "react";
 import "./drive.css";
 import { useAuth } from "../auth/AuthContext";
+import { useGlobalSearch } from "../search/SearchContext";
 
 type UploadedFile = {
   id: number;
@@ -14,6 +15,7 @@ type UploadedFile = {
 
 export default function Drive() {
   const { user } = useAuth();
+  const { normalizedSearchQuery } = useGlobalSearch();
 
   const [files, setFiles] = useState<File[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -120,6 +122,15 @@ export default function Drive() {
     }
   };
 
+  const visibleUploadedFiles = normalizedSearchQuery
+    ? uploadedFiles.filter((file) =>
+        [file.name, file.file_type, file.size.toString(), file.created_at]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearchQuery)
+      )
+    : uploadedFiles;
+
   return (
     <div className="drive-container">
 
@@ -177,11 +188,11 @@ export default function Drive() {
 
         {loading ? (
           <p>Loading...</p>
-        ) : !uploadedFiles || uploadedFiles.length === 0 ? (
-          <p>No files uploaded yet</p>
+        ) : !visibleUploadedFiles || visibleUploadedFiles.length === 0 ? (
+          <p>{normalizedSearchQuery ? "No files match your search" : "No files uploaded yet"}</p>
         ) : (
           <div className="file-list">
-            {uploadedFiles.map((file) => (
+            {visibleUploadedFiles.map((file) => (
               <div key={file.id} className="file-row">
 
                 <div className="file-left">

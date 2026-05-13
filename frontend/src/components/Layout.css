@@ -295,8 +295,63 @@
 .body {
   display: flex;
   flex: 1;
-  height: calc(100vh - 60px);
+  height: calc(100vh - 112px);
   overflow: hidden;
+}
+
+.global-search-row {
+  height: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 8px 20px 8px 80px;
+  background: #eef4fb;
+  border-bottom: 1px solid #dbe3ee;
+}
+
+.global-search-box {
+  width: min(760px, 100%);
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  color: #0f172a;
+}
+
+.global-search-icon {
+  font-size: 18px;
+  line-height: 1;
+  color: #475569;
+}
+
+.global-search-box input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: #0f172a;
+  background: transparent;
+}
+
+.global-search-clear {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.global-search-clear:hover {
+  background: #cbd5e1;
 }
 
 /* =============================

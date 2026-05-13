@@ -472,17 +472,28 @@ async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
 
 #[get("/emails/{id}")]
 #[instrument(target = "http", skip(pool))]
-pub async fn get_email_by_id(pool: web::Data<PgPool>, path: web::Path<i32>) -> impl Responder {
+pub async fn get_email_by_id(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    path: web::Path<i32>,
+) -> impl Responder {
+    let user_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
     let email_id = path.into_inner();
 
     let result = sqlx::query(
         r#"
-        SELECT id, subject, sender, receiver, body_encrypted, body_iv
-        FROM emails
-        WHERE id = $1
+        SELECT e.id, e.subject, e.sender, e.receiver, e.body_encrypted, e.body_iv
+        FROM emails e
+        JOIN email_accounts a ON e.account_id = a.id
+        WHERE e.id = $1 AND a.user_id = $2
         "#,
     )
-    .bind(email_id) // ✅ CORRECT
+    .bind(email_id)
+    .bind(user_id)
     .fetch_optional(pool.get_ref())
     .await;
 
@@ -508,9 +519,9 @@ pub async fn get_email_by_id(pool: web::Data<PgPool>, path: web::Path<i32>) -> i
 
             HttpResponse::Ok().json(serde_json::json!({
                 "id": row.get::<i32, _>("id"),
-                "subject": row.get::<String, _>("subject"),
-                "sender": row.get::<String, _>("sender"),
-                "receiver": row.get::<String, _>("receiver"),
+                "subject": row.get::<Option<String>, _>("subject").unwrap_or_default(),
+                "sender": row.get::<Option<String>, _>("sender").unwrap_or_default(),
+                "receiver": row.get::<Option<String>, _>("receiver").unwrap_or_default(),
                 "body": body
             }))
         }

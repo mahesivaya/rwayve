@@ -30,7 +30,11 @@ export default function App() {
         {/* ROOT */}
         <Route
           path="/"
-          element={<Navigate to={user ? "/home" : "/login"} />}
+          element={<Home />}
+        />
+        <Route
+          path="/Home"
+          element={<Navigate to="/" replace />}
         />
 
         {/* PUBLIC */}
@@ -65,7 +69,7 @@ export default function App() {
         {/* FALLBACK */}
         <Route
           path="*"
-          element={<Navigate to={user ? "/home" : "/login"} />}
+          element={<Navigate to={user ? "/home" : "/"} replace />}
         />
 
       </Routes>

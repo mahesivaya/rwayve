@@ -2,7 +2,9 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from "react";
 import "./aichat.css";
 import { apiFetch } from "../api/client";
+import { useGlobalSearch } from "../search/SearchContext";
 export default function AIChat() {
+    const { normalizedSearchQuery } = useGlobalSearch();
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState("");
     const [busy, setBusy] = useState(false);
@@ -52,5 +54,11 @@ export default function AIChat() {
         setMessages([]);
         setError(null);
     };
-    return (_jsxs("div", { className: "ai-chat", children: [_jsxs("div", { className: "ai-chat-header", children: [_jsxs("div", { className: "ai-chat-title", children: [_jsx("span", { className: "ai-chat-icon", children: "\u2728" }), "AI Chat", _jsx("span", { className: "ai-chat-sub", children: "Gemini" })] }), messages.length > 0 && (_jsx("button", { className: "ai-chat-clear", onClick: clear, disabled: busy, children: "Clear" }))] }), _jsxs("div", { className: "ai-chat-messages", ref: scrollRef, children: [messages.length === 0 && (_jsxs("div", { className: "ai-chat-empty", children: [_jsx("div", { className: "ai-chat-empty-icon", children: "\u2728" }), _jsx("div", { className: "ai-chat-empty-title", children: "Ask anything" }), _jsx("div", { className: "ai-chat-empty-hint", children: "Type a message below to start chatting with Gemini." })] })), messages.map((m, i) => (_jsx("div", { className: `ai-msg ${m.role === "user" ? "ai-msg-user" : "ai-msg-model"}`, children: _jsx("div", { className: "ai-msg-bubble", children: m.content }) }, i))), busy && (_jsx("div", { className: "ai-msg ai-msg-model", children: _jsxs("div", { className: "ai-msg-bubble ai-msg-typing", children: [_jsx("span", {}), _jsx("span", {}), _jsx("span", {})] }) }))] }), error && _jsx("div", { className: "ai-chat-error", children: error }), _jsxs("div", { className: "ai-chat-input-row", children: [_jsx("textarea", { className: "ai-chat-input", placeholder: "Message AI\u2026  (Enter to send, Shift+Enter for newline)", value: input, onChange: (e) => setInput(e.target.value), onKeyDown: onKeyDown, rows: 2, disabled: busy }), _jsx("button", { className: "ai-chat-send", onClick: send, disabled: busy || !input.trim(), title: "Send", children: busy ? "…" : "Send" })] })] }));
+    const visibleMessages = normalizedSearchQuery
+        ? messages.filter((m) => [m.role, m.content]
+            .join(" ")
+            .toLowerCase()
+            .includes(normalizedSearchQuery))
+        : messages;
+    return (_jsxs("div", { className: "ai-chat", children: [_jsxs("div", { className: "ai-chat-header", children: [_jsxs("div", { className: "ai-chat-title", children: [_jsx("span", { className: "ai-chat-icon", children: "\u2728" }), "AI Chat", _jsx("span", { className: "ai-chat-sub", children: "Gemini" })] }), messages.length > 0 && (_jsx("button", { className: "ai-chat-clear", onClick: clear, disabled: busy, children: "Clear" }))] }), _jsxs("div", { className: "ai-chat-messages", ref: scrollRef, children: [messages.length === 0 && (_jsxs("div", { className: "ai-chat-empty", children: [_jsx("div", { className: "ai-chat-empty-icon", children: "\u2728" }), _jsx("div", { className: "ai-chat-empty-title", children: "Ask anything" }), _jsx("div", { className: "ai-chat-empty-hint", children: "Type a message below to start chatting with Gemini." })] })), visibleMessages.map((m, i) => (_jsx("div", { className: `ai-msg ${m.role === "user" ? "ai-msg-user" : "ai-msg-model"}`, children: _jsx("div", { className: "ai-msg-bubble", children: m.content }) }, i))), busy && (_jsx("div", { className: "ai-msg ai-msg-model", children: _jsxs("div", { className: "ai-msg-bubble ai-msg-typing", children: [_jsx("span", {}), _jsx("span", {}), _jsx("span", {})] }) }))] }), error && _jsx("div", { className: "ai-chat-error", children: error }), _jsxs("div", { className: "ai-chat-input-row", children: [_jsx("textarea", { className: "ai-chat-input", placeholder: "Message AI\u2026  (Enter to send, Shift+Enter for newline)", value: input, onChange: (e) => setInput(e.target.value), onKeyDown: onKeyDown, rows: 2, disabled: busy }), _jsx("button", { className: "ai-chat-send", onClick: send, disabled: busy || !input.trim(), title: "Send", children: busy ? "…" : "Send" })] })] }));
 }

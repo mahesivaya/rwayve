@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import "./notes.css";
 
 import { apiFetch } from "../api/client";
+import { useGlobalSearch } from "../search/SearchContext";
 
 type Note = {
   id: number;
@@ -12,6 +13,7 @@ type Note = {
 
 
 export default function Notes() {
+  const { normalizedSearchQuery } = useGlobalSearch();
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedId, setSelectedId] = useState<number | "new" | null>(null);
   const [title, setTitle] = useState("");
@@ -130,6 +132,14 @@ export default function Notes() {
   const editorOpen = selectedId !== null;
   const showList = !isNarrow || !editorOpen;
   const showEditor = !isNarrow || editorOpen;
+  const visibleNotes = normalizedSearchQuery
+    ? notes.filter((note) =>
+        [note.title ?? "", note.content ?? "", note.updated_at ?? ""]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearchQuery)
+      )
+    : notes;
 
   // ================= UI =================
   return (
@@ -141,11 +151,13 @@ export default function Notes() {
             + New Note
           </button>
 
-          {notes.length === 0 && (
-            <div className="notes-empty">No notes yet</div>
+          {visibleNotes.length === 0 && (
+            <div className="notes-empty">
+              {normalizedSearchQuery ? "No notes match your search" : "No notes yet"}
+            </div>
           )}
 
-          {notes.map((n) => (
+          {visibleNotes.map((n) => (
             <div
               key={n.id}
               className={`notes-item ${selectedId === n.id ? "active" : ""}`}

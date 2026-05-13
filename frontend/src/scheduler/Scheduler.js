@@ -3,7 +3,9 @@ import { logger } from "../utils/logger";
 import { useEffect, useState } from "react";
 import "./scheduler.css";
 import { getMeetings, createMeetingApi, updateMeetingApi, deleteMeetingApi } from "./SchedulerService";
+import { useGlobalSearch } from "../search/SearchContext";
 export default function Scheduler() {
+    const { normalizedSearchQuery } = useGlobalSearch();
     // Format a Date as YYYY-MM-DD in the user's local timezone. Calendars
     // should always show events in the viewer's wall clock — using a hardcoded
     // zone here desyncs the displayed date from the date sent on create, which
@@ -177,6 +179,18 @@ export default function Scheduler() {
         setCurrentDate(date);
         setView("day");
     };
+    const visibleEvents = normalizedSearchQuery
+        ? events.filter((event) => [
+            event.title,
+            event.date,
+            event.source,
+            event.zoom_join_url ?? "",
+            ...(event.participants ?? []),
+        ]
+            .join(" ")
+            .toLowerCase()
+            .includes(normalizedSearchQuery))
+        : events;
     // ================= MINI CALENDAR =================
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -205,7 +219,7 @@ export default function Scheduler() {
                                         .toString()
                                         .padStart(2, "0")}`;
                                     const dayDate = formatDateLocal(currentDate);
-                                    const slotEvents = events.filter((e) => e.date === dayDate &&
+                                    const slotEvents = visibleEvents.filter((e) => e.date === dayDate &&
                                         e.start >= mins &&
                                         e.start < mins + 30);
                                     return (_jsxs("div", { className: "time-row", onClick: () => openCreate(dayDate, timeLabel), children: [_jsx("div", { className: "time-label", children: timeLabel }), _jsx("div", { className: "time-events", children: slotEvents.map((e) => (_jsx("div", { className: `event${e.source === "google" ? " from-google" : ""}`, onClick: (ev) => {
@@ -230,7 +244,7 @@ export default function Scheduler() {
                                                     .padStart(2, "0")}:${(mins % 60)
                                                     .toString()
                                                     .padStart(2, "0")}`;
-                                                const slotEvents = events.filter((e) => e.date === dayDate &&
+                                                const slotEvents = visibleEvents.filter((e) => e.date === dayDate &&
                                                     e.start >= mins &&
                                                     e.start < mins + 30);
                                                 return (_jsx("div", { className: "week-cell", onClick: () => openCreate(dayDate, slotTime), children: slotEvents.map((e) => (_jsx("div", { className: `event${e.source === "google" ? " from-google" : ""}`, onClick: (ev) => {
@@ -242,7 +256,7 @@ export default function Scheduler() {
                                         const cellDate = new Date(year, month, i + 1);
                                         const dayDate = formatDateLocal(cellDate);
                                         const isToday = dayDate === todayStr();
-                                        return (_jsxs("div", { className: `day-cell${isToday ? " is-today" : ""}`, onClick: () => openDay(cellDate), children: [_jsx("div", { className: "date", children: i + 1 }), _jsx("div", { className: "events", children: events
+                                        return (_jsxs("div", { className: `day-cell${isToday ? " is-today" : ""}`, onClick: () => openDay(cellDate), children: [_jsx("div", { className: "date", children: i + 1 }), _jsx("div", { className: "events", children: visibleEvents
                                                         .filter((e) => e.date === dayDate)
                                                         .sort((a, b) => a.start - b.start)
                                                         .map((e) => (_jsxs("div", { className: `event${e.source === "google" ? " from-google" : ""}`, onClick: (ev) => {

@@ -15,6 +15,7 @@ pub struct EmailQuery {
     pub before: Option<i64>,
     pub before_id: Option<i32>,
     pub folder: Option<String>,
+    pub q: Option<String>,
 }
 
 #[get("/emails")]
@@ -77,6 +78,24 @@ pub async fn get_emails(
             }
             _ => {}
         }
+    }
+
+    if let Some(search) = query.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        let pattern = format!("%{}%", search.to_lowercase());
+        qb.push(
+            r#"
+            AND (
+                lower(coalesce(e.subject, '')) LIKE 
+            "#,
+        );
+        qb.push_bind(pattern.clone());
+        qb.push(" OR lower(coalesce(e.sender, '')) LIKE ");
+        qb.push_bind(pattern.clone());
+        qb.push(" OR lower(coalesce(e.receiver, '')) LIKE ");
+        qb.push_bind(pattern.clone());
+        qb.push(" OR lower(coalesce(e.gmail_id, '')) LIKE ");
+        qb.push_bind(pattern);
+        qb.push(") ");
     }
 
     // ✅ Pagination filter

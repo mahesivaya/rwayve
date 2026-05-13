@@ -4,8 +4,10 @@ import { apiFetch } from "../api/client";
 const WS_BASE = import.meta.env.VITE_WS_BASE_URL;
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { useGlobalSearch } from "../search/SearchContext";
 export default function Chat() {
     const { user } = useAuth();
+    const { normalizedSearchQuery } = useGlobalSearch();
     const [users, setUsers] = useState([]);
     const [messages, setMessages] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
@@ -127,6 +129,20 @@ export default function Chat() {
         setMessages((prev) => [...prev, message]);
         setInput("");
     };
+    const filteredUsers = normalizedSearchQuery
+        ? users.filter((u) => u.email.toLowerCase().includes(normalizedSearchQuery))
+        : users;
+    const filteredMessages = normalizedSearchQuery
+        ? messages.filter((msg) => [
+            msg.content,
+            msg.status,
+            msg.created_at,
+            selectedUser?.email ?? "",
+        ]
+            .join(" ")
+            .toLowerCase()
+            .includes(normalizedSearchQuery))
+        : messages;
     // =============================
     // UI
     // =============================
@@ -135,7 +151,7 @@ export default function Chat() {
                     minWidth: 0,
                     borderRight: "1px solid #ddd",
                     overflowY: "auto",
-                }, children: [_jsx("h3", { style: { padding: 10 }, children: "Users" }), users.map((u) => (_jsx("div", { style: {
+                }, children: [_jsx("h3", { style: { padding: 10 }, children: "Users" }), filteredUsers.map((u) => (_jsx("div", { style: {
                             padding: 10,
                             cursor: "pointer",
                             borderBottom: "1px solid #eee",
@@ -145,7 +161,7 @@ export default function Chat() {
                     minWidth: 0,
                     display: "flex",
                     flexDirection: "column",
-                }, children: [_jsx("div", { style: { flex: 1, padding: 10, overflowY: "auto" }, children: messages.map((msg, i) => (_jsx("div", { style: {
+                }, children: [_jsx("div", { style: { flex: 1, padding: 10, overflowY: "auto" }, children: filteredMessages.map((msg, i) => (_jsx("div", { style: {
                                 textAlign: msg.sender_id === user?.id ? "right" : "left",
                                 marginBottom: 10,
                             }, children: _jsxs("div", { style: {

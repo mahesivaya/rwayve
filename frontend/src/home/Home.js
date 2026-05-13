@@ -1,12 +1,29 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useGlobalSearch } from "../search/SearchContext";
 import "./home.css";
 export default function Home() {
     const { user, logout } = useAuth();
+    const { normalizedSearchQuery } = useGlobalSearch();
     const navigate = useNavigate();
+    const cards = [
+        { path: "/emails", title: "📧 Emails", description: "View and send emails" },
+        { path: "/chat", title: "💬 Chat", description: "Real-time messaging" },
+        { path: "/call", title: " 📞  🎥 Call", description: "Real-time calling" },
+        { path: "/scheduler", title: "📅 Scheduler", description: "Manage your meetings" },
+        { path: "/drive", title: "📁 Drive", description: "Store and manage files" },
+        { path: "/notes", title: "📝 Notes", description: "Store and manage notes" },
+        { path: "/aichat", title: "✨ AI Chat", description: "Chat with AI" },
+    ];
+    const visibleCards = normalizedSearchQuery
+        ? cards.filter((card) => [card.title, card.description]
+            .join(" ")
+            .toLowerCase()
+            .includes(normalizedSearchQuery))
+        : cards;
     if (!user) {
         return (_jsxs("div", { className: "home", children: [_jsx("h1", { children: "Welcome to Wayve \uD83D\uDE80" }), _jsx("p", { children: "Your all-in-one platform for Email, Chat, and Scheduling." }), _jsxs("div", { className: "auth-buttons", children: [_jsx("button", { onClick: () => navigate("/login"), children: "Login" }), _jsx("button", { onClick: () => navigate("/register"), children: "Register" })] })] }));
     }
-    return (_jsxs("div", { className: "dashboard", children: [_jsx("div", { className: "dashboard-header", children: _jsxs("h2", { children: ["Welcome, ", user.email, " \uD83D\uDC4B"] }) }), _jsxs("div", { className: "dashboard-grid", children: [_jsxs("div", { className: "card", onClick: () => navigate("/emails"), children: [_jsx("h3", { children: "\uD83D\uDCE7 Emails" }), _jsx("p", { children: "View and send emails" })] }), _jsxs("div", { className: "card", onClick: () => navigate("/chat"), children: [_jsx("h3", { children: "\uD83D\uDCAC Chat" }), _jsx("p", { children: "Real-time messaging" })] }), _jsxs("div", { className: "card", onClick: () => navigate("/call"), children: [_jsx("h3", { children: " \uD83D\uDCDE  \uD83C\uDFA5 Call" }), _jsx("p", { children: "Real-time calling" })] }), _jsxs("div", { className: "card", onClick: () => navigate("/scheduler"), children: [_jsx("h3", { children: "\uD83D\uDCC5 Scheduler" }), _jsx("p", { children: "Manage your meetings" })] }), _jsxs("div", { className: "card", onClick: () => navigate("/drive"), children: [_jsx("h3", { children: "\uD83D\uDCC1 Drive" }), _jsx("p", { children: "Store and manage files" })] }), _jsxs("div", { className: "card", onClick: () => navigate("/notes"), children: [_jsx("h3", { children: "\uD83D\uDCDD Notes" }), _jsx("p", { children: "Store and manage notes" })] }), _jsxs("div", { className: "card", onClick: () => navigate("/aichat"), children: [_jsx("h3", { children: "\u2728 AI Chat" }), _jsx("p", { children: "Chat with AI" })] })] })] }));
+    return (_jsxs("div", { className: "dashboard", children: [_jsx("div", { className: "dashboard-header", children: _jsxs("h2", { children: ["Welcome, ", user.email, " \uD83D\uDC4B"] }) }), _jsx("div", { className: "dashboard-grid", children: visibleCards.map((card) => (_jsxs("div", { className: "card", onClick: () => navigate(card.path), children: [_jsx("h3", { children: card.title }), _jsx("p", { children: card.description })] }, card.path))) })] }));
 }
