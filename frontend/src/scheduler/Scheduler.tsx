@@ -1,5 +1,5 @@
 import { logger } from "../utils/logger";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./scheduler.css";
 import {
   createMeetingApi,
@@ -9,9 +9,36 @@ import {
 } from "../api/scheduler";
 import { useGlobalSearch } from "../search/SearchContext";
 
+type CalendarItem = {
+  id: string;
+  name: string;
+  color: string;
+  visible: boolean;
+};
+
+const CALENDAR_STORAGE_KEY = "wayve.scheduler.calendars";
+const EVENT_CALENDAR_STORAGE_KEY = "wayve.scheduler.eventCalendars";
+
+const DEFAULT_CALENDARS: CalendarItem[] = [
+  { id: "office", name: "Office Calendar", color: "#1a73e8", visible: true },
+  { id: "personal", name: "Personal Calendar", color: "#34a853", visible: true },
+  { id: "holiday", name: "Holiday Calendar", color: "#fbbc04", visible: true },
+];
+
+const CALENDAR_COLORS = [
+  "#1a73e8",
+  "#34a853",
+  "#fbbc04",
+  "#a142f4",
+  "#fa7b17",
+  "#24c1e0",
+  "#e8710a",
+];
 
 export default function Scheduler() {
   const { normalizedSearchQuery } = useGlobalSearch();
+  const daySlotsRef = useRef<HTMLDivElement>(null);
+  const weekGridRef = useRef<HTMLDivElement>(null);
 
   // Format a Date as YYYY-MM-DD in the user's local timezone. Calendars
   // should always show events in the viewer's wall clock — using a hardcoded
@@ -24,9 +51,26 @@ export default function Scheduler() {
     return `${y}-${m}-${d}`;
   };
   
-  const [view, setView] = useState<"day" | "week" | "month">("month");
+  const [view, setView] = useState<"day" | "week" | "month">("week");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<any[]>([]);
+  const [calendars, setCalendars] = useState<CalendarItem[]>(() => {
+    try {
+      const stored = localStorage.getItem(CALENDAR_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : DEFAULT_CALENDARS;
+    } catch {
+      return DEFAULT_CALENDARS;
+    }
+  });
+  const [eventCalendars, setEventCalendars] = useState<Record<string, string>>(() => {
+    try {
+      const stored = localStorage.getItem(EVENT_CALENDAR_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [newCalendarName, setNewCalendarName] = useState("");
 
   // modal
   const [showModal, setShowModal] = useState(false);
@@ -38,9 +82,18 @@ export default function Scheduler() {
   const [selectedDate, setSelectedDate] = useState(
     formatDateLocal(currentDate)
   );
+  const [selectedCalendarId, setSelectedCalendarId] = useState("office");
 
   const [participants, setParticipants] = useState<string[]>([]);
   const [emailInput, setEmailInput] = useState("");
+
+  useEffect(() => {
+    localStorage.setItem(CALENDAR_STORAGE_KEY, JSON.stringify(calendars));
+  }, [calendars]);
+
+  useEffect(() => {
+    localStorage.setItem(EVENT_CALENDAR_STORAGE_KEY, JSON.stringify(eventCalendars));
+  }, [eventCalendars]);
 
   const deleteMeeting = async () => {
     if (!editingEvent) return;
@@ -59,7 +112,26 @@ export default function Scheduler() {
     }
   };
 
+  const defaultVisibleStartHour = 6;
   const slots = Array.from({ length: 48 }, (_, i) => i);
+
+  const scrollToDefaultVisibleTime = (targetView = view) => {
+    const scrollTarget = defaultVisibleStartHour * 2 * 44;
+    const target = targetView === "day" ? daySlotsRef.current : weekGridRef.current;
+    if (target) {
+      target.scrollTop = scrollTarget;
+    }
+  };
+
+  const queueDefaultTimeScroll = (targetView = view) => {
+    window.requestAnimationFrame(() => scrollToDefaultVisibleTime(targetView));
+  };
+
+  useEffect(() => {
+    if (view === "day" || view === "week") {
+      queueDefaultTimeScroll(view);
+    }
+  }, [view, currentDate]);
 
   // ================= HELPERS =================
   const toMinutes = (time: string) => {
@@ -70,6 +142,41 @@ export default function Scheduler() {
   const fromTime = (time: string) => {
     const [h, m] = time.split(":").map(Number);
     return h * 60 + m;
+  };
+
+  const getCalendarIdForEvent = (event: any) => {
+    if (event.source === "google") return "holiday";
+    return eventCalendars[String(event.id)] ?? "office";
+  };
+
+  const getCalendarForEvent = (event: any) => {
+    const calendarId = getCalendarIdForEvent(event);
+    return calendars.find((calendar) => calendar.id === calendarId) ?? calendars[0];
+  };
+
+  const createCalendar = () => {
+    const name = newCalendarName.trim();
+    if (!name) return;
+
+    const id = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+    const color = CALENDAR_COLORS[calendars.length % CALENDAR_COLORS.length];
+
+    setCalendars((prev) => [
+      ...prev,
+      { id, name, color, visible: true },
+    ]);
+    setSelectedCalendarId(id);
+    setNewCalendarName("");
+  };
+
+  const toggleCalendar = (calendarId: string) => {
+    setCalendars((prev) =>
+      prev.map((calendar) =>
+        calendar.id === calendarId
+          ? { ...calendar, visible: !calendar.visible }
+          : calendar
+      )
+    );
   };
 
   const toTime = (mins: number) => {
@@ -178,8 +285,18 @@ export default function Scheduler() {
 
     if (editingEvent) {
       await updateMeetingApi(editingEvent.id, payload);
+      setEventCalendars((prev) => ({
+        ...prev,
+        [String(editingEvent.id)]: selectedCalendarId,
+      }));
     } else {
-      await createMeetingApi(payload);
+      const created = await createMeetingApi(payload);
+      if (created?.meeting_id) {
+        setEventCalendars((prev) => ({
+          ...prev,
+          [String(created.meeting_id)]: selectedCalendarId,
+        }));
+      }
     }
 
     resetModal();
@@ -191,6 +308,7 @@ export default function Scheduler() {
     setEditingEvent(null);
     setTitle("");
     setParticipants([]);
+    setSelectedCalendarId("office");
   };
 
   // ================= EDIT =================
@@ -201,6 +319,7 @@ export default function Scheduler() {
     setSelectedDate(event.date);
     setStart(toTime(event.start));
     setEnd(toTime(event.end));
+    setSelectedCalendarId(getCalendarIdForEvent(event));
     setParticipants(event.participants ?? []);
     setEmailInput("");
 
@@ -211,6 +330,7 @@ export default function Scheduler() {
     setEditingEvent(null);
     setTitle("");
     setParticipants([]);
+    setSelectedCalendarId(calendars.find((calendar) => calendar.visible)?.id ?? "office");
     setEmailInput("");
     const baseStart = startTime ?? addMinutesToTime(nowTimeStr(), 0);
     setSelectedDate(date ?? todayStr());
@@ -222,6 +342,7 @@ export default function Scheduler() {
   const openDay = (date: Date) => {
     setCurrentDate(date);
     setView("day");
+    queueDefaultTimeScroll("day");
   };
 
   const visibleEvents = normalizedSearchQuery
@@ -238,6 +359,10 @@ export default function Scheduler() {
           .includes(normalizedSearchQuery)
       )
     : events;
+  const calendarVisibleEvents = visibleEvents.filter((event) => {
+    const calendar = getCalendarForEvent(event);
+    return calendar?.visible ?? true;
+  });
 
   // ================= MINI CALENDAR =================
   const year = currentDate.getFullYear();
@@ -250,11 +375,29 @@ export default function Scheduler() {
     setCurrentDate(newDate);
   };
 
+  const weekStart = new Date(currentDate);
+  weekStart.setDate(currentDate.getDate() - currentDate.getDay());
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + i);
+    return day;
+  });
+
+  const formatHour = (mins: number) => {
+    const date = new Date();
+    date.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
+    return date.toLocaleTimeString([], { hour: "numeric" });
+  };
+
   return (
     <div className="scheduler">
 
       {/* SIDEBAR */}
       <div className="scheduler-sidebar">
+        <button className="scheduler-create-main" onClick={() => openCreate()}>
+          <span>＋</span>
+          Create
+        </button>
 
         <div className="mini-header">
           <button onClick={() => changeMonth(-1)}>◀</button>
@@ -265,6 +408,12 @@ export default function Scheduler() {
             })}
           </span>
           <button onClick={() => changeMonth(1)}>▶</button>
+        </div>
+
+        <div className="mini-weekdays">
+          {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
+            <span key={`${day}-${index}`}>{day}</span>
+          ))}
         </div>
 
         <div className="mini-calendar">
@@ -282,6 +431,7 @@ export default function Scheduler() {
                 onClick={() => {
                   setCurrentDate(d);
                   setView("day");
+                  queueDefaultTimeScroll("day");
                 }}
               >
                 {day}
@@ -290,6 +440,35 @@ export default function Scheduler() {
           })}
         </div>
 
+        <div className="calendar-create-box">
+          <input
+            value={newCalendarName}
+            onChange={(e) => setNewCalendarName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") createCalendar();
+            }}
+            placeholder="New calendar"
+          />
+          <button onClick={createCalendar}>＋</button>
+        </div>
+
+        <div className="calendar-section">
+          <div className="calendar-section-title">My calendars</div>
+          {calendars.map((calendar) => (
+            <label key={calendar.id} className="calendar-toggle">
+              <input
+                type="checkbox"
+                checked={calendar.visible}
+                onChange={() => toggleCalendar(calendar.id)}
+              />
+              <span
+                className="calendar-color"
+                style={{ borderColor: calendar.color, background: calendar.visible ? calendar.color : "transparent" }}
+              />
+              <span>{calendar.name}</span>
+            </label>
+          ))}
+        </div>
       </div>
 
 
@@ -300,8 +479,27 @@ export default function Scheduler() {
       <div className="calendar">
 
         <div className="calendar-header">
-          <button onClick={() => setView("day")}>Day</button>
-          <button onClick={() => setView("week")}>Week</button>
+          <button onClick={() => {
+            setCurrentDate(new Date());
+            setView("week");
+            queueDefaultTimeScroll("week");
+          }}>Today</button>
+          <button onClick={() => changeMonth(-1)}>‹</button>
+          <button onClick={() => changeMonth(1)}>›</button>
+          <div className="calendar-title">
+            {currentDate.toLocaleDateString("en-US", {
+              month: "long",
+              year: "numeric",
+            })}
+          </div>
+          <button onClick={() => {
+            setView("day");
+            queueDefaultTimeScroll("day");
+          }}>Day</button>
+          <button onClick={() => {
+            setView("week");
+            queueDefaultTimeScroll("week");
+          }}>Week</button>
           <button onClick={() => setView("month")}>Month</button>
 
           <button className="create-btn" onClick={() => openCreate()}>
@@ -318,7 +516,7 @@ export default function Scheduler() {
       {currentDate.toDateString()}
     </h3>
 
-    <div className="day-slots">
+    <div className="day-slots" ref={daySlotsRef}>
       {slots.map((slot) => {
         const mins = slot * 30;
 
@@ -330,7 +528,7 @@ export default function Scheduler() {
 
         const dayDate = formatDateLocal(currentDate);
 
-        const slotEvents = visibleEvents.filter(
+        const slotEvents = calendarVisibleEvents.filter(
           (e) =>
             e.date === dayDate &&
             e.start >= mins &&
@@ -347,9 +545,13 @@ export default function Scheduler() {
 
             <div className="time-events">
               {slotEvents.map((e) => (
+                (() => {
+                  const calendar = getCalendarForEvent(e);
+                  return (
                 <div
                   key={e.id}
                   className={`event${e.source === "google" ? " from-google" : ""}`}
+                  style={{ background: calendar?.color }}
                   onClick={(ev) => {
                     ev.stopPropagation();
                     openEdit(e);
@@ -357,6 +559,8 @@ export default function Scheduler() {
                 >
                   {e.title}
                 </div>
+                  );
+                })()
               ))}
             </div>
           </div>
@@ -376,9 +580,7 @@ export default function Scheduler() {
 
     <div className="week-header">
       <div className="time-spacer">Time</div>
-      {[...Array(7)].map((_, i) => {
-        const d = new Date(currentDate);
-        d.setDate(currentDate.getDate() - currentDate.getDay() + i);
+      {weekDays.map((d, i) => {
         const isToday = formatDateLocal(d) === todayStr();
 
         return (
@@ -387,7 +589,7 @@ export default function Scheduler() {
             className={`week-day-header${isToday ? " is-today" : ""}`}
           >
             <span className="week-day-name">
-              {d.toLocaleDateString("en-US", { weekday: "short" })}
+              {d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}
             </span>
             <span className="week-day-num">{d.getDate()}</span>
           </div>
@@ -395,7 +597,7 @@ export default function Scheduler() {
       })}
     </div>
 
-    <div className="week-grid">
+    <div className="week-grid" ref={weekGridRef}>
       {slots.map((slot) => {
         const mins = slot * 30;
 
@@ -411,8 +613,7 @@ export default function Scheduler() {
             </div>
 
             {[...Array(7)].map((_, i) => {
-              const d = new Date(currentDate);
-              d.setDate(currentDate.getDate() - currentDate.getDay() + i);
+              const d = weekDays[i];
 
               const dayDate = formatDateLocal(d);
               const slotTime = `${Math.floor(mins / 60)
@@ -421,7 +622,7 @@ export default function Scheduler() {
                 .toString()
                 .padStart(2, "0")}`;
 
-              const slotEvents = visibleEvents.filter(
+              const slotEvents = calendarVisibleEvents.filter(
                 (e) =>
                   e.date === dayDate &&
                   e.start >= mins &&
@@ -435,16 +636,25 @@ export default function Scheduler() {
                   onClick={() => openCreate(dayDate, slotTime)}
                 >
                   {slotEvents.map((e) => (
+                    (() => {
+                      const calendar = getCalendarForEvent(e);
+                      return (
                     <div
                       key={e.id}
                       className={`event${e.source === "google" ? " from-google" : ""}`}
+                      style={{ background: calendar?.color }}
                       onClick={(ev) => {
                         ev.stopPropagation();
                         openEdit(e);
                       }}
                     >
-                      {e.title}
+                      <span className="event-title">{e.title}</span>
+                      <span className="event-time">
+                        {formatHour(e.start)} - {formatHour(e.end)}
+                      </span>
                     </div>
+                      );
+                    })()
                   ))}
                 </div>
               );
@@ -482,13 +692,17 @@ export default function Scheduler() {
                   >
                     <div className="date">{i + 1}</div>
                     <div className="events">
-                      {visibleEvents
+                      {calendarVisibleEvents
                         .filter((e) => e.date === dayDate)
                         .sort((a, b) => a.start - b.start)
                         .map((e) => (
+                          (() => {
+                            const calendar = getCalendarForEvent(e);
+                            return (
                           <div
                             key={e.id}
                             className={`event${e.source === "google" ? " from-google" : ""}`}
+                            style={{ background: calendar?.color }}
                             onClick={(ev) => {
                               ev.stopPropagation();
                               openEdit(e);
@@ -500,6 +714,8 @@ export default function Scheduler() {
                             </span>
                             <span className="event-title">{e.title}</span>
                           </div>
+                            );
+                          })()
                         ))}
                     </div>
                   </div>
@@ -554,6 +770,20 @@ export default function Scheduler() {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                 />
+              </div>
+
+              <div className="form-group">
+                <label>Calendar</label>
+                <select
+                  value={selectedCalendarId}
+                  onChange={(e) => setSelectedCalendarId(e.target.value)}
+                >
+                  {calendars.map((calendar) => (
+                    <option key={calendar.id} value={calendar.id}>
+                      {calendar.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-group">

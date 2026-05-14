@@ -295,7 +295,7 @@
 .body {
   display: flex;
   flex: 1;
-  height: calc(100vh - 112px);
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -458,22 +458,6 @@
   background: #2563eb;
   color: white;
 }
-
-/* =============================
-   📂 ACCOUNT SIDEBAR
-============================== */
-/* .account-sidebar {
-  width: 260px;
-
-  background: #f5f7fb;
-  border-right: 1px solid #e5e7eb;
-
-  display: flex;
-  flex-direction: column;
-  padding: 16px;
-
-  overflow-y: auto;
-} */
 
 /* =============================
    📄 CONTENT

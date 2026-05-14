@@ -242,29 +242,31 @@ export default function Layout() {
       </div>
 
       <SearchContext.Provider value={searchValue}>
-      <div className="global-search-row">
-        <div className="global-search-box">
-          <span className="global-search-icon" aria-hidden="true">⌕</span>
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={`Search ${searchLabel}`}
-            aria-label={`Search ${searchLabel}`}
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              className="global-search-clear"
-              onClick={() => setSearchQuery("")}
-              title="Clear search"
-              aria-label="Clear search"
-            >
-              ×
-            </button>
-          )}
+      {location.pathname !== "/scheduler" && (
+        <div className="global-search-row">
+          <div className="global-search-box">
+            <span className="global-search-icon" aria-hidden="true">⌕</span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={`Search ${searchLabel}`}
+              aria-label={`Search ${searchLabel}`}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="global-search-clear"
+                onClick={() => setSearchQuery("")}
+                title="Clear search"
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 🔥 BODY */}
       <div className="body">
@@ -296,9 +298,6 @@ export default function Layout() {
             </span>
           </button>
         </div>
-
-        {/* SECOND SIDEBAR (EMAIL ACCOUNTS) */}
-        <div className="account-sidebar"></div>
 
         {/* MAIN CONTENT */}
         <div className={`content ${splitOpen ? "split" : ""}`}>
