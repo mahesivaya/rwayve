@@ -13,6 +13,7 @@ import { useAuth } from "./auth/AuthContext";
 const Home = lazy(() => import("./home/Home"));
 const Emails = lazy(() => import("./emails/Emails"));
 const Chat = lazy(() => import("./chat/Chat"));
+const Call = lazy(() => import("./call/Call"));
 const Scheduler = lazy(() => import("./scheduler/Scheduler"));
 const Drive = lazy(() => import("./drive/DriveBox"));
 const Notes = lazy(() => import("./notes/Notes"));
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="/emails" element={<Emails />} />
             <Route path="/email-files" element={<EmailFiles />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/call" element={<Call />} />
             <Route path="/scheduler" element={<Scheduler />} />
             <Route path="/drive" element={<Drive />} />
             <Route path="/notes" element={<Notes />} />

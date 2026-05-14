@@ -1,0 +1,321 @@
+use crate::cache::{Cache, chat_history_key};
+use crate::models::message::{ChatMessage, MessageStatus};
+use crate::prelude::*;
+use crate::security::encryption::encrypt;
+
+use super::dto::WsAuthQuery;
+
+use actix::{Actor, ActorFutureExt, Addr, Handler, Message as ActixMessage, StreamHandler};
+use actix_web_actors::ws;
+use actix_web_actors::ws::WebsocketContext;
+use lazy_static::lazy_static;
+use sqlx::{PgPool, Row};
+use std::collections::HashMap;
+use std::sync::Mutex;
+use tracing::{debug, error, info};
+
+lazy_static! {
+    static ref SESSIONS: Mutex<HashMap<i32, Addr<ChatSession>>> = Mutex::new(HashMap::new());
+}
+
+#[derive(ActixMessage)]
+#[rtype(result = "()")]
+pub struct WsMessage(pub String);
+
+// ================= CHAT SESSION =================
+
+pub struct ChatSession {
+    pub pool: PgPool,
+    pub user_id: i32,
+    pub cache: Option<Cache>,
+}
+
+pub async fn chat_ws(
+    req: HttpRequest,
+    stream: web::Payload,
+    pool: web::Data<PgPool>,
+    cache: web::Data<Option<Cache>>,
+    query: web::Query<WsAuthQuery>,
+) -> Result<HttpResponse, actix_web::Error> {
+    // Auth: a valid JWT in `?token=...` is required. user_id is derived from
+    // the verified claims, NOT from the query string — preventing impersonation.
+    let token = match query.token.as_deref() {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            tracing::warn!(target: "ws", "chat_ws rejected: missing token");
+            return Ok(HttpResponse::Unauthorized().body("Missing token"));
+        }
+    };
+
+    let user_id = match crate::security::jwt::decode_jwt(token) {
+        Some(claims) => claims.sub,
+        None => {
+            tracing::warn!(target: "ws", "chat_ws rejected: invalid token");
+            return Ok(HttpResponse::Unauthorized().body("Invalid token"));
+        }
+    };
+
+    ws::start(
+        ChatSession {
+            pool: pool.get_ref().clone(),
+            user_id,
+            cache: cache.get_ref().clone(),
+        },
+        &req,
+        stream,
+    )
+}
+
+// ================= ACTOR =================
+
+impl Actor for ChatSession {
+    type Context = ws::WebsocketContext<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        info!("Chat WS connected: user_id={}", self.user_id);
+        SESSIONS.lock().unwrap().insert(self.user_id, ctx.address());
+    }
+
+    fn stopped(&mut self, _: &mut Self::Context) {
+        info!("Chat WS disconnected: user_id={}", self.user_id);
+        SESSIONS.lock().unwrap().remove(&self.user_id);
+    }
+}
+
+// ================= RECEIVE WS =================
+
+impl Handler<WsMessage> for ChatSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: WsMessage, ctx: &mut Self::Context) {
+        ctx.text(msg.0);
+    }
+}
+
+// ================= MAIN WS LOGIC =================
+
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match msg {
+            Ok(ws::Message::Text(text)) => {
+                debug!(target: "ws", user_id = self.user_id, len = text.len(), "chat msg in");
+
+                let parsed: Result<ChatMessage, _> = serde_json::from_str(&text);
+
+                if let Ok(data) = parsed {
+                    // ================= READ RECEIPT =================
+                    if matches!(data.status, Some(MessageStatus::Read)) {
+                        let pool = self.pool.clone();
+                        let reader = self.user_id;
+                        let Some(other) = data.receiver_id else {
+                            return;
+                        };
+
+                        actix::spawn(async move {
+                            let _ = sqlx::query(
+                                r#"
+                                UPDATE messages
+                                SET status = 'read'
+                                WHERE receiver_id = $1 AND sender_id = $2
+                                "#,
+                            )
+                            .bind(reader)
+                            .bind(other)
+                            .execute(&pool)
+                            .await;
+                        });
+
+                        return;
+                    }
+
+                    // ================= NORMAL MESSAGE =================
+
+                    let pool = self.pool.clone();
+                    let cache = self.cache.clone();
+                    let sender_id = self.user_id;
+                    let receiver_id = data.receiver_id;
+                    let channel_id = data.channel_id;
+                    let content = data.content.clone();
+
+                    let (iv, encrypted) = match encrypt(&content) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            error!(
+                                "Chat encrypt failed (sender={}, receiver={:?}): {:?}",
+                                sender_id, receiver_id, e
+                            );
+                            return;
+                        }
+                    };
+
+                    if let Some(channel_id) = channel_id {
+                        let fut = {
+                            let pool = pool.clone();
+                            async move {
+                                let is_member = sqlx::query_scalar::<_, bool>(
+                                    r#"
+                                    SELECT EXISTS(
+                                        SELECT 1
+                                        FROM channel_members
+                                        WHERE channel_id = $1 AND user_id = $2
+                                    )
+                                    "#,
+                                )
+                                .bind(channel_id)
+                                .bind(sender_id)
+                                .fetch_one(&pool)
+                                .await?;
+
+                                if !is_member {
+                                    return Err(sqlx::Error::RowNotFound);
+                                }
+
+                                let row = sqlx::query(
+                                    r#"
+                                    INSERT INTO channel_messages
+                                    (channel_id, sender_id, content_encrypted, content_iv)
+                                    VALUES ($1, $2, $3, $4)
+                                    RETURNING id, created_at
+                                    "#,
+                                )
+                                .bind(channel_id)
+                                .bind(sender_id)
+                                .bind(encrypted)
+                                .bind(iv)
+                                .fetch_one(&pool)
+                                .await?;
+
+                                let members = sqlx::query_scalar::<_, i32>(
+                                    "SELECT user_id FROM channel_members WHERE channel_id = $1",
+                                )
+                                .bind(channel_id)
+                                .fetch_all(&pool)
+                                .await?;
+
+                                Ok::<_, sqlx::Error>((row, members))
+                            }
+                        };
+
+                        ctx.spawn(actix::fut::wrap_future(fut).map(
+                            move |res, _act, ctx: &mut WebsocketContext<Self>| {
+                                if let Ok((row, members)) = res {
+                                    let message_id: i32 = row.get("id");
+                                    let created_naive: chrono::NaiveDateTime =
+                                        row.get("created_at");
+                                    let created_at =
+                                        chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                            created_naive,
+                                            chrono::Utc,
+                                        );
+
+                                    let msg_json = serde_json::json!({
+                                        "message_id": message_id,
+                                        "channel_id": channel_id,
+                                        "sender_id": sender_id,
+                                        "content": content,
+                                        "status": "sent",
+                                        "created_at": created_at.to_rfc3339()
+                                    })
+                                    .to_string();
+
+                                    let sessions = SESSIONS.lock().unwrap();
+                                    for member_id in members {
+                                        if member_id == sender_id {
+                                            continue;
+                                        }
+
+                                        if let Some(addr) = sessions.get(&member_id) {
+                                            addr.do_send(WsMessage(msg_json.clone()));
+                                        }
+                                    }
+
+                                    ctx.text(msg_json);
+                                }
+                            },
+                        ));
+
+                        return;
+                    }
+
+                    let Some(receiver_id) = receiver_id else {
+                        return;
+                    };
+
+                    let fut = async move {
+                        sqlx::query(
+                            r#"
+                            INSERT INTO messages
+                            (sender_id, receiver_id, content_encrypted, content_iv, status)
+                            VALUES ($1, $2, $3, $4, 'sent')
+                            RETURNING id, created_at
+                            "#,
+                        )
+                        .bind(sender_id)
+                        .bind(receiver_id)
+                        .bind(encrypted)
+                        .bind(iv)
+                        .fetch_one(&pool)
+                        .await
+                    };
+
+                    let sender_addr = ctx.address();
+
+                    ctx.spawn(actix::fut::wrap_future(fut).map(
+                        move |res, _act, ctx: &mut WebsocketContext<Self>| {
+                            if let Ok(row) = res {
+                                let message_id: i32 = row.get("id");
+                                let created_naive: chrono::NaiveDateTime = row.get("created_at");
+                                let created_at =
+                                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                        created_naive,
+                                        chrono::Utc,
+                                    );
+
+                                let msg_json = serde_json::json!({
+                                    "message_id": message_id,
+                                    "sender_id": sender_id,
+                                    "receiver_id": receiver_id,
+                                    "content": content,
+                                    "status": "sent",
+                                    "created_at": created_at.to_rfc3339()
+                                })
+                                .to_string();
+
+                                // SEND TO RECEIVER
+                                if let Some(addr) = SESSIONS.lock().unwrap().get(&receiver_id) {
+                                    addr.do_send(WsMessage(msg_json.clone()));
+
+                                    // 🔥 DELIVERED
+                                    let delivered_json = serde_json::json!({
+                                        "type": "status_update",
+                                        "message_id": message_id,
+                                        "status": "delivered"
+                                    })
+                                    .to_string();
+
+                                    sender_addr.do_send(WsMessage(delivered_json));
+                                }
+
+                                // SEND BACK TO SENDER
+                                ctx.text(msg_json);
+
+                                // BUST CACHE for this conversation so the next
+                                // history fetch sees the new message immediately.
+                                if let Some(c) = cache.clone() {
+                                    let key = chat_history_key(sender_id, receiver_id);
+                                    actix_web::rt::spawn(async move {
+                                        c.del(&key).await;
+                                    });
+                                }
+                            }
+                        },
+                    ));
+                }
+            }
+
+            Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
+            Ok(ws::Message::Close(_)) => ctx.stop(),
+            _ => {}
+        }
+    }
+}

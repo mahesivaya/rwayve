@@ -133,6 +133,58 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS channels (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    visibility TEXT NOT NULL DEFAULT 'private',
+    created_by INT REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'private';
+
+CREATE TABLE IF NOT EXISTS channel_members (
+    channel_id INT REFERENCES channels(id) ON DELETE CASCADE,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL DEFAULT 'user',
+    joined_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (channel_id, user_id)
+);
+
+ALTER TABLE channel_members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+
+UPDATE channel_members cm
+SET role = 'admin'
+FROM channels c
+WHERE c.id = cm.channel_id AND c.created_by = cm.user_id;
+
+CREATE TABLE IF NOT EXISTS channel_join_requests (
+    channel_id INT REFERENCES channels(id) ON DELETE CASCADE,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending',
+    requested_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (channel_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS channel_invites (
+    id SERIAL PRIMARY KEY,
+    channel_id INT REFERENCES channels(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    invited_by INT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(channel_id, email)
+);
+
+CREATE TABLE IF NOT EXISTS channel_messages (
+    id SERIAL PRIMARY KEY,
+    channel_id INT REFERENCES channels(id) ON DELETE CASCADE,
+    sender_id INT REFERENCES users(id) ON DELETE CASCADE,
+    content_encrypted TEXT,
+    content_iv TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
 
 CREATE TABLE IF NOT EXISTS files (
     id BIGSERIAL PRIMARY KEY,
@@ -173,6 +225,18 @@ ON messages (receiver_id, sender_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_messages_unread
 ON messages (receiver_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_channel_members_user
+ON channel_members (user_id, channel_id);
+
+CREATE INDEX IF NOT EXISTS idx_channel_join_requests_channel
+ON channel_join_requests (channel_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_channel_invites_channel
+ON channel_invites (channel_id, email);
+
+CREATE INDEX IF NOT EXISTS idx_channel_messages_channel_created
+ON channel_messages (channel_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_emails_account_created
 ON emails (account_id, created_at DESC, id DESC);

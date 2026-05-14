@@ -1,146 +1,257 @@
-import { logger } from "../utils/logger";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
 import {
+  addChatChannelUsers,
+  approveChatChannelJoinRequest,
+  createChatChannel,
+  getChannelMessages,
   getChatMessages,
-  getChatUsers,
+  joinChatChannel,
+  removeChatChannelUser,
+  type ChatChannel,
   type ChatMessage,
   type ChatUser,
+  updateChatChannelSubject,
+  updateChatChannelVisibility,
 } from "../api/chat";
-import { getAuthToken } from "../auth/token";
-const WS_BASE = import.meta.env.VITE_WS_BASE_URL;
-
-import { useEffect, useState, useRef } from "react";
-import { useAuth } from "../auth/AuthContext";
 import { useGlobalSearch } from "../search/SearchContext";
+import { logger } from "../utils/logger";
+import ChatHeader from "./components/ChatHeader";
+import ChannelSettingsPanel from "./components/ChannelSettingsPanel";
+import ConversationSidebar from "./components/ConversationSidebar";
+import MessageComposer from "./components/MessageComposer";
+import MessageThread from "./components/MessageThread";
+import { useChatConversations } from "./hooks/useChatConversations";
+import { useChatSocket } from "./hooks/useChatSocket";
+import type { ChannelRole, ChannelVisibility, Conversation } from "./types";
+import {
+  getChannelAdmins,
+  getChannelUsers,
+  getConversationTitle,
+  isChannelAdmin,
+  parseEmails,
+} from "./utils";
+import "./chat.css";
 
 export default function Chat() {
   const { user } = useAuth();
   const { normalizedSearchQuery } = useGlobalSearch();
 
-  const [users, setUsers] = useState<ChatUser[]>([]);
+  const { users, channels, setChannels, refreshChannels: fetchChannels } =
+    useChatConversations(user?.id);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [selectedUser, setSelectedUser] = useState<ChatUser | null>(null);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [input, setInput] = useState("");
 
-  const wsRef = useRef<WebSocket | null>(null);
+  const [creatingChannel, setCreatingChannel] = useState(false);
+  const [channelName, setChannelName] = useState("");
+  const [inviteRole, setInviteRole] = useState<ChannelRole>("user");
+  const [inviteEmails, setInviteEmails] = useState("");
+  const [channelError, setChannelError] = useState("");
 
-  // =============================
-  // 🔥 FORMAT TIME
-  // =============================
-  const formatTime = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  const [channelSettingsOpen, setChannelSettingsOpen] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const [subjectDraft, setSubjectDraft] = useState("");
+  const [visibilityDraft, setVisibilityDraft] = useState<ChannelVisibility>("private");
+  const [addUserRole, setAddUserRole] = useState<ChannelRole>("user");
+  const [addUserEmails, setAddUserEmails] = useState("");
 
-  // =============================
-  // 🔥 STATUS ICON
-  // =============================
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "sent":
-        return "✓";
-      case "delivered":
-        return "✓✓";
-      case "read":
-        return "👁";
-      default:
-        return "";
+  const selectedRef = useRef<Conversation | null>(null);
+
+  const selectedChannel =
+    selectedConversation?.type === "channel" ? selectedConversation.channel : null;
+  const selectedTitle = useMemo(
+    () => getConversationTitle(selectedConversation),
+    [selectedConversation],
+  );
+  const isSelectedChannelAdmin = isChannelAdmin(selectedChannel, user);
+  const canChatInSelectedChannel = !selectedChannel || selectedChannel.is_member;
+
+  useEffect(() => {
+    selectedRef.current = selectedConversation;
+  }, [selectedConversation]);
+
+  const appendRealtimeMessage = useCallback((msg: ChatMessage) => {
+    setMessages((prev) => [...prev, msg]);
+  }, []);
+
+  const { wsRef, isConnected: isChatSocketConnected } = useChatSocket(
+    user,
+    selectedRef,
+    appendRealtimeMessage,
+  );
+
+  useEffect(() => {
+    setSettingsError("");
+    setSubjectDraft(selectedChannel?.name ?? "");
+    setVisibilityDraft(selectedChannel?.visibility ?? "private");
+  }, [selectedChannel]);
+
+  const refreshChannels = async (activeChannelId?: number) => {
+    const channelData = await fetchChannels();
+
+    if (!activeChannelId) return;
+    const activeChannel = channelData.find((channel) => channel.id === activeChannelId);
+    if (activeChannel) {
+      setSelectedConversation({ type: "channel", channel: activeChannel });
     }
   };
 
-  // =============================
-  // 🔥 FETCH USERS
-  // =============================
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const data = await getChatUsers();
-        setUsers(data.filter((u) => u.id !== user?.id));
-
-      } catch (err) {
-        logger.error("Fetch users failed", err);
-      }
-    };
-
-    if (user) fetchUsers();
-  }, [user]);
-
-  // =============================
-  // 🔥 CONNECT WEBSOCKET
-  // =============================
-  useEffect(() => {
-    if (!user) return;
-
-    // Auth: backend now derives user_id from the JWT and rejects connections
-    // without a valid `?token=` query param. Don't send user_id — it's ignored.
-    const token = getAuthToken() ?? "";
-    const ws = new WebSocket(
-      `ws://${WS_BASE}/ws/chat?token=${encodeURIComponent(token)}`,
-    );
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      logger.log("✅ WS connected");
-    };
-
-    ws.onmessage = (event) => {
-      const msg: ChatMessage = JSON.parse(event.data);
-
-      // Echoes of our own sends are already shown optimistically — skip them
-      // (they also tend to arrive with a missing/renamed timestamp, which
-      // rendered as "Invalid Date").
-      if (msg.sender_id === user.id) return;
-
-      setMessages((prev) => [...prev, msg]);
-    };
-
-    ws.onclose = () => {
-      logger.log("❌ WS disconnected");
-    };
-
-    return () => {
-      ws.close();
-    };
-  }, [user]);
-
-  // =============================
-  // 🔥 LOAD MESSAGES
-  // =============================
-  const loadMessages = async (otherUser: ChatUser) => {
+  const loadUserMessages = async (otherUser: ChatUser) => {
     if (!user) return;
 
     try {
       setMessages(await getChatMessages(user.id, otherUser.id));
-      setSelectedUser(otherUser);
-
+      setSelectedConversation({ type: "user", user: otherUser });
+      setChannelSettingsOpen(false);
     } catch (err) {
       logger.error("Failed to load messages", err);
     }
   };
 
-  // =============================
-  // 🔥 SEND MESSAGE
-  // =============================
-  const sendMessage = () => {
-    if (!wsRef.current || !user || !selectedUser || !input.trim()) return;
+  const loadChannelMessages = async (channel: ChatChannel) => {
+    if (!channel.is_member) {
+      setMessages([]);
+      setSelectedConversation({ type: "channel", channel });
+      setChannelSettingsOpen(false);
+      return;
+    }
 
-    const now = new Date().toISOString();
+    try {
+      setMessages(await getChannelMessages(channel.id));
+      setSelectedConversation({ type: "channel", channel });
+      setChannelSettingsOpen(false);
+    } catch (err) {
+      logger.error("Failed to load channel messages", err);
+    }
+  };
+
+  const sendMessage = () => {
+    if (!wsRef.current || !user || !selectedConversation || !input.trim()) return;
+    if (wsRef.current.readyState !== WebSocket.OPEN) {
+      logger.warn("Chat socket not ready; message send skipped", {
+        readyState: wsRef.current.readyState,
+      });
+      return;
+    }
 
     const message: ChatMessage = {
       sender_id: user.id,
-      receiver_id: selectedUser.id,
-      content: input,
-      status: "sent", // initial status
-      created_at: now,
+      content: input.trim(),
+      status: "sent",
+      created_at: new Date().toISOString(),
+      ...(selectedConversation.type === "channel"
+        ? { channel_id: selectedConversation.channel.id }
+        : { receiver_id: selectedConversation.user.id }),
     };
 
     wsRef.current.send(JSON.stringify(message));
-
     setMessages((prev) => [...prev, message]);
     setInput("");
   };
+
+  const createChannel = async () => {
+    setChannelError("");
+
+    try {
+      const channel = await createChatChannel(
+        channelName,
+        inviteRole,
+        parseEmails(inviteEmails),
+      );
+      setChannels((prev) => [channel, ...prev]);
+      setChannelName("");
+      setInviteRole("user");
+      setInviteEmails("");
+      setCreatingChannel(false);
+      await loadChannelMessages(channel);
+    } catch (err) {
+      setChannelError(err instanceof Error ? err.message : "Failed to create channel");
+    }
+  };
+
+  const joinChannel = async (channel: ChatChannel) => {
+    setSettingsError("");
+    setChannelError("");
+
+    try {
+      await joinChatChannel(channel.id);
+      await refreshChannels(channel.id);
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : "Failed to join channel");
+    }
+  };
+
+  const saveSubject = async () => {
+    if (!selectedChannel) return;
+    setSettingsError("");
+
+    try {
+      await updateChatChannelSubject(selectedChannel.id, subjectDraft);
+      await refreshChannels(selectedChannel.id);
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : "Failed to update subject");
+    }
+  };
+
+  const saveVisibility = async () => {
+    if (!selectedChannel) return;
+    setSettingsError("");
+
+    try {
+      await updateChatChannelVisibility(selectedChannel.id, visibilityDraft);
+      await refreshChannels(selectedChannel.id);
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : "Failed to update visibility");
+    }
+  };
+
+  const addUsers = async () => {
+    if (!selectedChannel) return;
+    setSettingsError("");
+
+    try {
+      await addChatChannelUsers(selectedChannel.id, addUserRole, parseEmails(addUserEmails));
+      setAddUserRole("user");
+      setAddUserEmails("");
+      await refreshChannels(selectedChannel.id);
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : "Failed to add users");
+    }
+  };
+
+  const deleteUser = async (email: string) => {
+    if (!selectedChannel) return;
+    setSettingsError("");
+
+    try {
+      await removeChatChannelUser(selectedChannel.id, email.replace(" invited", ""));
+      await refreshChannels(selectedChannel.id);
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : "Failed to delete user");
+    }
+  };
+
+  const approveJoinRequest = async (userId: number) => {
+    if (!selectedChannel) return;
+    setSettingsError("");
+
+    try {
+      await approveChatChannelJoinRequest(selectedChannel.id, userId);
+      await refreshChannels(selectedChannel.id);
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : "Failed to approve request");
+    }
+  };
+
+  const filteredChannels = normalizedSearchQuery
+    ? channels.filter((channel) =>
+        [channel.name, channel.visibility, ...channel.member_emails]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearchQuery),
+      )
+    : channels;
 
   const filteredUsers = normalizedSearchQuery
     ? users.filter((u) => u.email.toLowerCase().includes(normalizedSearchQuery))
@@ -152,117 +263,88 @@ export default function Chat() {
           msg.content,
           msg.status,
           msg.created_at,
-          selectedUser?.email ?? "",
+          selectedConversation?.type === "channel"
+            ? selectedConversation.channel.name
+            : selectedConversation?.user.email ?? "",
         ]
           .join(" ")
           .toLowerCase()
-          .includes(normalizedSearchQuery)
+          .includes(normalizedSearchQuery),
       )
     : messages;
 
-  // =============================
-  // UI
-  // =============================
   return (
-    <div style={{ display: "flex", height: "100%", width: "100%", flex: 1 }}>
+    <div className="chat-container">
+      <ConversationSidebar
+        users={filteredUsers}
+        channels={filteredChannels}
+        selectedConversation={selectedConversation}
+        creatingChannel={creatingChannel}
+        channelName={channelName}
+        inviteRole={inviteRole}
+        inviteEmails={inviteEmails}
+        channelError={channelError}
+        onToggleCreateChannel={() => setCreatingChannel((open) => !open)}
+        onChannelNameChange={setChannelName}
+        onInviteRoleChange={setInviteRole}
+        onInviteEmailsChange={setInviteEmails}
+        onCancelCreateChannel={() => setCreatingChannel(false)}
+        onCreateChannel={createChannel}
+        onSelectChannel={loadChannelMessages}
+        onJoinChannel={joinChannel}
+        onSelectUser={loadUserMessages}
+      />
 
-      {/* LEFT USERS */}
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          borderRight: "1px solid #ddd",
-          overflowY: "auto",
-        }}
-      >
-        <h3 style={{ padding: 10 }}>Users</h3>
+      <section className="chat-area">
+        <ChatHeader
+          title={selectedTitle}
+          selectedChannel={selectedChannel}
+          settingsOpen={channelSettingsOpen}
+          onToggleSettings={() => setChannelSettingsOpen((open) => !open)}
+          onJoinChannel={joinChannel}
+        />
 
-        {filteredUsers.map((u) => (
-          <div
-            key={u.id}
-            style={{
-              padding: 10,
-              cursor: "pointer",
-              borderBottom: "1px solid #eee",
-              background: selectedUser?.id === u.id ? "#f0f0f0" : "lightsteelblue",
-            }}
-            onClick={() => loadMessages(u)}
-          >
-            {u.email}
-          </div>
-        ))}
-      </div>
+        <div className="chat-content-row">
+          <MessageThread
+            messages={filteredMessages}
+            selectedChannel={selectedChannel}
+            currentUserId={user?.id}
+          />
 
-      {/* RIGHT CHAT */}
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-
-        {/* MESSAGES */}
-        <div style={{ flex: 1, padding: 10, overflowY: "auto" }}>
-          {filteredMessages.map((msg, i) => (
-            <div
-              key={i}
-              style={{
-                textAlign:
-                  msg.sender_id === user?.id ? "right" : "left",
-                marginBottom: 10,
-              }}
-            >
-              <div
-                style={{
-                  padding: "8px 12px",
-                  background:
-                    msg.sender_id === user?.id ? "#DCF8C6" : "#eee",
-                  borderRadius: 8,
-                  display: "inline-block",
-                  maxWidth: "70%",
-                }}
-              >
-                {msg.content}
-
-                {/* 🔥 TIME + STATUS */}
-                <div
-                  style={{
-                    fontSize: 10,
-                    marginTop: 4,
-                    opacity: 0.7,
-                    textAlign: "right",
-                  }}
-                >
-                  {formatTime(msg.created_at)}{" "}
-                  {msg.sender_id === user?.id &&
-                    getStatusIcon(msg.status)}
-                </div>
-              </div>
-            </div>
-          ))}
+          {selectedChannel && channelSettingsOpen && (
+            <ChannelSettingsPanel
+              channel={selectedChannel}
+              isAdmin={isSelectedChannelAdmin}
+              admins={getChannelAdmins(selectedChannel)}
+              users={getChannelUsers(selectedChannel)}
+              subjectDraft={subjectDraft}
+              visibilityDraft={visibilityDraft}
+              addUserRole={addUserRole}
+              addUserEmails={addUserEmails}
+              error={settingsError}
+              onSubjectDraftChange={setSubjectDraft}
+              onVisibilityDraftChange={setVisibilityDraft}
+              onAddUserRoleChange={setAddUserRole}
+              onAddUserEmailsChange={setAddUserEmails}
+              onSaveSubject={saveSubject}
+              onSaveVisibility={saveVisibility}
+              onDeleteUser={deleteUser}
+              onAddUsers={addUsers}
+              onApproveJoinRequest={approveJoinRequest}
+            />
+          )}
         </div>
 
-        {/* INPUT */}
-        {selectedUser && (
-          <div style={{ display: "flex", padding: 10 }}>
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-              style={{ flex: 1, marginRight: 10 }}
-              placeholder="Type message..."
-            />
-            <button onClick={sendMessage}>Send</button>
-          </div>
-        )}
-      </div>
+        <MessageComposer
+          conversation={selectedConversation}
+          canChat={canChatInSelectedChannel}
+          isConnected={isChatSocketConnected}
+          title={selectedTitle}
+          input={input}
+          onInputChange={setInput}
+          onSend={sendMessage}
+        />
+      </section>
     </div>
   );
 }

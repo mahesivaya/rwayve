@@ -30,7 +30,8 @@ pub struct MessageResponse {
 #[derive(Serialize, Deserialize)]
 pub struct ChatMessage {
     pub sender_id: i32,
-    pub receiver_id: i32,
+    pub receiver_id: Option<i32>,
+    pub channel_id: Option<i32>,
     pub content: String,
     pub status: Option<MessageStatus>,
     pub message_id: Option<i32>,

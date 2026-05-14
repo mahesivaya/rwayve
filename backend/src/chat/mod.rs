@@ -1,9 +1,29 @@
+mod channel_create;
+mod channel_join;
+mod channel_members;
+mod channel_messages;
+mod channel_queries;
+mod channel_settings;
+mod channels;
+mod direct_messages;
+mod dto;
 pub mod handler;
+mod helpers;
+mod websocket;
 
 use actix_web::web;
 
 pub fn routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(handler::get_messages);
+    cfg.service(handler::get_messages)
+        .service(handler::get_channels)
+        .service(handler::create_channel)
+        .service(handler::update_channel_subject)
+        .service(handler::update_channel_visibility)
+        .service(handler::join_channel)
+        .service(handler::approve_channel_join_request)
+        .service(handler::add_channel_users)
+        .service(handler::remove_channel_user)
+        .service(handler::get_channel_messages);
 }
 
 pub fn ws_routes(cfg: &mut web::ServiceConfig) {
