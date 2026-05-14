@@ -867,3 +867,11 @@ server {
 
 }
 ubuntu@ip-10-0-2-5:/etc/nginx/sites-enabled$ 
+
+
+
+ 2839* docker compose -f infra/docker-compose.yml up --build\n
+ 2840* docker compose -f infra/docker-compose.yml config --quiet\n
+ 2841* docker compose -f infra/docker-compose.yml up --build\n
+ 2842* docker compose -f infra/docker-compose.yml config --quiet\n
+ 2843* docker compose -f infra/docker-compose.yml up --build\n

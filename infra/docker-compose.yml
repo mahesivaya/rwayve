@@ -56,6 +56,7 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+    image: rwayve-backend:local
     container_name: backend
     restart: always
     depends_on:
@@ -65,12 +66,57 @@ services:
         condition: service_healthy
     env_file:
       - ../backend/.env
+    environment:
+      RWAYVE_ROLE: api
     volumes:
       - ../client_secret.json:/app/client_secret.json
       - ../uploads:/app/uploads
       - ../logs:/app/logs
     ports:
       - "8080:8080"
+
+  email_sync_worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: rwayve-email-sync-worker:local
+    container_name: email_sync_worker
+    hostname: email_sync_worker
+    restart: always
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    env_file:
+      - ../backend/.env
+    environment:
+      RWAYVE_ROLE: email-sync-worker
+    volumes:
+      - ../client_secret.json:/app/client_secret.json
+      - ../logs:/app/logs
+
+  email_body_worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: rwayve-email-body-worker:local
+    container_name: email_body_worker
+    hostname: email_body_worker
+    restart: always
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    env_file:
+      - ../backend/.env
+    environment:
+      RWAYVE_ROLE: email-body-worker
+    volumes:
+      - ../client_secret.json:/app/client_secret.json
+      - ../uploads:/app/uploads
+      - ../logs:/app/logs
 
   frontend:
     build:

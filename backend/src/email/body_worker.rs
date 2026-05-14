@@ -25,24 +25,22 @@ const ACCOUNTS_PER_ITERATION: i64 = 10;
 const IDLE_SLEEP_SECS: u64 = 60;
 const ERROR_SLEEP_SECS: u64 = 10;
 
-pub fn start_body_worker(pool: PgPool) {
-    tokio::spawn(async move {
-        info!(target: "worker", "body_worker started");
-        loop {
-            match run_iteration(&pool).await {
-                Ok(0) => {
-                    sleep(Duration::from_secs(IDLE_SLEEP_SECS)).await;
-                }
-                Ok(n) => {
-                    debug!(target: "worker", count = n, "body_worker iteration done");
-                }
-                Err(e) => {
-                    error!(target: "worker", error = ?e, "body_worker iteration failed");
-                    sleep(Duration::from_secs(ERROR_SLEEP_SECS)).await;
-                }
+pub async fn run_body_worker(pool: PgPool) -> ! {
+    info!(target: "worker", "body_worker started");
+    loop {
+        match run_iteration(&pool).await {
+            Ok(0) => {
+                sleep(Duration::from_secs(IDLE_SLEEP_SECS)).await;
+            }
+            Ok(n) => {
+                debug!(target: "worker", count = n, "body_worker iteration done");
+            }
+            Err(e) => {
+                error!(target: "worker", error = ?e, "body_worker iteration failed");
+                sleep(Duration::from_secs(ERROR_SLEEP_SECS)).await;
             }
         }
-    });
+    }
 }
 
 async fn run_iteration(pool: &PgPool) -> Result<usize> {

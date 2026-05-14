@@ -34,7 +34,7 @@ use crate::observability::devlog::init_devlog;
 use crate::observability::tracing::init_tracing;
 // 🚧 use crate::observability::tracing_root::AppRootSpanBuilder; // disabled
 
-use crate::email::body_worker::start_body_worker;
+use crate::email::body_worker::run_body_worker;
 use crate::email::sync::sync_all;
 
 // ==============================
@@ -61,6 +61,43 @@ fn load_env_files() {
     dotenvy::from_filename("backend/.env").ok();
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RuntimeRole {
+    Api,
+    EmailSyncWorker,
+    EmailBodyWorker,
+    All,
+}
+
+impl RuntimeRole {
+    fn from_env() -> Self {
+        match env::var("RWAYVE_ROLE").as_deref() {
+            Ok("email-sync-worker") => Self::EmailSyncWorker,
+            Ok("email-body-worker") => Self::EmailBodyWorker,
+            Ok("all") => Self::All,
+            _ => Self::Api,
+        }
+    }
+}
+
+fn db_max_connections(role: RuntimeRole) -> u32 {
+    if let Ok(value) = env::var("DATABASE_MAX_CONNECTIONS") {
+        if let Ok(parsed) = value.parse::<u32>() {
+            return parsed;
+        }
+
+        warn!(
+            value,
+            "Invalid DATABASE_MAX_CONNECTIONS value; using role default"
+        );
+    }
+
+    match role {
+        RuntimeRole::Api | RuntimeRole::All => 10,
+        RuntimeRole::EmailSyncWorker | RuntimeRole::EmailBodyWorker => 5,
+    }
+}
+
 fn app_routes(cfg: &mut web::ServiceConfig) {
     cfg
         // 🔥 GROUP API ROUTES
@@ -83,27 +120,25 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
         .service(Files::new("/uploads", "./uploads").show_files_listing());
 }
 
-fn start_sync_worker(pool: PgPool) {
-    tokio::spawn(async move {
-        let mut interval = Duration::from_secs(30);
-        info!("Sync worker started");
+async fn run_sync_worker(pool: PgPool) -> ! {
+    let mut interval = Duration::from_secs(30);
+    info!("Sync worker started");
 
-        loop {
-            match sync_all(&pool).await {
-                Ok(_) => {
-                    info!("Sync cycle success");
-                    interval = Duration::from_secs(30);
-                }
-                Err(e) => {
-                    error!("Sync cycle failed: {:?}", e);
-                    interval = std::cmp::min(interval * 2, Duration::from_secs(300));
-                    warn!("Sync backoff: {:?}", interval);
-                }
+    loop {
+        match sync_all(&pool).await {
+            Ok(_) => {
+                info!("Sync cycle success");
+                interval = Duration::from_secs(30);
             }
-
-            sleep(interval).await;
+            Err(e) => {
+                error!("Sync cycle failed: {:?}", e);
+                interval = std::cmp::min(interval * 2, Duration::from_secs(300));
+                warn!("Sync backoff: {:?}", interval);
+            }
         }
-    });
+
+        sleep(interval).await;
+    }
 }
 
 async fn ensure_schema(pool: &PgPool) {
@@ -211,15 +246,19 @@ async fn main() -> std::io::Result<()> {
     load_env_files();
     info!("Server starting...");
     tracing::info!("Server starting...");
+    let role = RuntimeRole::from_env();
+    info!(?role, "Runtime role selected");
 
     let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| panic!("DATABASE_URL missing"));
+    let max_db_connections = db_max_connections(role);
+    info!(max_db_connections, "Database pool size selected");
     // Log the first failure verbosely; subsequent identical failures get a
     // compact dot-counter so dev.log doesn't fill with the same line.
     let pool = {
         let mut attempts: u32 = 0;
         loop {
             match PgPoolOptions::new()
-                .max_connections(10)
+                .max_connections(max_db_connections)
                 .connect(&db_url)
                 .await
             {
@@ -246,8 +285,21 @@ async fn main() -> std::io::Result<()> {
 
     ensure_schema(&pool).await;
 
-    start_sync_worker(pool.clone());
-    start_body_worker(pool.clone());
+    match role {
+        RuntimeRole::EmailSyncWorker => run_sync_worker(pool).await,
+        RuntimeRole::EmailBodyWorker => run_body_worker(pool).await,
+        RuntimeRole::All => {
+            let sync_pool = pool.clone();
+            tokio::spawn(async move {
+                run_sync_worker(sync_pool).await;
+            });
+            let body_pool = pool.clone();
+            tokio::spawn(async move {
+                run_body_worker(body_pool).await;
+            });
+        }
+        RuntimeRole::Api => {}
+    }
 
     let redis_cache = match crate::cache::Cache::connect().await {
         Ok(c) => {
