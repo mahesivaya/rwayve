@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { login } from "../api/Auth";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { homePathForAccount } from "../auth/accountHome";
 import { API_BASE } from "../config";
 import "./login.css";
 
@@ -33,9 +34,9 @@ export default function Login() {
         throw new Error("No token returned");
       }
 
-      authLogin(data.token);
+      authLogin(data.token, data.account_type ?? "personal");
 
-      navigate("/emails");
+      navigate(homePathForAccount(data.account_type));
     } catch (err) {
       logger.error(err);
       setError("Login failed. Check your credentials.");

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { register } from "../api/Auth";
 import { useAuth } from "../auth/AuthContext";
+import { homePathForAccount } from "../auth/accountHome";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../config";
 import "./login.css"; // ✅ reuse styles
@@ -44,9 +45,9 @@ export default function Register() {
         throw new Error("No token returned from server");
       }
 
-      login(data.token);
+      login(data.token, data.account_type ?? "personal");
 
-      navigate("/emails");
+      navigate(homePathForAccount(data.account_type));
     } catch (err: any) {
       setError(err.message || "Registration failed");
     }

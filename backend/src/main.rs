@@ -198,6 +198,9 @@ async fn ensure_schema(pool: &PgPool) {
         "CREATE INDEX IF NOT EXISTS idx_channel_join_requests_channel ON channel_join_requests (channel_id, status)",
         "CREATE INDEX IF NOT EXISTS idx_channel_invites_channel ON channel_invites (channel_id, email)",
         "CREATE INDEX IF NOT EXISTS idx_channel_messages_channel_created ON channel_messages (channel_id, created_at DESC)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'personal'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT",
+        "CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx ON users (username) WHERE username IS NOT NULL",
     ] {
         if let Err(e) = sqlx::query(statement).execute(pool).await {
             error!("Failed to ensure chat channel schema: {:?}", e);

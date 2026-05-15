@@ -16,6 +16,7 @@ pub struct LoginInput {
 #[derive(Serialize)]
 pub struct LoginResponse {
     pub token: String,
+    pub account_type: String,
 }
 
 #[derive(Deserialize)]

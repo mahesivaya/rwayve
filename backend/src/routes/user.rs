@@ -54,6 +54,105 @@ pub struct ProfileUpdate {
     pub last_name: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct AdminCreateUserInput {
+    pub username: String,
+    pub email: String,
+    pub password: String,
+}
+
+#[post("/admin/users")]
+#[instrument(target = "auth", skip(req, pool, data), fields(email = %data.email))]
+pub async fn admin_create_user(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    data: web::Json<AdminCreateUserInput>,
+) -> impl Responder {
+    let admin_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let admin_account_type: Option<String> =
+        match sqlx::query_scalar("SELECT account_type FROM users WHERE id = $1")
+            .bind(admin_id)
+            .fetch_optional(pool.get_ref())
+            .await
+        {
+            Ok(value) => value,
+            Err(e) => {
+                error!(target: "db", admin_id, error = ?e, "admin account lookup failed");
+                return HttpResponse::InternalServerError().finish();
+            }
+        };
+
+    if admin_account_type.as_deref() != Some("business") {
+        warn!(target: "auth", admin_id, "non-business user tried to create user");
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({ "message": "Only business admins can create users" }));
+    }
+
+    let username = data.username.trim();
+    let email = data.email.trim().to_lowercase();
+
+    if username.is_empty() || email.is_empty() || data.password.is_empty() {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "message": "Username, email, and password are required" }));
+    }
+
+    if data.password.len() < 6 {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "message": "Password must be at least 6 characters" }));
+    }
+
+    let hashed = match hash(&data.password, DEFAULT_COST) {
+        Ok(value) => value,
+        Err(e) => {
+            error!(target: "auth", error = %e, "admin create user bcrypt hash failed");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    let result = sqlx::query(
+        r#"
+        INSERT INTO users (username, email, password, auth_provider, account_type)
+        VALUES ($1, $2, $3, 'local', 'personal')
+        RETURNING id, username, email, account_type
+        "#,
+    )
+    .bind(username)
+    .bind(&email)
+    .bind(&hashed)
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(row) => {
+            let id: i32 = row.get("id");
+            let username: Option<String> = row.try_get("username").ok();
+            let email: String = row.get("email");
+            let account_type: String = row.get("account_type");
+
+            info!(target: "auth", admin_id, user_id = id, "business admin created user");
+            HttpResponse::Created().json(serde_json::json!({
+                "id": id,
+                "username": username,
+                "email": email,
+                "account_type": account_type
+            }))
+        }
+        Err(e) => {
+            if e.to_string().contains("duplicate key") {
+                return HttpResponse::Conflict()
+                    .json(serde_json::json!({ "message": "Username or email already exists" }));
+            }
+
+            error!(target: "db", admin_id, error = ?e, "admin create user failed");
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
 #[get("/profile")]
 #[instrument(target = "http", skip(req, pool))]
 pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {

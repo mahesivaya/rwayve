@@ -13,6 +13,10 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT;
 -- Google signup support: password is NULL for users who registered via OAuth.
 ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'local';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'personal';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx
+    ON users (username) WHERE username IS NOT NULL;
 
 -- Password reset tokens. Single-use, 30-minute lifetime.
 CREATE TABLE IF NOT EXISTS password_reset_tokens (

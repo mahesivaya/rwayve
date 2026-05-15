@@ -1,12 +1,15 @@
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useGlobalSearch } from "../search/SearchContext";
+import { useState } from "react";
+import { SERVICES } from "../services/serviceData";
 import "./home.css";
 
 export default function Home() {
   const { user, logout } = useAuth();
   const { normalizedSearchQuery } = useGlobalSearch();
   const navigate = useNavigate();
+  const [servicesOpen, setServicesOpen] = useState(true);
 
   const cards = [
     { path: "/emails", title: "📧 Emails", description: "View and send emails" },
@@ -15,6 +18,7 @@ export default function Home() {
     { path: "/scheduler", title: "📅 Scheduler", description: "Manage your meetings" },
     { path: "/drive", title: "📁 Drive", description: "Store and manage files" },
     { path: "/notes", title: "📝 Notes", description: "Store and manage notes" },
+    { path: "/tasks", title: "☑ Tasks", description: "Create and track tasks" },
     { path: "/aichat", title: "✨ AI Chat", description: "Chat with AI" },
   ];
 
@@ -29,21 +33,157 @@ export default function Home() {
 
   if (!user) {
     return (
-      <div className="home">
-        <h1>Welcome to Wayve 🚀</h1>
-        <p>Your all-in-one platform for Email, Chat, and Scheduling.</p>
+      <div className="public-home">
+        <header className="public-home-nav">
+          <button className="public-home-brand" onClick={() => navigate("/")}>
+            Wayve
+          </button>
 
-        <div className="auth-buttons">
-          <button onClick={() => navigate("/login")}>Login</button>
-          <button onClick={() => navigate("/register")}>Register</button>
-          <button onClick={() => navigate("/business")}>Business</button>
-        </div>
+          <nav className="public-home-links" aria-label="Main navigation">
+            <div className="services-menu">
+              <button
+                className={`services-trigger ${servicesOpen ? "active" : ""}`}
+                onClick={() => setServicesOpen((open) => !open)}
+                aria-expanded={servicesOpen}
+                aria-controls="services-dropdown"
+              >
+                Services
+                <span className="services-caret" aria-hidden="true">
+                  {servicesOpen ? "⌃" : "⌄"}
+                </span>
+              </button>
+            </div>
+
+            <button onClick={() => navigate("/business")}>Business</button>
+            <button onClick={() => navigate("/#pricing")}>Pricing</button>
+            <button onClick={() => navigate("/#x")}>X</button>
+            <button onClick={() => navigate("/#y")}>Y</button>
+            <button onClick={() => navigate("/#z")}>Z</button>
+          </nav>
+
+          <div className="public-home-actions">
+            <button className="home-login-btn" onClick={() => navigate("/login")}>
+              Login
+            </button>
+            <button className="home-register-btn" onClick={() => navigate("/register")}>
+              Register
+            </button>
+          </div>
+        </header>
+
+        <main className="public-home-main">
+          {servicesOpen && (
+            <section
+              id="services-dropdown"
+              className="services-dropdown-panel"
+              aria-label="Available services"
+            >
+              <div className="services-grid">
+                {SERVICES.map((service) => (
+                  <button
+                    key={service.slug}
+                    className="service-item"
+                    onClick={() => navigate(`/services/${service.slug}`)}
+                  >
+                    <span className={`service-icon ${service.accent}`}>
+                      {service.icon}
+                    </span>
+                    <span className="service-copy">
+                      <span className="service-title-row">
+                        <span className="service-title">{service.name}</span>
+                        {service.slug === "meet" && <span className="service-badge">New</span>}
+                      </span>
+                      <span className="service-description">{service.summary}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="services-more">
+                <h2>More from Wayve</h2>
+                <div className="services-more-grid">
+                  <button onClick={() => navigate("/business")}>
+                    <span className="service-icon business">B</span>
+                    <span>
+                      <strong>Wayve Business</strong>
+                      <small>Team tools for communication and work.</small>
+                    </span>
+                  </button>
+                  <button onClick={() => navigate("/login")}>
+                    <span className="service-icon security">S</span>
+                    <span>
+                      <strong>Secure Login</strong>
+                      <small>Access your private workspace.</small>
+                    </span>
+                  </button>
+                  <button onClick={() => navigate("/register")}>
+                    <span className="service-icon account">+</span>
+                    <span>
+                      <strong>Create Account</strong>
+                      <small>Start using all services in one place.</small>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+
+          <section className="public-home-hero">
+            <div className="hero-copy">
+              <p className="hero-kicker">Private workspace for modern teams</p>
+              <h1>One home for mail, chat, calls, files, notes, and AI.</h1>
+              <p>
+                Wayve brings daily work tools into a single secure app, with fast
+                switching between personal productivity and team collaboration.
+              </p>
+              <div className="hero-actions">
+                <button onClick={() => navigate("/register")}>Get started</button>
+                <button onClick={() => navigate("/login")}>Sign in</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="pricing" className="home-info-band">
+            <h2>Pricing</h2>
+            <p>Simple plans for individuals, growing teams, and business workspaces.</p>
+          </section>
+
+          <section className="home-info-grid">
+            <article id="x">
+              <h2>X</h2>
+              <p>Flexible communication tools for day-to-day work.</p>
+            </article>
+            <article id="y">
+              <h2>Y</h2>
+              <p>Organized collaboration across files, schedules, and notes.</p>
+            </article>
+            <article id="z">
+              <h2>Z</h2>
+              <p>Secure productivity features ready for business workflows.</p>
+            </article>
+          </section>
+        </main>
       </div>
     );
   }
 
   return (
     <div className="dashboard">
+      <div className="dashboard-topbar">
+        <button className="dashboard-brand" onClick={() => navigate("/home")}>
+          Wayve
+        </button>
+        <button
+          className="dashboard-logout-btn"
+          onClick={() => {
+            logout();
+            navigate("/login");
+          }}
+        >
+          Logout
+        </button>
+      </div>
+
       {/* HEADER */}
       <div className="dashboard-header">
         <h2>Welcome, {user.email} 👋</h2>

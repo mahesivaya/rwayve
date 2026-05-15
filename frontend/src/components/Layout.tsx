@@ -13,9 +13,19 @@ const CallView = lazy(() => import("../call/Call"));
 const SchedulerView = lazy(() => import("../scheduler/Scheduler"));
 const DriveView = lazy(() => import("../drive/DriveBox"));
 const NotesView = lazy(() => import("../notes/Notes"));
+const TasksView = lazy(() => import("../tasks/Tasks"));
 const AIChatView = lazy(() => import("../aichat/AIChat"));
 
-type AppKey = "home" | "emails" | "chat" | "call" | "scheduler" | "drive" | "notes" | "aichat";
+type AppKey =
+  | "home"
+  | "emails"
+  | "chat"
+  | "call"
+  | "scheduler"
+  | "drive"
+  | "notes"
+  | "tasks"
+  | "aichat";
 
 const SPLIT_APPS = [
   { key: "home" as AppKey, label: "Home", path: "/", icon: "🏠", Comp: HomeView },
@@ -25,6 +35,7 @@ const SPLIT_APPS = [
   { key: "scheduler" as AppKey, label: "Scheduler", path: "/scheduler", icon: "📅", Comp: SchedulerView },
   { key: "drive" as AppKey, label: "Files", path: "/drive", icon: "📁", Comp: DriveView },
   { key: "notes" as AppKey, label: "Notes", path: "/notes", icon: "📝", Comp: NotesView },
+  { key: "tasks" as AppKey, label: "Tasks", path: "/tasks", icon: "☑", Comp: TasksView },
   { key: "aichat" as AppKey, label: "AI Chat", path: "/aichat", icon: "✨", Comp: AIChatView },
 ];
 
@@ -37,6 +48,7 @@ const SEARCH_LABELS: Record<string, string> = {
   "/scheduler": "meetings",
   "/drive": "files",
   "/notes": "notes",
+  "/tasks": "tasks",
   "/aichat": "AI chat",
   "/profile": "profile",
   "/settings": "settings",
@@ -148,6 +160,7 @@ export default function Layout() {
           {navItem("/scheduler", "scheduler", "Scheduler")}
           {navItem("/drive", "drive", "Files")}
           {navItem("/notes", "notes", "Notes")}
+          {navItem("/tasks", "tasks", "Tasks")}
           {navItem("/aichat", "aichat", "AI Chat")}
         </div>
 
@@ -278,6 +291,7 @@ export default function Layout() {
           <Link to="/scheduler">📅</Link>
           <Link to="/drive">📁</Link>
           <Link to="/notes">📝</Link>
+          <Link to="/tasks">☑</Link>
           <Link to="/aichat">✨</Link>
 
           <div className="icon-sidebar-spacer" />

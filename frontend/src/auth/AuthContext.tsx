@@ -14,17 +14,23 @@ const log = logger.scope("auth");
 type UserType = {
   email: string;
   id: number;
+  account_type: "personal" | "business";
 };
 
 type AuthType = {
   user: UserType | null;
-  login: (token: string) => void;
+  login: (token: string, accountType?: "personal" | "business") => void;
   logout: () => void;
 };
 
 const AuthContext = createContext<AuthType | null>(null);
 
-type Claims = { sub: number; email: string; exp?: number };
+type Claims = {
+  sub: number;
+  email: string;
+  account_type?: "personal" | "business";
+  exp?: number;
+};
 
 // Decode JWT payload. Returns null on malformed/expired tokens so callers
 // can treat a stale token the same as no token.
@@ -77,7 +83,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = resolveBootToken();
     if (!token) return null;
     const claims = parseJwt(token);
-    return claims ? { email: claims.email, id: claims.sub } : null;
+    return claims
+      ? {
+          email: claims.email,
+          id: claims.sub,
+          account_type: claims.account_type ?? "personal",
+        }
+      : null;
   });
 
   const setupEncryption = async (token: string) => {
@@ -152,9 +164,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Only patch state if the server sees a different user — avoids a
         // pointless re-render when the optimistic claims already matched.
         setUser((prev) =>
-          prev && prev.id === data.id && prev.email === data.email
+          prev &&
+          prev.id === data.id &&
+          prev.email === data.email &&
+          prev.account_type === (data.account_type ?? "personal")
             ? prev
-            : { email: data.email, id: data.id }
+            : {
+                email: data.email,
+                id: data.id,
+                account_type: data.account_type ?? "personal",
+              }
         );
 
         setupEncryption(token).catch((err) =>
@@ -169,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => ctrl.abort();
   }, []);
 
-  const login = (token: string) => {
+  const login = (token: string, accountType?: "personal" | "business") => {
     setAuthToken(token);
 
     const decoded = parseJwt(token);
@@ -178,6 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser({
         email: decoded.email,
         id: decoded.sub,
+        account_type: accountType ?? decoded.account_type ?? "personal",
       });
     }
 

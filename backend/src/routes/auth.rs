@@ -4,7 +4,7 @@ use crate::email::sender::send_mail;
 use crate::models::auth::{ForgotInput, LoginInput, LoginResponse, RegisterInput, ResetInput};
 use crate::models::message::MessageResponse;
 use crate::models::user::User;
-use crate::security::jwt::create_jwt;
+use crate::security::jwt::{create_jwt, create_jwt_for_account};
 use bcrypt::{DEFAULT_COST, hash, verify};
 use rand::RngCore;
 use tracing::{error, info, instrument, warn};
@@ -42,7 +42,10 @@ pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -
             let user_id: i32 = row.get("id");
             info!("User registered: {}", data.email);
             let token = create_jwt(user_id, data.email.clone());
-            HttpResponse::Ok().json(serde_json::json!({ "token": token }))
+            HttpResponse::Ok().json(serde_json::json!({
+                "token": token,
+                "account_type": "personal"
+            }))
         }
 
         Err(e) => {
@@ -64,11 +67,12 @@ pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -
 async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResponse {
     info!(target: "auth", "login attempt");
 
-    let user_result =
-        sqlx::query_as::<_, User>("SELECT id, email, password FROM users WHERE email = $1")
-            .bind(&data.email)
-            .fetch_optional(pool.get_ref())
-            .await;
+    let user_result = sqlx::query_as::<_, User>(
+        "SELECT id, email, password, account_type FROM users WHERE email = $1",
+    )
+    .bind(&data.email)
+    .fetch_optional(pool.get_ref())
+    .await;
 
     let user = match user_result {
         Ok(Some(user)) => user,
@@ -115,8 +119,11 @@ async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResp
     }
 
     info!("Login success: {}", data.email);
-    let token = create_jwt(user.id, user.email.clone());
-    HttpResponse::Ok().json(LoginResponse { token })
+    let token = create_jwt_for_account(user.id, user.email.clone(), user.account_type.clone());
+    HttpResponse::Ok().json(LoginResponse {
+        token,
+        account_type: user.account_type,
+    })
 }
 
 fn random_token_hex() -> String {

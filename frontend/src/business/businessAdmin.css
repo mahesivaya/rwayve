@@ -1,0 +1,226 @@
+.business-admin-home {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  box-sizing: border-box;
+  background: lightsteelblue;
+}
+
+.business-admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  background: #d7e4f4;
+}
+
+.business-admin-header h1 {
+  margin: 0;
+  color: #111827;
+  font-size: 24px;
+}
+
+.business-admin-header p {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.business-admin-header button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fee2e2;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.business-admin-create {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  background: #d7e4f4;
+}
+
+.business-admin-section-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.business-admin-section-header h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 18px;
+}
+
+.business-admin-section-header p {
+  margin: 5px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.business-admin-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.business-admin-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.business-admin-form span {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.business-admin-form input {
+  width: 100%;
+  min-height: 38px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  font: inherit;
+}
+
+.business-admin-form input:focus {
+  outline: 2px solid #bfdbfe;
+  border-color: #2563eb;
+}
+
+.business-admin-form button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.business-admin-form button:disabled {
+  background: #93c5fd;
+  border-color: #93c5fd;
+  cursor: default;
+}
+
+.business-admin-error,
+.business-admin-success {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.business-admin-error {
+  border: 1px solid #fecaca;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.business-admin-success {
+  border: 1px solid #bbf7d0;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.business-admin-created-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.business-admin-created-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.business-admin-created-row strong,
+.business-admin-created-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.business-admin-created-row strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.business-admin-created-row span {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.business-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.business-admin-grid article {
+  min-height: 120px;
+  padding: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.business-admin-grid article:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  box-shadow: inset 4px 0 0 #1a73e8, 0 3px 10px rgba(15, 23, 42, 0.08);
+}
+
+.business-admin-grid h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 16px;
+}
+
+.business-admin-grid p {
+  margin: 10px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .business-admin-form {
+    grid-template-columns: 1fr;
+  }
+
+  .business-admin-form button {
+    justify-self: start;
+  }
+}

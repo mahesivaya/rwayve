@@ -3,15 +3,25 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, deco
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
+fn default_account_type() -> String {
+    "personal".to_string()
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: i32,
     pub email: String,
+    #[serde(default = "default_account_type")]
+    pub account_type: String,
     pub exp: usize,
 }
 
 // 🔥 CREATE JWT
 pub fn create_jwt(user_id: i32, email: String) -> String {
+    create_jwt_for_account(user_id, email, "personal".to_string())
+}
+
+pub fn create_jwt_for_account(user_id: i32, email: String, account_type: String) -> String {
     let secret = std::env::var("JWT_SECRET").unwrap_or("secret".into());
 
     let expiration = Utc::now()
@@ -22,6 +32,7 @@ pub fn create_jwt(user_id: i32, email: String) -> String {
     let claims = Claims {
         sub: user_id,
         email,
+        account_type,
         exp: expiration,
     };
 

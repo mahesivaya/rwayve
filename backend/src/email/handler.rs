@@ -7,7 +7,7 @@ use crate::email::sync::sync_account_recent;
 use crate::email::utils::{extract_attachments, extract_body};
 use crate::models::email_request::SendEmailRequest;
 use crate::security::encryption::{decrypt, encrypt};
-use crate::security::jwt::{create_jwt, get_user_id_from_request};
+use crate::security::jwt::{create_jwt_for_account, get_user_id_from_request};
 use actix_web::{HttpResponse, Responder, get, web};
 use base64::Engine;
 use sqlx::PgPool;
@@ -30,15 +30,40 @@ pub struct LoginQuery {
 // to know it must create a user before linking the Gmail account.
 const SIGNUP_STATE: &str = "signup";
 
+fn google_redirect_uri(req: &HttpRequest, secrets: &Value) -> String {
+    if let Ok(uri) = std::env::var("GOOGLE_OAUTH_REDIRECT_URI") {
+        let uri = uri.trim();
+        if !uri.is_empty() {
+            return uri.to_string();
+        }
+    }
+
+    if let Ok(base_url) = std::env::var("BACKEND_URL") {
+        let base_url = base_url.trim().trim_end_matches('/');
+        if !base_url.is_empty() {
+            return format!("{base_url}/oauth/callback");
+        }
+    }
+
+    let connection = req.connection_info();
+    let host = connection.host();
+    if host.starts_with("localhost") || host.starts_with("127.0.0.1") || host.starts_with("[::1]") {
+        return format!("{}://{host}/oauth/callback", connection.scheme());
+    }
+
+    secrets["web"]["redirect_uris"][0]
+        .as_str()
+        .expect("redirect_uris missing in google secrets")
+        .to_string()
+}
+
 #[instrument(target = "gmail", skip(req, query))]
 pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> impl Responder {
     let secrets = load_google_secrets();
     let client_id = secrets["web"]["client_id"]
         .as_str()
         .expect("client_id missing in google secrets");
-    let redirect_uri = secrets["web"]["redirect_uris"][0]
-        .as_str()
-        .expect("redirect_uris missing in google secrets");
+    let redirect_uri = google_redirect_uri(&req, &secrets);
 
     let is_signup = query.mode.as_deref() == Some("signup");
 
@@ -90,6 +115,7 @@ pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> imp
 
 #[instrument(target = "gmail", skip(pool, query))]
 pub async fn oauth_callback(
+    req: HttpRequest,
     pool: web::Data<PgPool>,
     query: web::Query<CallbackQuery>,
 ) -> impl Responder {
@@ -131,10 +157,7 @@ pub async fn oauth_callback(
         .as_str()
         .expect("client_secret missing in google secrets")
         .to_string();
-    let redirect_uri = secrets["web"]["redirect_uris"][0]
-        .as_str()
-        .expect("redirect_uris missing in google secrets")
-        .to_string();
+    let redirect_uri = google_redirect_uri(&req, &secrets);
 
     // 🔁 exchange code → tokens
     let res: Value = HTTP_CLIENT
@@ -179,10 +202,11 @@ pub async fn oauth_callback(
     // 🆕 Signup branch: resolve or create the user before linking Gmail.
     let frontend_for_errors = std::env::var("FRONTEND_URL").unwrap_or_default();
     if is_signup {
-        let existing = sqlx::query("SELECT id, auth_provider FROM users WHERE email = $1")
-            .bind(email)
-            .fetch_optional(pool.get_ref())
-            .await;
+        let existing =
+            sqlx::query("SELECT id, auth_provider, account_type FROM users WHERE email = $1")
+                .bind(email)
+                .fetch_optional(pool.get_ref())
+                .await;
 
         match existing {
             Ok(Some(row)) => {
@@ -320,9 +344,24 @@ pub async fn oauth_callback(
 
     // Signup: mint a fresh JWT for the new user and land on /home.
     // Connect-existing: reuse the inbound JWT (which is `state`) and land on /emails.
+    let account_type: String = sqlx::query_scalar("SELECT account_type FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(pool.get_ref())
+        .await
+        .unwrap_or_else(|_| "personal".to_string());
+
     let redirect = if is_signup {
-        let session_token = create_jwt(user_id, email.to_string());
-        format!("{}/home?signup=true&token={}", frontend, session_token)
+        let session_token =
+            create_jwt_for_account(user_id, email.to_string(), account_type.clone());
+        let landing_path = if account_type == "business" {
+            "business-home"
+        } else {
+            "home"
+        };
+        format!(
+            "{}/{landing_path}?signup=true&token={}",
+            frontend, session_token
+        )
     } else {
         format!("{}/emails?connected=true&token={}", frontend, state)
     };
@@ -443,7 +482,7 @@ async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     let user_id = decoded.sub;
 
     // 🔥 4. Check DB (THIS is the key fix)
-    let result = sqlx::query("SELECT id, email FROM users WHERE id = $1")
+    let result = sqlx::query("SELECT id, email, account_type FROM users WHERE id = $1")
         .bind(user_id)
         .fetch_optional(pool.get_ref())
         .await;
@@ -452,10 +491,12 @@ async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
         Ok(Some(row)) => {
             let id: i32 = row.get("id");
             let email: String = row.get("email");
+            let account_type: String = row.get("account_type");
 
             HttpResponse::Ok().json(serde_json::json!({
                 "id": id,
-                "email": email
+                "email": email,
+                "account_type": account_type
             }))
         }
 
