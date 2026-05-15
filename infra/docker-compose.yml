@@ -151,10 +151,20 @@ services:
         condition: service_healthy
       backend:
         condition: service_started
+    environment:
+      # Extra origins for the CSP `connect-src` directive. Dev default targets
+      # the local backend; for production override on the host (or infra/.env):
+      #   CSP_CONNECT_SRC="https://api.yourdomain.com"
+      CSP_CONNECT_SRC: "${CSP_CONNECT_SRC:-http://localhost:8080 http://127.0.0.1:8080}"
+      # Render /etc/nginx/templates/*.template into /etc/nginx, so
+      # nginx.conf.template -> /etc/nginx/nginx.conf. The filter restricts
+      # envsubst to CSP_* vars, leaving nginx runtime vars ($host, ...) intact.
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+      NGINX_ENVSUBST_FILTER: "^CSP_"
     ports:
       - "80:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
       - /dev/null:/etc/nginx/conf.d/default.conf
 
 volumes:

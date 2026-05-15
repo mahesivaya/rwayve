@@ -211,6 +211,13 @@ async fn main() -> std::io::Result<()> {
 
     let frontend_url = env::var("FRONTEND_URL").unwrap_or_else(|_| panic!("FRONTEND_URL missing"));
 
+    // Listen port: PORT env var, falling back to 8080 when unset/invalid.
+    let port: u16 = env::var("PORT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(8080);
+    info!(port, "Listen port selected");
+
     let server = HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin(&frontend_url)
@@ -233,9 +240,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(redis_cache.clone()))
             .configure(app_routes)
     })
-    .bind(("0.0.0.0", 8080))?;
+    .bind(("0.0.0.0", port))?;
 
-    info!("Server started on :8080");
+    info!("Server started on :{port}");
 
     let res = server.run().await;
     info!("Server shutdown complete");
