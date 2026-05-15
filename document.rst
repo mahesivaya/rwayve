@@ -875,3 +875,60 @@ ubuntu@ip-10-0-2-5:/etc/nginx/sites-enabled$
  2841* docker compose -f infra/docker-compose.yml up --build\n
  2842* docker compose -f infra/docker-compose.yml config --quiet\n
  2843* docker compose -f infra/docker-compose.yml up --build\n
+
+
+
+
+For normal development testing after code changes:
+
+# frontend checks
+cd frontend
+npm run lint
+npm run build
+# backend checks
+cd backend
+cargo fmt
+cargo check
+cargo test
+To run the full development stack:
+
+docker compose -f infra/docker-compose.dev.yml --env-file infra/.env.development up --build
+If the stack is already running and you changed backend/frontend Docker-related code:
+
+docker compose -f infra/docker-compose.dev.yml --env-file infra/.env.development up -d --build backend frontend nginx
+If you only changed frontend source and want fast local testing:
+
+cd frontend
+npm run dev
+If you only changed backend source and want fast local testing:
+
+cd backend
+RWAYVE_ENV=development cargo run
+Optional workers in development:
+
+docker compose -f infra/docker-compose.dev.yml --env-file infra/.env.development --profile workers up --build
+
+
+
+
+11:57 AM
+
+
+
+
+
+
+
+
+
+
+
+project_admin: 
+  email: maheshiv199@gmail.com
+  password: mahesh
+business_admin:
+  email: maheshwayve@gmail.com
+  password: mahesh
+personal:
+  email: maheshpy85@gmail.com
+  password: mahesh

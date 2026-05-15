@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::scheduler::handler::{create_meeting, delete_meeting, get_meetings, update_meeting};
     use crate::test_support::{insert_local_user, jwt_for, random_email, test_pool};
     use actix_web::{App, http::StatusCode, test, web};
     use wiremock::matchers::{method, path};
@@ -38,18 +38,25 @@ mod tests {
         )
         .await;
 
-        let resp = test::call_service(
-            &app,
-            test::TestRequest::get().uri("/meetings").to_request(),
-        )
-        .await;
+        let resp =
+            test::call_service(&app, test::TestRequest::get().uri("/meetings").to_request()).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         let resp = test::call_service(
             &app,
             test::TestRequest::post()
                 .uri("/meetings")
-                .set_json(serde_json::json!({}))
+                // A well-formed body so the JSON extractor succeeds and the
+                // request reaches the handler's auth check (an empty `{}`
+                // would be rejected as a 400 before auth runs).
+                .set_json(serde_json::json!({
+                    "title": "x",
+                    "date": tomorrow_date_str(),
+                    "start": 9 * 60,
+                    "end": 9 * 60 + 30,
+                    "participants": ["x@example.com"],
+                    "tz": "UTC",
+                }))
                 .to_request(),
         )
         .await;
@@ -68,7 +75,10 @@ mod tests {
     async fn create_meeting_full_fanout_persists_meeting_and_calls_zoom_and_gmail() {
         let server = MockServer::start().await;
         set_zoom_creds();
-        set_env("ZOOM_OAUTH_TOKEN_URL", &format!("{}/oauth/token", server.uri()));
+        set_env(
+            "ZOOM_OAUTH_TOKEN_URL",
+            &format!("{}/oauth/token", server.uri()),
+        );
         set_env("ZOOM_API_BASE", &server.uri());
         set_env("GMAIL_SEND_URL", &format!("{}/gmail/send", server.uri()));
 
@@ -136,7 +146,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/meetings")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(&payload)
             .to_request();
 
@@ -158,13 +171,12 @@ mod tests {
         assert_eq!(join_url.as_deref(), Some("https://zoom.example/j/99"));
 
         // Participants row was inserted.
-        let p_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM meeting_participants WHERE meeting_id = $1",
-        )
-        .bind(meeting_id as i32)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let p_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM meeting_participants WHERE meeting_id = $1")
+                .bind(meeting_id as i32)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(p_count, 1);
 
         // Wait briefly for the spawned invite email to fire, then drop the
@@ -196,7 +208,10 @@ mod tests {
     async fn create_meeting_continues_when_zoom_fails() {
         let server = MockServer::start().await;
         set_zoom_creds();
-        set_env("ZOOM_OAUTH_TOKEN_URL", &format!("{}/oauth/token", server.uri()));
+        set_env(
+            "ZOOM_OAUTH_TOKEN_URL",
+            &format!("{}/oauth/token", server.uri()),
+        );
         set_env("ZOOM_API_BASE", &server.uri());
         set_env("GMAIL_SEND_URL", &format!("{}/gmail/send", server.uri()));
 
@@ -246,7 +261,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/meetings")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(&payload)
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -309,7 +327,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/meetings")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(&payload)
             .to_request();
         let resp = test::call_service(&app, req).await;

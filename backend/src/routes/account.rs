@@ -6,7 +6,7 @@ use tracing::{error, info, instrument};
 
 #[get("/accounts")]
 #[instrument(target = "http", skip(req, pool))]
-async fn get_accounts(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
+pub(crate) async fn get_accounts(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     let user_id = match get_user_id_from_request(&req) {
         Some(id) => id,
         None => return HttpResponse::Unauthorized().body("Missing or invalid token"),

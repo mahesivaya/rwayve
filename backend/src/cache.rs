@@ -45,6 +45,14 @@ impl Cache {
         let _: redis::RedisResult<()> = conn.del(key).await;
     }
 
+    /// Round-trips a `PING` to confirm Redis is reachable. Used by the
+    /// readiness probe; never panics — a transport error just means "down".
+    pub async fn ping(&self) -> bool {
+        let mut conn = self.conn.clone();
+        let res: redis::RedisResult<String> = redis::cmd("PING").query_async(&mut conn).await;
+        res.is_ok()
+    }
+
     pub async fn increment_with_ttl(&self, key: &str, ttl_secs: u64) -> redis::RedisResult<i64> {
         let mut conn = self.conn.clone();
         let count: i64 = conn.incr(key, 1).await?;

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::ai::handler::ai_chat;
     use crate::test_support::jwt_for;
     use actix_web::{App, http::StatusCode, test};
     use wiremock::matchers::{method, path_regex};

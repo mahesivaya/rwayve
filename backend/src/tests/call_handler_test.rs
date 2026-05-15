@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod ws_tests {
-    use super::*;
+    use crate::call::handler::call_ws;
     use crate::test_support::{jwt_for, next_synthetic_user_id};
-    use actix_web::App;
+    use actix_web::{App, web};
     use awc::ws as awsm;
     use futures_util::{SinkExt, StreamExt};
     use std::time::Duration;

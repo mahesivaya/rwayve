@@ -31,36 +31,65 @@ lint:
 # 🐳 DOCKER
 # =========================
 
+compose-dev := "docker compose -f docker-compose.dev.yml --env-file .env.development"
+compose-prod := "docker compose -f docker-compose.prod.yml --env-file .env.production"
+
+dev-up:
+    {{compose-dev}} up --build
+
+dev-up-detached:
+    {{compose-dev}} up -d --build
+
+dev-up-workers:
+    {{compose-dev}} --profile workers up --build
+
+dev-down:
+    {{compose-dev}} down
+
+dev-logs:
+    {{compose-dev}} logs -f
+
+prod-up:
+    {{compose-prod}} up -d --build
+
+prod-down:
+    {{compose-prod}} down
+
+prod-logs:
+    {{compose-prod}} logs -f
+
 docker-build:
-    docker-compose build
+    {{compose-dev}} build
 
 docker-up:
-    docker-compose up
+    {{compose-dev}} up
 
 docker-up-detached:
-    docker-compose up -d
+    {{compose-dev}} up -d
 
 docker-down:
-    docker-compose down
+    {{compose-dev}} down
 
 docker-logs:
-    docker-compose logs -f
+    {{compose-dev}} logs -f
 
 docker-restart:
-    docker-compose down && docker-compose up --build
+    {{compose-dev}} down
+    {{compose-dev}} up --build
 
 # =========================
 # 🗄️ DATABASE
 # =========================
 
 db-up:
-    docker-compose up postgres_db
+    {{compose-dev}} up postgres_db
 
 db-reset:
-    docker-compose down -v && docker-compose up -d postgres_db
+    {{compose-dev}} down -v
+    {{compose-dev}} up -d postgres_db
 
 db-shell:
-    docker exec -it postgres_db psql -U wayve_user -d wayve_db
+    docker exec -it rwayve_postgres_dev psql -U wayve_user -d wayve_db
 
 # =========================
 # 🔐 SQLx
@@ -77,20 +106,20 @@ sqlx-migrate:
 # =========================
 
 start-all:
-    docker-compose up --build
+    {{compose-dev}} up --build
 
 restart-backend:
-    docker-compose restart backend
+    {{compose-dev}} restart backend
 
 restart-nginx:
-    docker-compose restart nginx
+    {{compose-dev}} restart nginx
 
 # =========================
 # 🔥 GMAIL SYNC DEBUG
 # =========================
 
 logs-backend:
-    docker logs -f backend
+    docker logs -f rwayve_backend_dev
 
 # =========================
 # ⚡ SHORTCUTS
@@ -101,5 +130,4 @@ d: dev
 u: docker-up
 ud: docker-up-detached
 dd: docker-down
-
 

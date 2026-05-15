@@ -108,6 +108,10 @@ assert_status() {
   fi
 }
 
+# Health + readiness probes
+assert_status 200 "GET /api/health returns 200 (liveness)" "$API_HOST/api/health"
+assert_status 200 "GET /api/ready returns 200 (Postgres + Redis reachable)" "$API_HOST/api/ready"
+
 # Auth gating
 assert_status 401 "GET /api/me without token returns 401" "$API_HOST/api/me"
 

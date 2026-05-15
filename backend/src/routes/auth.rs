@@ -67,7 +67,7 @@ pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -
 
 #[post("/login")]
 #[instrument(target = "auth", skip(pool, data), fields(email = %data.email))]
-async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResponse {
+pub(crate) async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResponse {
     info!(target: "auth", "login attempt");
 
     let user_result = sqlx::query_as::<_, User>(

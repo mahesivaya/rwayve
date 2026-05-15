@@ -4,7 +4,7 @@ use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use std::env;
 use tracing::{error, info};
 
-fn clean_mailbox(value: &str) -> String {
+pub(crate) fn clean_mailbox(value: &str) -> String {
     value
         .split_once('#')
         .map_or(value, |(before_comment, _)| before_comment)

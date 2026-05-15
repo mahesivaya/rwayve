@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::security::jwt::{create_jwt, decode_jwt, get_user_id_from_request};
     use actix_web::test::TestRequest;
 
     fn ensure_test_secret() {
@@ -38,7 +38,10 @@ mod tests {
         }
         let result = decode_jwt(&token);
         ensure_test_secret();
-        assert!(result.is_none(), "tokens signed with a different secret must not decode");
+        assert!(
+            result.is_none(),
+            "tokens signed with a different secret must not decode"
+        );
     }
 
     #[test]

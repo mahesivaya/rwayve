@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::email::sync::{fetch_headers_only, fetch_ids, sync_account};
     use crate::test_support::{insert_local_user, random_email, test_pool};
     use serde_json::json;
     use wiremock::matchers::{method, path, path_regex, query_param};
@@ -125,9 +125,7 @@ mod tests {
         // List returns two ids in one page.
         Mock::given(method("GET"))
             .and(path("/gmail/v1/users/me/messages"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(page(&["m1", "m2"], None)),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(page(&["m1", "m2"], None)))
             .mount(&server)
             .await;
 
@@ -166,8 +164,10 @@ mod tests {
         assert_eq!(rows.len(), 2);
         let gmail_ids: Vec<String> = rows.iter().map(|r| sqlx::Row::get(r, "gmail_id")).collect();
         assert_eq!(gmail_ids, vec!["m1".to_string(), "m2".to_string()]);
-        let created_at: Vec<chrono::NaiveDateTime> =
-            rows.iter().map(|r| sqlx::Row::get(r, "created_at")).collect();
+        let created_at: Vec<chrono::NaiveDateTime> = rows
+            .iter()
+            .map(|r| sqlx::Row::get(r, "created_at"))
+            .collect();
         assert_eq!(
             created_at,
             vec![
@@ -181,7 +181,10 @@ mod tests {
         );
         for r in &rows {
             let body: String = sqlx::Row::get(r, "body_encrypted");
-            assert!(body.is_empty(), "sync_account leaves body empty for body_worker");
+            assert!(
+                body.is_empty(),
+                "sync_account leaves body empty for body_worker"
+            );
         }
 
         // last_sync should now be set.

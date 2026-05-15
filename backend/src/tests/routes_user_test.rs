@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::routes::user::{change_password, get_profile, update_profile};
     use crate::test_support::{
         delete_user, insert_google_user, insert_local_user, jwt_for, random_email, test_pool,
     };
     use actix_web::{App, http::StatusCode, test, web};
+    use bcrypt::verify;
     use serde_json::json;
 
     #[actix_web::test]
@@ -37,7 +38,10 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/profile")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
@@ -64,7 +68,10 @@ mod tests {
 
         let req = test::TestRequest::put()
             .uri("/profile")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(json!({ "first_name": "Ada", "last_name": "Lovelace" }))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -100,7 +107,10 @@ mod tests {
 
         let req = test::TestRequest::put()
             .uri("/profile")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(json!({ "first_name": "Augusta" }))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -128,7 +138,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/profile/password")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(json!({
                 "current_password": "current-pw",
                 "new_password": "fresh-pw-123",
@@ -165,7 +178,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/profile/password")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(json!({
                 "current_password": "WRONG",
                 "new_password": "doesntmatter",
@@ -192,7 +208,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/profile/password")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(json!({
                 "current_password": "current",
                 "new_password": "x",
@@ -219,7 +238,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/profile/password")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(json!({
                 "new_password": "fresh-pw-123",
             }))

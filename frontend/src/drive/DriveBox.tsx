@@ -9,6 +9,7 @@ import {
 } from "../api/drive";
 import { useAuth } from "../auth/useAuth";
 import { useGlobalSearch } from "../search/SearchContext";
+import { formatFileSize } from "../emails/renderUtils";
 
 export default function Drive() {
   const { user } = useAuth();
@@ -46,7 +47,7 @@ export default function Drive() {
 
   useEffect(() => {
     if (user?.id) {
-      void Promise.resolve().then(fetchFiles);
+      void fetchFiles();
     }
   }, [fetchFiles, user?.id]);
 
@@ -171,7 +172,7 @@ export default function Drive() {
             <ul>
               {files.map((f, i) => (
                 <li key={i}>
-                  {f.name} ({(f.size / 1024).toFixed(2)} KB)
+                  {f.name} ({formatFileSize(f.size)})
                   <button onClick={() => removeFile(i)}>❌</button>
                 </li>
               ))}
@@ -207,7 +208,7 @@ export default function Drive() {
                   <div className="file-main">
                     <div className="file-name">{file.name}</div>
                     <div className="file-meta">
-                      {file.file_type} • {(file.size / 1024).toFixed(1)} KB
+                      {file.file_type} • {formatFileSize(file.size)}
                     </div>
                   </div>
                 </div>

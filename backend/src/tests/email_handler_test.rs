@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::email::handler::{get_me, oauth_callback, save_public_key, send};
     use crate::test_support::{
         delete_user, insert_google_user, insert_local_user, jwt_for, random_email, test_pool,
     };
@@ -32,6 +32,17 @@ mod tests {
         unsafe {
             std::env::set_var(key, val);
         }
+    }
+
+    /// Seed a single-use signup OAuth state row and return its opaque token.
+    /// `oauth_callback` validates `state` against the `oauth_states` table,
+    /// so tests must store one rather than passing a literal marker.
+    async fn seed_signup_state(pool: &sqlx::PgPool) -> String {
+        let state = format!("test-state-{}", uuid::Uuid::new_v4());
+        crate::security::oauth::store_state(&state, None, "signup", pool)
+            .await
+            .expect("store signup oauth state");
+        state
     }
 
     /// Configure all the env vars OAuth callback needs to point at the mock,
@@ -68,10 +79,7 @@ mod tests {
         set_env("GOOGLE_CLIENT_SECRET_PATH", &secret_path);
         set_env("GOOGLE_TOKEN_URL", &format!("{}/token", server.uri()));
         set_env("GOOGLE_USERINFO_URL", &format!("{}/userinfo", server.uri()));
-        set_env(
-            "GOOGLE_CALENDAR_URL",
-            &format!("{}/calendar", server.uri()),
-        );
+        set_env("GOOGLE_CALENDAR_URL", &format!("{}/calendar", server.uri()));
         let frontend = "http://test-frontend.local";
         set_env("FRONTEND_URL", frontend);
         frontend.to_string()
@@ -85,6 +93,7 @@ mod tests {
         let frontend = setup_google_mocks(&server, &google_email).await;
 
         let pool = test_pool().await;
+        let state = seed_signup_state(&pool).await;
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(pool.clone()))
@@ -93,7 +102,7 @@ mod tests {
         .await;
 
         let req = test::TestRequest::get()
-            .uri("/oauth/callback?code=anything&state=signup")
+            .uri(&format!("/oauth/callback?code=anything&state={state}"))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::FOUND);
@@ -105,19 +114,21 @@ mod tests {
             .to_str()
             .unwrap()
             .to_string();
-        assert!(
-            location.starts_with(&format!("{frontend}/home?signup=true&token=")),
+        // Signup redirects to the SPA landing route with a `#signup=true`
+        // fragment; the session token is set as an httpOnly cookie, not in
+        // the URL.
+        assert_eq!(
+            location,
+            format!("{frontend}/home#signup=true"),
             "unexpected redirect: {location}"
         );
 
         // The user must now exist with auth_provider='google' and a NULL password.
-        let row = sqlx::query(
-            "SELECT id, password, auth_provider FROM users WHERE email = $1",
-        )
-        .bind(&google_email)
-        .fetch_one(&pool)
-        .await
-        .expect("user inserted");
+        let row = sqlx::query("SELECT id, password, auth_provider FROM users WHERE email = $1")
+            .bind(&google_email)
+            .fetch_one(&pool)
+            .await
+            .expect("user inserted");
         let user_id: i32 = sqlx::Row::get(&row, "id");
         let pw: Option<String> = sqlx::Row::try_get(&row, "password").unwrap_or(None);
         let provider: String = sqlx::Row::get(&row, "auth_provider");
@@ -152,6 +163,7 @@ mod tests {
 
         // Pre-existing local user with the same email.
         let pool = test_pool().await;
+        let state = seed_signup_state(&pool).await;
         let user_id = insert_local_user(&pool, &collision_email, "local-pw").await;
 
         let app = test::init_service(
@@ -162,7 +174,7 @@ mod tests {
         .await;
 
         let req = test::TestRequest::get()
-            .uri("/oauth/callback?code=anything&state=signup")
+            .uri(&format!("/oauth/callback?code=anything&state={state}"))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::FOUND);
@@ -201,6 +213,7 @@ mod tests {
         let frontend = setup_google_mocks(&server, &email).await;
 
         let pool = test_pool().await;
+        let state = seed_signup_state(&pool).await;
         let existing_user_id = insert_google_user(&pool, &email).await;
 
         let app = test::init_service(
@@ -211,17 +224,12 @@ mod tests {
         .await;
 
         let req = test::TestRequest::get()
-            .uri("/oauth/callback?code=anything&state=signup")
+            .uri(&format!("/oauth/callback?code=anything&state={state}"))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::FOUND);
-        let location = resp
-            .headers()
-            .get("Location")
-            .unwrap()
-            .to_str()
-            .unwrap();
-        assert!(location.starts_with(&format!("{frontend}/home?signup=true&token=")));
+        let location = resp.headers().get("Location").unwrap().to_str().unwrap();
+        assert_eq!(location, format!("{frontend}/home#signup=true"));
 
         // No duplicate user must have been inserted.
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE email = $1")
@@ -252,6 +260,18 @@ mod tests {
             .await;
         set_env("GMAIL_SEND_URL", &format!("{}/gmail/send", server.uri()));
 
+        // `send` refreshes the OAuth access token before calling Gmail.
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "fresh-access",
+                "expires_in": 3600,
+            })))
+            .mount(&server)
+            .await;
+        set_env("GOOGLE_TOKEN_URL", &format!("{}/token", server.uri()));
+        set_env("GOOGLE_CLIENT_SECRET_PATH", &write_fake_client_secret());
+
         let pool = test_pool().await;
         let email = random_email();
         let user_id = insert_local_user(&pool, &email, "p").await;
@@ -280,7 +300,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/send")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(serde_json::json!({
                 "account_id": account_id,
                 "to": "recipient@example.com",
@@ -310,6 +333,18 @@ mod tests {
             .await;
         set_env("GMAIL_SEND_URL", &format!("{}/gmail/send", server.uri()));
 
+        // `send` refreshes the OAuth access token before calling Gmail.
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "fresh-access",
+                "expires_in": 3600,
+            })))
+            .mount(&server)
+            .await;
+        set_env("GOOGLE_TOKEN_URL", &format!("{}/token", server.uri()));
+        set_env("GOOGLE_CLIENT_SECRET_PATH", &write_fake_client_secret());
+
         let pool = test_pool().await;
         let email = random_email();
         let user_id = insert_local_user(&pool, &email, "p").await;
@@ -336,7 +371,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/send")
-            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", jwt_for(user_id, &email)),
+            ))
             .set_json(serde_json::json!({
                 "account_id": account_id,
                 "to": "x@y.z",
@@ -358,12 +396,7 @@ mod tests {
     #[actix_web::test]
     async fn send_requires_auth() {
         let pool = test_pool().await;
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(pool))
-                .service(send),
-        )
-        .await;
+        let app = test::init_service(App::new().app_data(web::Data::new(pool)).service(send)).await;
         let req = test::TestRequest::post()
             .uri("/send")
             .set_json(serde_json::json!({
@@ -380,12 +413,8 @@ mod tests {
     #[actix_web::test]
     async fn me_requires_auth() {
         let pool = test_pool().await;
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(pool))
-                .service(get_me),
-        )
-        .await;
+        let app =
+            test::init_service(App::new().app_data(web::Data::new(pool)).service(get_me)).await;
         let req = test::TestRequest::get().uri("/me").to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);

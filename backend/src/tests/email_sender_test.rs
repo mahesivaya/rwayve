@@ -86,7 +86,6 @@ mod tests {
     }
 }
 
-
 /// Plaintext-SMTP variant used by tests against MailHog.
 /// In production we always go through `send_mail` which negotiates STARTTLS.
 #[cfg(test)]
@@ -105,7 +104,9 @@ pub(crate) async fn send_mail_plaintext_for_tests(
     let from_parsed = from
         .parse()
         .map_err(|e| format!("SMTP_FROM invalid: {e:?}"))?;
-    let to_parsed = to.parse().map_err(|e| format!("recipient invalid: {e:?}"))?;
+    let to_parsed = to
+        .parse()
+        .map_err(|e| format!("recipient invalid: {e:?}"))?;
 
     let email = lettre::Message::builder()
         .from(from_parsed)
@@ -127,16 +128,15 @@ pub(crate) async fn send_mail_plaintext_for_tests(
 }
 
 #[cfg(test)]
-mod tests {
+mod mailbox_tests {
+    use crate::email::sender::clean_mailbox;
+
     #[test]
     fn clean_mailbox_strips_inline_env_comments() {
         assert_eq!(
-            super::clean_mailbox("mahesh@example.com  # optional"),
+            clean_mailbox("mahesh@example.com  # optional"),
             "mahesh@example.com"
         );
-        assert_eq!(
-            super::clean_mailbox("  user@example.com  "),
-            "user@example.com"
-        );
+        assert_eq!(clean_mailbox("  user@example.com  "), "user@example.com");
     }
 }

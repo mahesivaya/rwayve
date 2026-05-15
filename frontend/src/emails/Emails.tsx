@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./emails.css";
 import "./loadMore.css";
@@ -85,21 +85,33 @@ export default function Emails() {
 
   const showList = !isNarrow || selectedEmail === null;
   const showDetail = !isNarrow || selectedEmail !== null;
+  const composeAccountId =
+    activeAccount ?? accounts.find((account) => account?.id !== undefined)?.id ?? null;
 
   // ================= FETCH ACCOUNTS =================
-  const fetchAccounts = async () => {
+  const fetchAccounts = useCallback(async () => {
     try{
       const data = await getAccounts<EmailAccount>();
-      setAccounts(data);
+      setAccounts(
+        Array.isArray(data)
+          ? data.filter(
+              (account): account is EmailAccount =>
+                account !== null &&
+                typeof account === "object" &&
+                typeof account.id === "number" &&
+                typeof account.email === "string"
+            )
+          : []
+      );
     }
     catch(err){
     console.error(err)
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchAccounts();
-  }, []);
+    void fetchAccounts();
+  }, [fetchAccounts]);
 
   // ================= HANDLE OAUTH RETURN =================
   // After /oauth/callback redirects back with #connected=true, refresh the
@@ -128,7 +140,7 @@ export default function Emails() {
 
       return () => window.clearInterval(poll);
     }
-  }, []);
+  }, [fetchAccounts]);
 
   // ================= ADD ACCOUNT =================
   const addAccount = async () => {
@@ -371,14 +383,16 @@ export default function Emails() {
 
       {/* ================= COMPOSE MODAL ================= */}
       <Modal
-        isOpen={composeOpen && accounts.length > 0}
+        isOpen={composeOpen && composeAccountId !== null}
         onClose={() => setComposeOpen(false)}
         title="New Message"
       >
-        <SendEmail
-          accountId={activeAccount ?? accounts[0].id}
-          onClose={() => setComposeOpen(false)}
-        />
+        {composeAccountId !== null && (
+          <SendEmail
+            accountId={composeAccountId}
+            onClose={() => setComposeOpen(false)}
+          />
+        )}
       </Modal>
 
       {/* ================= EMAIL DETAIL ================= */}

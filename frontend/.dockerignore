@@ -5,3 +5,4 @@ build
 .gitignore
 Dockerfile
 docker-compose.yml
+.env*

@@ -12,10 +12,8 @@ mod tests {
     }
 
     fn write_fake_client_secret() -> String {
-        let path = std::env::temp_dir().join(format!(
-            "rwayve-body-secret-{}.json",
-            uuid::Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("rwayve-body-secret-{}.json", uuid::Uuid::new_v4()));
         std::fs::write(
             &path,
             br#"{"web":{"client_id":"test","client_secret":"test","redirect_uris":["http://x"]}}"#,
@@ -28,7 +26,9 @@ mod tests {
     /// extract_body looks at parts[0].body.data (base64 url-safe).
     fn full_message_response(plaintext: &str) -> serde_json::Value {
         use base64::Engine;
-        let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(plaintext);
+        // `decode_base64` normalises url-safe chars then decodes with the
+        // padded STANDARD engine, so the mock must produce padded base64.
+        let encoded = base64::engine::general_purpose::STANDARD.encode(plaintext);
         json!({
             "snippet": "snippet fallback",
             "payload": {
@@ -105,9 +105,10 @@ mod tests {
             .unwrap();
         }
 
-        let n = super::process_account(&pool, account_id, "cid", "csecret", "rt-1")
-            .await
-            .expect("process_account ok");
+        let n =
+            crate::email::body_worker::process_account(&pool, account_id, "cid", "csecret", "rt-1")
+                .await
+                .expect("process_account ok");
         assert_eq!(n, 2);
 
         // Bodies must now be non-empty + decryptable to "hello body".

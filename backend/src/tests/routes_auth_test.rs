@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::routes::auth::{forgot_password, login, register, reset_password};
     use crate::test_support::{
         delete_user, insert_google_user, insert_local_user, random_email, test_pool,
     };
     use actix_web::{App, http::StatusCode, test, web};
+    use bcrypt::verify;
     use serde_json::json;
 
     fn body_message(body: &[u8]) -> String {
@@ -233,13 +234,12 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = $1",
-        )
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert!(count >= 1, "expected at least one reset token row");
 
         sqlx::query("DELETE FROM password_reset_tokens WHERE user_id = $1")
@@ -270,23 +270,18 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = $1",
-        )
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(count, 0, "Google users must not get reset tokens");
 
         delete_user(&pool, user_id).await;
     }
 
-    async fn create_reset_token(
-        pool: &sqlx::PgPool,
-        user_id: i32,
-        ttl_minutes: i64,
-    ) -> String {
+    async fn create_reset_token(pool: &sqlx::PgPool, user_id: i32, ttl_minutes: i64) -> String {
         let token = format!("test-token-{}", uuid::Uuid::new_v4());
         let expires_at = chrono::Utc::now() + chrono::Duration::minutes(ttl_minutes);
         sqlx::query(
@@ -334,13 +329,12 @@ mod tests {
         assert!(!verify("old-pw", &stored).unwrap());
 
         // Token should now be marked used.
-        let used: Option<chrono::DateTime<chrono::Utc>> = sqlx::query_scalar(
-            "SELECT used_at FROM password_reset_tokens WHERE token = $1",
-        )
-        .bind(&token)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let used: Option<chrono::DateTime<chrono::Utc>> =
+            sqlx::query_scalar("SELECT used_at FROM password_reset_tokens WHERE token = $1")
+                .bind(&token)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert!(used.is_some(), "used_at must be populated");
 
         sqlx::query("DELETE FROM password_reset_tokens WHERE user_id = $1")

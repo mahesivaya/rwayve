@@ -1,10 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::cache::Cache;
+    use crate::chat::handler::{chat_ws, get_messages};
     use crate::test_support::{insert_local_user, jwt_for, random_email, test_pool};
     use actix_web::{App, http::StatusCode, test, web};
     use awc::ws as awsm;
     use futures_util::{SinkExt, StreamExt};
+    use sqlx::PgPool;
     use std::time::Duration;
 
     fn token_query(user_id: i32) -> String {
@@ -15,13 +17,19 @@ mod tests {
     #[actix_web::test]
     async fn get_messages_requires_auth() {
         let pool = test_pool().await;
+        let cache: Option<Cache> = None;
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(pool))
+                .app_data(web::Data::new(cache))
                 .service(get_messages),
         )
         .await;
-        let req = test::TestRequest::get().uri("/messages").to_request();
+        // Valid query params so the `web::Query` extractor succeeds and the
+        // request reaches the handler's auth check.
+        let req = test::TestRequest::get()
+            .uri("/messages?user1=1&user2=2")
+            .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
@@ -40,9 +48,9 @@ mod tests {
             let timed =
                 tokio::time::timeout(Duration::from_millis($timeout_ms), $framed.next()).await;
             match timed {
-                Ok(Some(Ok(awsm::Frame::Text(bytes)))) => Some(
-                    String::from_utf8(bytes.to_vec()).expect("utf8 text frame"),
-                ),
+                Ok(Some(Ok(awsm::Frame::Text(bytes)))) => {
+                    Some(String::from_utf8(bytes.to_vec()).expect("utf8 text frame"))
+                }
                 _ => None,
             }
         }};
@@ -75,7 +83,7 @@ mod tests {
         let payload = serde_json::json!({
             "sender_id": user_a,
             "receiver_id": user_b,
-            "content": "hello over ws",
+            "content": "WAYVE_CHAT_E2E_V1\nhello over ws",
             "status": null,
             "message_id": null,
         });
@@ -87,7 +95,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&echoed).unwrap();
         assert_eq!(v["sender_id"], user_a);
         assert_eq!(v["receiver_id"], user_b);
-        assert_eq!(v["content"], "hello over ws");
+        assert_eq!(v["content"], "WAYVE_CHAT_E2E_V1\nhello over ws");
         assert_eq!(v["status"], "sent");
         assert!(v["message_id"].is_i64());
 
@@ -104,7 +112,7 @@ mod tests {
         let iv: String = sqlx::Row::get(&row, "content_iv");
         assert!(!enc.is_empty() && !iv.is_empty());
         let decrypted = crate::security::encryption::decrypt(&iv, &enc).unwrap();
-        assert_eq!(decrypted, "hello over ws");
+        assert_eq!(decrypted, "WAYVE_CHAT_E2E_V1\nhello over ws");
 
         sqlx::query("DELETE FROM messages WHERE sender_id = $1 OR receiver_id = $1")
             .bind(user_a)
@@ -133,7 +141,7 @@ mod tests {
         let payload = serde_json::json!({
             "sender_id": user_a,
             "receiver_id": user_b,
-            "content": "ping",
+            "content": "WAYVE_CHAT_E2E_V1\nping",
             "status": null,
             "message_id": null,
         });
@@ -144,7 +152,7 @@ mod tests {
         // B should receive the message.
         let received_b = next_text!(b, 2000).expect("B got the message");
         let vb: serde_json::Value = serde_json::from_str(&received_b).unwrap();
-        assert_eq!(vb["content"], "ping");
+        assert_eq!(vb["content"], "WAYVE_CHAT_E2E_V1\nping");
         assert_eq!(vb["sender_id"], user_a);
 
         // A should receive both the echo and the "delivered" status update —
@@ -154,7 +162,7 @@ mod tests {
         for _ in 0..2 {
             if let Some(text) = next_text!(a, 1500) {
                 let v: serde_json::Value = serde_json::from_str(&text).unwrap();
-                if v["status"] == "sent" && v["content"] == "ping" {
+                if v["status"] == "sent" && v["content"] == "WAYVE_CHAT_E2E_V1\nping" {
                     got_echo = true;
                 } else if v["type"] == "status_update" && v["status"] == "delivered" {
                     got_delivered = true;
@@ -162,7 +170,10 @@ mod tests {
             }
         }
         assert!(got_echo, "sender should receive the echoed message");
-        assert!(got_delivered, "sender should receive 'delivered' status update");
+        assert!(
+            got_delivered,
+            "sender should receive 'delivered' status update"
+        );
 
         sqlx::query("DELETE FROM messages WHERE sender_id = $1 OR receiver_id = $1")
             .bind(user_a)
@@ -319,7 +330,7 @@ mod tests {
             serde_json::json!({
                 "sender_id": attacker,
                 "receiver_id": target,
-                "content": "from-attacker",
+                "content": "WAYVE_CHAT_E2E_V1\nfrom-attacker",
                 "status": null,
                 "message_id": null,
             })

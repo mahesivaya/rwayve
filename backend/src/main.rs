@@ -50,9 +50,19 @@ use tracing_actix_web::TracingLogger;
 
 fn load_env_files() {
     // `cargo run` from backend/ loads backend/.env via dotenv().
-    // Running from the repo root needs this explicit path. Docker Compose
-    // injects backend/.env through env_file, so missing files are fine.
+    // Running from the repo root needs explicit paths. Docker Compose injects
+    // environment files through env_file, so missing local files are fine.
     dotenv().ok();
+
+    if let Ok(env_file) = env::var("ENV_FILE") {
+        dotenvy::from_filename_override(env_file).ok();
+    }
+
+    let app_env = env::var("RWAYVE_ENV")
+        .or_else(|_| env::var("ENV"))
+        .unwrap_or_else(|_| "development".to_string());
+    dotenvy::from_filename_override(format!(".env.{app_env}")).ok();
+    dotenvy::from_filename_override(format!("backend/.env.{app_env}")).ok();
     dotenvy::from_filename("backend/.env").ok();
 }
 
@@ -91,6 +101,15 @@ fn db_max_connections(role: RuntimeRole) -> u32 {
         RuntimeRole::Api | RuntimeRole::All => 10,
         RuntimeRole::EmailSyncWorker | RuntimeRole::EmailBodyWorker => 5,
     }
+}
+
+/// HTTP listen port: the `PORT` env var, falling back to 8080 when unset or
+/// not a valid `u16`.
+fn listen_port() -> u16 {
+    env::var("PORT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(8080)
 }
 
 fn app_routes(cfg: &mut web::ServiceConfig) {
@@ -211,11 +230,7 @@ async fn main() -> std::io::Result<()> {
 
     let frontend_url = env::var("FRONTEND_URL").unwrap_or_else(|_| panic!("FRONTEND_URL missing"));
 
-    // Listen port: PORT env var, falling back to 8080 when unset/invalid.
-    let port: u16 = env::var("PORT")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(8080);
+    let port = listen_port();
     info!(port, "Listen port selected");
 
     let server = HttpServer::new(move || {
@@ -247,4 +262,76 @@ async fn main() -> std::io::Result<()> {
     let res = server.run().await;
     info!("Server shutdown complete");
     res
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    // Named `runtime_tests` (not `tests`) to avoid colliding with the
+    // `#[cfg(test)] mod tests;` directory module declared above.
+    use super::*;
+
+    #[test]
+    #[serial_test::serial]
+    fn runtime_role_defaults_to_api() {
+        unsafe { env::remove_var("RWAYVE_ROLE") };
+        assert_eq!(RuntimeRole::from_env(), RuntimeRole::Api);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn runtime_role_parses_known_values() {
+        unsafe { env::set_var("RWAYVE_ROLE", "email-sync-worker") };
+        assert_eq!(RuntimeRole::from_env(), RuntimeRole::EmailSyncWorker);
+        unsafe { env::set_var("RWAYVE_ROLE", "email-body-worker") };
+        assert_eq!(RuntimeRole::from_env(), RuntimeRole::EmailBodyWorker);
+        unsafe { env::set_var("RWAYVE_ROLE", "all") };
+        assert_eq!(RuntimeRole::from_env(), RuntimeRole::All);
+        unsafe { env::set_var("RWAYVE_ROLE", "nonsense") };
+        assert_eq!(RuntimeRole::from_env(), RuntimeRole::Api);
+        unsafe { env::remove_var("RWAYVE_ROLE") };
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn db_max_connections_uses_role_defaults() {
+        unsafe { env::remove_var("DATABASE_MAX_CONNECTIONS") };
+        assert_eq!(db_max_connections(RuntimeRole::Api), 10);
+        assert_eq!(db_max_connections(RuntimeRole::All), 10);
+        assert_eq!(db_max_connections(RuntimeRole::EmailSyncWorker), 5);
+        assert_eq!(db_max_connections(RuntimeRole::EmailBodyWorker), 5);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn db_max_connections_honors_valid_override() {
+        unsafe { env::set_var("DATABASE_MAX_CONNECTIONS", "42") };
+        assert_eq!(db_max_connections(RuntimeRole::Api), 42);
+        assert_eq!(db_max_connections(RuntimeRole::EmailSyncWorker), 42);
+        unsafe { env::remove_var("DATABASE_MAX_CONNECTIONS") };
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn db_max_connections_ignores_invalid_override() {
+        unsafe { env::set_var("DATABASE_MAX_CONNECTIONS", "not-a-number") };
+        assert_eq!(db_max_connections(RuntimeRole::Api), 10);
+        unsafe { env::remove_var("DATABASE_MAX_CONNECTIONS") };
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn listen_port_defaults_when_unset() {
+        unsafe { env::remove_var("PORT") };
+        assert_eq!(listen_port(), 8080);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn listen_port_parses_and_falls_back() {
+        unsafe { env::set_var("PORT", "9090") };
+        assert_eq!(listen_port(), 9090);
+        unsafe { env::set_var("PORT", "garbage") };
+        assert_eq!(listen_port(), 8080);
+        unsafe { env::remove_var("PORT") };
+    }
 }

@@ -59,7 +59,7 @@ fn random_oauth_state() -> String {
 
 fn google_oauth_url(client_id: &str, redirect_uri: &str, scope: &str, state: &str) -> String {
     let mut url = reqwest::Url::parse("https://accounts.google.com/o/oauth2/v2/auth")
-        .expect("valid Google OAuth URL");
+        .unwrap_or_else(|err| panic!("valid Google OAuth URL: {err}"));
     url.query_pairs_mut()
         .append_pair("client_id", client_id)
         .append_pair("redirect_uri", redirect_uri)

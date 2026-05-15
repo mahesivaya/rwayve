@@ -1,7 +1,6 @@
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::notes::handler::{create_note, delete_note, list_notes, update_note};
     use crate::test_support::{delete_user, insert_local_user, jwt_for, random_email, test_pool};
     use actix_web::{App, http::StatusCode, test, web};
     use serde_json::json;
@@ -56,7 +55,13 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
         let listed: serde_json::Value = test::read_body_json(resp).await;
-        assert!(listed.as_array().unwrap().iter().any(|n| n["id"] == note_id));
+        assert!(
+            listed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["id"] == note_id)
+        );
 
         // update
         let req = test::TestRequest::put()

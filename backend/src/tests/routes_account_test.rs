@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::routes::account::{delete_account, get_accounts};
     use crate::test_support::test_pool;
     use actix_web::{App, http::StatusCode, test, web};
 

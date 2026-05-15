@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::drive::handler::upload_file;
     use crate::test_support::test_pool;
     use actix_web::{App, http::StatusCode, test, web};
 

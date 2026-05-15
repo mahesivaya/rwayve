@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::scheduler::zoom::create_zoom_meeting;
+    use chrono::Utc;
     use serde_json::json;
     use wiremock::matchers::{header_regex, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -22,7 +23,10 @@ mod tests {
     async fn create_zoom_meeting_returns_join_url_on_success() {
         let server = MockServer::start().await;
         set_zoom_creds();
-        set_env("ZOOM_OAUTH_TOKEN_URL", &format!("{}/oauth/token", server.uri()));
+        set_env(
+            "ZOOM_OAUTH_TOKEN_URL",
+            &format!("{}/oauth/token", server.uri()),
+        );
         set_env("ZOOM_API_BASE", &server.uri());
 
         Mock::given(method("POST"))
@@ -55,7 +59,10 @@ mod tests {
     async fn create_zoom_meeting_propagates_token_failure() {
         let server = MockServer::start().await;
         set_zoom_creds();
-        set_env("ZOOM_OAUTH_TOKEN_URL", &format!("{}/oauth/token", server.uri()));
+        set_env(
+            "ZOOM_OAUTH_TOKEN_URL",
+            &format!("{}/oauth/token", server.uri()),
+        );
         set_env("ZOOM_API_BASE", &server.uri());
 
         Mock::given(method("POST"))
@@ -74,7 +81,10 @@ mod tests {
     async fn create_zoom_meeting_propagates_create_failure() {
         let server = MockServer::start().await;
         set_zoom_creds();
-        set_env("ZOOM_OAUTH_TOKEN_URL", &format!("{}/oauth/token", server.uri()));
+        set_env(
+            "ZOOM_OAUTH_TOKEN_URL",
+            &format!("{}/oauth/token", server.uri()),
+        );
         set_env("ZOOM_API_BASE", &server.uri());
 
         Mock::given(method("POST"))

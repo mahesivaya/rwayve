@@ -37,8 +37,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Slim runtime — tens of MB instead of ~1.5 GB for the full rust image.
 FROM debian:bookworm-slim AS runtime
 
+# ca-certificates for outbound TLS; curl for the container healthcheck.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
