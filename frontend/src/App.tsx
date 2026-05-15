@@ -8,7 +8,7 @@ import Login from "./auth/Login";
 import ForgotPassword from "./auth/ForgotPassword";
 import ResetPassword from "./auth/ResetPassword";
 import { useAuth } from "./auth/AuthContext";
-import { homePathForAccount } from "./auth/accountHome";
+import { homePathForAccount, normalizeAccountType } from "./auth/accountHome";
 
 // 🔥 Lazy loaded pages
 const Home = lazy(() => import("./home/Home"));
@@ -24,12 +24,14 @@ const Profile = lazy(() => import("./profile/Profile"));
 const Settings = lazy(() => import("./profile/Settings"));
 const Business = lazy(() => import("./business/Business"));
 const BusinessAdminHome = lazy(() => import("./business/BusinessAdminHome"));
+const ProjectAdminHome = lazy(() => import("./business/ProjectAdminHome"));
 const EmailFiles = lazy(() => import("./files/EmailFiles"));
 const ServicePage = lazy(() => import("./services/ServicePage"));
 
 export default function App() {
   const { user } = useAuth();
   const accountHome = homePathForAccount(user?.account_type);
+  const accountType = normalizeAccountType(user?.account_type);
 
   return (
     <Suspense fallback={<div>Loading...</div>}>
@@ -66,8 +68,8 @@ export default function App() {
             <Route
               path="/home"
               element={
-                user?.account_type === "business" ? (
-                  <Navigate to="/business-home" replace />
+                accountType !== "personal" ? (
+                  <Navigate to={accountHome} replace />
                 ) : (
                   <Home />
                 )
@@ -76,10 +78,20 @@ export default function App() {
             <Route
               path="/business-home"
               element={
-                user?.account_type === "business" ? (
+                accountType === "business_admin" ? (
                   <BusinessAdminHome />
                 ) : (
-                  <Navigate to="/home" replace />
+                  <Navigate to={accountHome} replace />
+                )
+              }
+            />
+            <Route
+              path="/project-admin-home"
+              element={
+                accountType === "project_admin" ? (
+                  <ProjectAdminHome />
+                ) : (
+                  <Navigate to={accountHome} replace />
                 )
               }
             />

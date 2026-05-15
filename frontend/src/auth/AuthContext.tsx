@@ -8,18 +8,20 @@ import {
 import { getMe, saveUserPublicKey } from "../api/Auth";
 import { clearAuthToken, getAuthToken, setAuthToken } from "./token";
 import { logger } from "../utils/logger";
+import { normalizeAccountType, type AccountType } from "./accountHome";
 
 const log = logger.scope("auth");
 
 type UserType = {
   email: string;
   id: number;
-  account_type: "personal" | "business";
+  account_type: AccountType;
+  organization_id?: number | null;
 };
 
 type AuthType = {
   user: UserType | null;
-  login: (token: string, accountType?: "personal" | "business") => void;
+  login: (token: string, accountType?: string) => void;
   logout: () => void;
 };
 
@@ -28,7 +30,8 @@ const AuthContext = createContext<AuthType | null>(null);
 type Claims = {
   sub: number;
   email: string;
-  account_type?: "personal" | "business";
+  account_type?: string;
+  organization_id?: number | null;
   exp?: number;
 };
 
@@ -87,7 +90,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ? {
           email: claims.email,
           id: claims.sub,
-          account_type: claims.account_type ?? "personal",
+          account_type: normalizeAccountType(claims.account_type),
+          organization_id: claims.organization_id ?? null,
         }
       : null;
   });
@@ -167,12 +171,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           prev &&
           prev.id === data.id &&
           prev.email === data.email &&
-          prev.account_type === (data.account_type ?? "personal")
+          prev.account_type === normalizeAccountType(data.account_type) &&
+          prev.organization_id === (data.organization_id ?? null)
             ? prev
             : {
                 email: data.email,
                 id: data.id,
-                account_type: data.account_type ?? "personal",
+                account_type: normalizeAccountType(data.account_type),
+                organization_id: data.organization_id ?? null,
               }
         );
 
@@ -188,7 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => ctrl.abort();
   }, []);
 
-  const login = (token: string, accountType?: "personal" | "business") => {
+  const login = (token: string, accountType?: string) => {
     setAuthToken(token);
 
     const decoded = parseJwt(token);
@@ -197,7 +203,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser({
         email: decoded.email,
         id: decoded.sub,
-        account_type: accountType ?? decoded.account_type ?? "personal",
+        account_type: normalizeAccountType(accountType ?? decoded.account_type),
+        organization_id: decoded.organization_id ?? null,
       });
     }
 

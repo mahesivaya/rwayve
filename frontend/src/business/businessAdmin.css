@@ -73,7 +73,7 @@
 
 .business-admin-form {
   display: grid;
-  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   align-items: end;
   gap: 12px;
 }
@@ -90,7 +90,8 @@
   font-weight: 800;
 }
 
-.business-admin-form input {
+.business-admin-form input,
+.business-admin-form select {
   width: 100%;
   min-height: 38px;
   box-sizing: border-box;
@@ -101,7 +102,8 @@
   font: inherit;
 }
 
-.business-admin-form input:focus {
+.business-admin-form input:focus,
+.business-admin-form select:focus {
   outline: 2px solid #bfdbfe;
   border-color: #2563eb;
 }

@@ -11,6 +11,8 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
         .service(auth::forgot_password)
         .service(auth::reset_password)
         .service(user::change_password)
+        .service(user::admin_list_organizations)
+        .service(user::admin_create_organization)
         .service(user::admin_create_user)
         .service(account::get_accounts)
         .service(user::get_user_by_email)

@@ -15,6 +15,14 @@ ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'local';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'personal';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+
+CREATE TABLE IF NOT EXISTS organizations (
+    id SERIAL PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id INT REFERENCES organizations(id) ON DELETE SET NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx
     ON users (username) WHERE username IS NOT NULL;
 

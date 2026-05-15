@@ -59,6 +59,141 @@ pub struct AdminCreateUserInput {
     pub username: String,
     pub email: String,
     pub password: String,
+    pub account_type: Option<String>,
+    pub organization_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateOrganizationInput {
+    pub name: String,
+}
+
+fn normalized_account_type(value: &str) -> &str {
+    match value {
+        "business" | "business_admin" => "business_admin",
+        "project_admin" => "project_admin",
+        _ => "personal",
+    }
+}
+
+async fn require_project_admin(req: &HttpRequest, pool: &PgPool) -> Result<i32, HttpResponse> {
+    let admin_id =
+        get_user_id_from_request(req).ok_or_else(|| HttpResponse::Unauthorized().finish())?;
+
+    let account_type: Option<String> =
+        match sqlx::query_scalar("SELECT account_type FROM users WHERE id = $1")
+            .bind(admin_id)
+            .fetch_optional(pool)
+            .await
+        {
+            Ok(value) => value,
+            Err(e) => {
+                error!(target: "db", admin_id, error = ?e, "project admin lookup failed");
+                return Err(HttpResponse::InternalServerError().finish());
+            }
+        };
+
+    if normalized_account_type(account_type.as_deref().unwrap_or("personal")) != "project_admin" {
+        return Err(HttpResponse::Forbidden()
+            .json(serde_json::json!({ "message": "Only project admins can manage businesses" })));
+    }
+
+    Ok(admin_id)
+}
+
+#[get("/admin/organizations")]
+#[instrument(target = "http", skip(req, pool))]
+pub async fn admin_list_organizations(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
+    if let Err(response) = require_project_admin(&req, pool.get_ref()).await {
+        return response;
+    }
+
+    match sqlx::query(
+        r#"
+        SELECT
+            o.id,
+            o.name,
+            o.created_at,
+            COUNT(u.id) AS user_count
+        FROM organizations o
+        LEFT JOIN users u ON u.organization_id = o.id
+        GROUP BY o.id, o.name, o.created_at
+        ORDER BY o.name
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => {
+            let organizations: Vec<_> = rows
+                .into_iter()
+                .map(|row| {
+                    let id: i32 = row.get("id");
+                    let name: String = row.get("name");
+                    let user_count: i64 = row.get("user_count");
+
+                    serde_json::json!({
+                        "id": id,
+                        "name": name,
+                        "user_count": user_count
+                    })
+                })
+                .collect();
+
+            HttpResponse::Ok().json(organizations)
+        }
+        Err(e) => {
+            error!(target: "db", error = ?e, "list organizations failed");
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+#[post("/admin/organizations")]
+#[instrument(target = "auth", skip(req, pool, data), fields(name = %data.name))]
+pub async fn admin_create_organization(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    data: web::Json<CreateOrganizationInput>,
+) -> impl Responder {
+    let admin_id = match require_project_admin(&req, pool.get_ref()).await {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    let name = data.name.trim();
+    if name.is_empty() {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "message": "Business name is required" }));
+    }
+
+    match sqlx::query(
+        r#"
+        INSERT INTO organizations (name)
+        VALUES ($1)
+        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+        RETURNING id, name
+        "#,
+    )
+    .bind(name)
+    .fetch_one(pool.get_ref())
+    .await
+    {
+        Ok(row) => {
+            let id: i32 = row.get("id");
+            let name: String = row.get("name");
+            info!(target: "auth", admin_id, organization_id = id, "project admin created business");
+            HttpResponse::Created().json(serde_json::json!({
+                "id": id,
+                "name": name,
+                "user_count": 0
+            }))
+        }
+        Err(e) => {
+            error!(target: "db", admin_id, error = ?e, "create organization failed");
+            HttpResponse::InternalServerError().finish()
+        }
+    }
 }
 
 #[post("/admin/users")]
@@ -73,8 +208,8 @@ pub async fn admin_create_user(
         None => return HttpResponse::Unauthorized().finish(),
     };
 
-    let admin_account_type: Option<String> =
-        match sqlx::query_scalar("SELECT account_type FROM users WHERE id = $1")
+    let admin_row =
+        match sqlx::query("SELECT account_type, organization_id FROM users WHERE id = $1")
             .bind(admin_id)
             .fetch_optional(pool.get_ref())
             .await
@@ -86,14 +221,38 @@ pub async fn admin_create_user(
             }
         };
 
-    if admin_account_type.as_deref() != Some("business") {
+    let Some(admin_row) = admin_row else {
+        return HttpResponse::Unauthorized().finish();
+    };
+
+    let admin_account_type: String = admin_row
+        .try_get("account_type")
+        .unwrap_or_else(|_| "personal".to_string());
+    let admin_account_type = normalized_account_type(&admin_account_type);
+    let admin_organization_id: Option<i32> = admin_row.try_get("organization_id").ok().flatten();
+
+    if !matches!(admin_account_type, "business_admin" | "project_admin") {
         warn!(target: "auth", admin_id, "non-business user tried to create user");
         return HttpResponse::Forbidden()
-            .json(serde_json::json!({ "message": "Only business admins can create users" }));
+            .json(serde_json::json!({ "message": "Only admins can create users" }));
     }
 
     let username = data.username.trim();
     let email = data.email.trim().to_lowercase();
+    let requested_account_type = data
+        .account_type
+        .as_deref()
+        .map(normalized_account_type)
+        .unwrap_or("personal");
+
+    let account_type = match admin_account_type {
+        "project_admin" => match requested_account_type {
+            "business_admin" | "project_admin" | "personal" => requested_account_type,
+            _ => "personal",
+        },
+        "business_admin" => "personal",
+        _ => "personal",
+    };
 
     if username.is_empty() || email.is_empty() || data.password.is_empty() {
         return HttpResponse::BadRequest()
@@ -104,6 +263,49 @@ pub async fn admin_create_user(
         return HttpResponse::BadRequest()
             .json(serde_json::json!({ "message": "Password must be at least 6 characters" }));
     }
+
+    let organization_id: Option<i32> = if account_type == "business_admin" {
+        let organization_name = data
+            .organization_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+
+        let Some(organization_name) = organization_name else {
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({ "message": "Organization name is required for business admin accounts" }));
+        };
+
+        match sqlx::query(
+            r#"
+            INSERT INTO organizations (name)
+            VALUES ($1)
+            ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+            RETURNING id
+            "#,
+        )
+        .bind(organization_name)
+        .fetch_one(pool.get_ref())
+        .await
+        {
+            Ok(row) => Some(row.get("id")),
+            Err(e) => {
+                error!(target: "db", admin_id, error = ?e, "organization upsert failed");
+                return HttpResponse::InternalServerError().finish();
+            }
+        }
+    } else if admin_account_type == "business_admin" {
+        match admin_organization_id {
+            Some(id) => Some(id),
+            None => {
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "message": "Business admin is not assigned to an organization"
+                }));
+            }
+        }
+    } else {
+        None
+    };
 
     let hashed = match hash(&data.password, DEFAULT_COST) {
         Ok(value) => value,
@@ -116,15 +318,28 @@ pub async fn admin_create_user(
     let result = sqlx::query(
         r#"
         INSERT INTO users (username, email, password, auth_provider, account_type)
-        VALUES ($1, $2, $3, 'local', 'personal')
-        RETURNING id, username, email, account_type
+        VALUES ($1, $2, $3, 'local', $4)
+        RETURNING id, username, email, account_type, organization_id
         "#,
     )
     .bind(username)
     .bind(&email)
     .bind(&hashed)
+    .bind(account_type)
     .fetch_one(pool.get_ref())
     .await;
+
+    let result = if let (Ok(row), Some(organization_id)) = (&result, organization_id) {
+        sqlx::query(
+            "UPDATE users SET organization_id = $1 WHERE id = $2 RETURNING id, username, email, account_type, organization_id",
+        )
+        .bind(organization_id)
+        .bind(row.get::<i32, _>("id"))
+        .fetch_one(pool.get_ref())
+        .await
+    } else {
+        result
+    };
 
     match result {
         Ok(row) => {
@@ -132,13 +347,15 @@ pub async fn admin_create_user(
             let username: Option<String> = row.try_get("username").ok();
             let email: String = row.get("email");
             let account_type: String = row.get("account_type");
+            let organization_id: Option<i32> = row.try_get("organization_id").ok().flatten();
 
             info!(target: "auth", admin_id, user_id = id, "business admin created user");
             HttpResponse::Created().json(serde_json::json!({
                 "id": id,
                 "username": username,
                 "email": email,
-                "account_type": account_type
+                "account_type": normalized_account_type(&account_type),
+                "organization_id": organization_id
             }))
         }
         Err(e) => {

@@ -144,6 +144,13 @@ async fn run_sync_worker(pool: PgPool) -> ! {
 async fn ensure_schema(pool: &PgPool) {
     for statement in [
         r#"
+        CREATE TABLE IF NOT EXISTS organizations (
+            id SERIAL PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        "#,
+        r#"
         CREATE TABLE IF NOT EXISTS channels (
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
@@ -200,6 +207,7 @@ async fn ensure_schema(pool: &PgPool) {
         "CREATE INDEX IF NOT EXISTS idx_channel_messages_channel_created ON channel_messages (channel_id, created_at DESC)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'personal'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id INT REFERENCES organizations(id) ON DELETE SET NULL",
         "CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx ON users (username) WHERE username IS NOT NULL",
     ] {
         if let Err(e) = sqlx::query(statement).execute(pool).await {

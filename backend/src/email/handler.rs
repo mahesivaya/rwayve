@@ -353,7 +353,10 @@ pub async fn oauth_callback(
     let redirect = if is_signup {
         let session_token =
             create_jwt_for_account(user_id, email.to_string(), account_type.clone());
-        let landing_path = if account_type == "business" {
+        let landing_path = if matches!(
+            account_type.as_str(),
+            "business" | "business_admin" | "project_admin"
+        ) {
             "business-home"
         } else {
             "home"
@@ -482,21 +485,24 @@ async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
     let user_id = decoded.sub;
 
     // 🔥 4. Check DB (THIS is the key fix)
-    let result = sqlx::query("SELECT id, email, account_type FROM users WHERE id = $1")
-        .bind(user_id)
-        .fetch_optional(pool.get_ref())
-        .await;
+    let result =
+        sqlx::query("SELECT id, email, account_type, organization_id FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool.get_ref())
+            .await;
 
     match result {
         Ok(Some(row)) => {
             let id: i32 = row.get("id");
             let email: String = row.get("email");
             let account_type: String = row.get("account_type");
+            let organization_id: Option<i32> = row.try_get("organization_id").ok().flatten();
 
             HttpResponse::Ok().json(serde_json::json!({
                 "id": id,
                 "email": email,
-                "account_type": account_type
+                "account_type": account_type,
+                "organization_id": organization_id
             }))
         }
 

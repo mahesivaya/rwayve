@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createAdminUser, type AdminCreatedUser } from "../api/admin";
+import { normalizeAccountType } from "../auth/accountHome";
 import { useAuth } from "../auth/AuthContext";
 import "../home/home.css";
 import "./businessAdmin.css";
@@ -11,10 +12,16 @@ export default function BusinessAdminHome() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [accountType, setAccountType] = useState("personal");
+  const [organizationName, setOrganizationName] = useState("");
   const [createdUsers, setCreatedUsers] = useState<AdminCreatedUser[]>([]);
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState("");
   const [creating, setCreating] = useState(false);
+
+  const currentAccountType = normalizeAccountType(user?.account_type);
+  const isProjectAdmin = currentAccountType === "project_admin";
+  const pageTitle = isProjectAdmin ? "Complete Project Admin page" : "Business Admin page";
 
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -23,11 +30,19 @@ export default function BusinessAdminHome() {
     setCreating(true);
 
     try {
-      const created = await createAdminUser(username, email, password);
+      const created = await createAdminUser(
+        username,
+        email,
+        password,
+        isProjectAdmin ? accountType : "personal",
+        organizationName
+      );
       setCreatedUsers((prev) => [created, ...prev]);
       setUsername("");
       setEmail("");
       setPassword("");
+      setAccountType("personal");
+      setOrganizationName("");
       setCreateSuccess(`Created user ${created.email}`);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create user");
@@ -40,7 +55,7 @@ export default function BusinessAdminHome() {
     <div className="business-admin-home">
       <div className="business-admin-header">
         <div>
-          <h1>Business Admin page</h1>
+          <h1>{pageTitle}</h1>
           <p>{user?.email}</p>
         </div>
         <button
@@ -57,7 +72,11 @@ export default function BusinessAdminHome() {
         <div className="business-admin-section-header">
           <div>
             <h2>Create user</h2>
-            <p>Add a new personal account with username, email, and password.</p>
+            <p>
+              {isProjectAdmin
+                ? "Create project admin, business admin, or personal accounts."
+                : "Add a new personal account inside your organization."}
+            </p>
           </div>
         </div>
 
@@ -94,6 +113,34 @@ export default function BusinessAdminHome() {
             />
           </label>
 
+          {isProjectAdmin && (
+            <>
+              <label>
+                <span>Account type</span>
+                <select
+                  value={accountType}
+                  onChange={(event) => setAccountType(event.target.value)}
+                >
+                  <option value="personal">Personal</option>
+                  <option value="business_admin">Business admin</option>
+                  <option value="project_admin">Project admin</option>
+                </select>
+              </label>
+
+              {accountType === "business_admin" && (
+                <label>
+                  <span>Organization</span>
+                  <input
+                    value={organizationName}
+                    onChange={(event) => setOrganizationName(event.target.value)}
+                    placeholder="Organization name"
+                    required
+                  />
+                </label>
+              )}
+            </>
+          )}
+
           <button type="submit" disabled={creating}>
             {creating ? "Creating..." : "Create user"}
           </button>
@@ -107,7 +154,7 @@ export default function BusinessAdminHome() {
             {createdUsers.map((created) => (
               <div key={created.id} className="business-admin-created-row">
                 <strong>{created.username || created.email}</strong>
-                <span>{created.email}</span>
+                <span>{created.email} · {created.account_type}</span>
               </div>
             ))}
           </div>
