@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/useAuth";
 import {
   addChatChannelUsers,
   approveChatChannelJoinRequest,
@@ -23,6 +23,12 @@ import MessageComposer from "./components/MessageComposer";
 import MessageThread from "./components/MessageThread";
 import { useChatConversations } from "./hooks/useChatConversations";
 import { useChatSocket } from "./hooks/useChatSocket";
+import {
+  decryptChatContent,
+  decryptChatMessages,
+  encryptChatContent,
+} from "./e2ee";
+import { loadPublicKey } from "../crypto/keyStore";
 import type { ChannelRole, ChannelVisibility, Conversation } from "./types";
 import {
   getChannelAdmins,
@@ -71,9 +77,15 @@ export default function Chat() {
     selectedRef.current = selectedConversation;
   }, [selectedConversation]);
 
-  const appendRealtimeMessage = useCallback((msg: ChatMessage) => {
-    setMessages((prev) => [...prev, msg]);
-  }, []);
+  const appendRealtimeMessage = useCallback(async (msg: ChatMessage) => {
+    if (!user) return;
+
+    const decrypted = {
+      ...msg,
+      content: await decryptChatContent(msg.content, user.id),
+    };
+    setMessages((prev) => [...prev, decrypted]);
+  }, [user]);
 
   const { wsRef, isConnected: isChatSocketConnected } = useChatSocket(
     user,
@@ -82,9 +94,13 @@ export default function Chat() {
   );
 
   useEffect(() => {
-    setSettingsError("");
-    setSubjectDraft(selectedChannel?.name ?? "");
-    setVisibilityDraft(selectedChannel?.visibility ?? "private");
+    const timeout = window.setTimeout(() => {
+      setSettingsError("");
+      setSubjectDraft(selectedChannel?.name ?? "");
+      setVisibilityDraft(selectedChannel?.visibility ?? "private");
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [selectedChannel]);
 
   const refreshChannels = async (activeChannelId?: number) => {
@@ -101,7 +117,8 @@ export default function Chat() {
     if (!user) return;
 
     try {
-      setMessages(await getChatMessages(user.id, otherUser.id));
+      const rawMessages = await getChatMessages(user.id, otherUser.id);
+      setMessages(await decryptChatMessages(rawMessages, user.id));
       setSelectedConversation({ type: "user", user: otherUser });
       setChannelSettingsOpen(false);
     } catch (err) {
@@ -110,6 +127,8 @@ export default function Chat() {
   };
 
   const loadChannelMessages = async (channel: ChatChannel) => {
+    if (!user) return;
+
     if (!channel.is_member) {
       setMessages([]);
       setSelectedConversation({ type: "channel", channel });
@@ -118,7 +137,8 @@ export default function Chat() {
     }
 
     try {
-      setMessages(await getChannelMessages(channel.id));
+      const rawMessages = await getChannelMessages(channel.id);
+      setMessages(await decryptChatMessages(rawMessages, user.id));
       setSelectedConversation({ type: "channel", channel });
       setChannelSettingsOpen(false);
     } catch (err) {
@@ -126,7 +146,44 @@ export default function Chat() {
     }
   };
 
-  const sendMessage = () => {
+  const recipientPublicKeysFor = async (conversation: Conversation) => {
+    if (!user) return null;
+
+    const keys = new Map<number, number[] | ArrayBuffer | Uint8Array>();
+    const currentUserPublicKey = await loadPublicKey(user.id);
+    if (!currentUserPublicKey) {
+      throw new Error("Your chat encryption key is not available on this device");
+    }
+    keys.set(user.id, currentUserPublicKey);
+
+    if (conversation.type === "user") {
+      if (conversation.user.public_key?.length) {
+        keys.set(conversation.user.id, conversation.user.public_key);
+      } else {
+        throw new Error(`${conversation.user.email} has no chat encryption key`);
+      }
+      return keys;
+    }
+
+    const missingMembers: number[] = [];
+    for (const memberId of conversation.channel.member_ids) {
+      if (memberId === user.id) continue;
+      const member = users.find((candidate) => candidate.id === memberId);
+      if (member?.public_key?.length) {
+        keys.set(memberId, member.public_key);
+      } else {
+        missingMembers.push(memberId);
+      }
+    }
+
+    if (missingMembers.length > 0) {
+      throw new Error("Some channel members do not have chat encryption keys");
+    }
+
+    return keys;
+  };
+
+  const sendMessage = async () => {
     if (!wsRef.current || !user || !selectedConversation || !input.trim()) return;
     if (wsRef.current.readyState !== WebSocket.OPEN) {
       logger.warn("Chat socket not ready; message send skipped", {
@@ -135,9 +192,24 @@ export default function Chat() {
       return;
     }
 
+    const plaintext = input.trim();
+    let encryptedContent: string;
+
+    try {
+      const recipientKeys = await recipientPublicKeysFor(selectedConversation);
+      if (!recipientKeys || recipientKeys.size === 0) {
+        throw new Error("No chat encryption keys are available");
+      }
+      encryptedContent = await encryptChatContent(plaintext, recipientKeys);
+    } catch (err) {
+      logger.error("Chat encryption failed", err);
+      setSettingsError(err instanceof Error ? err.message : "Chat encryption failed");
+      return;
+    }
+
     const message: ChatMessage = {
       sender_id: user.id,
-      content: input.trim(),
+      content: encryptedContent,
       status: "sent",
       created_at: new Date().toISOString(),
       ...(selectedConversation.type === "channel"
@@ -146,7 +218,7 @@ export default function Chat() {
     };
 
     wsRef.current.send(JSON.stringify(message));
-    setMessages((prev) => [...prev, message]);
+    setMessages((prev) => [...prev, { ...message, content: plaintext }]);
     setInput("");
   };
 
@@ -342,7 +414,9 @@ export default function Chat() {
           title={selectedTitle}
           input={input}
           onInputChange={setInput}
-          onSend={sendMessage}
+          onSend={() => {
+            void sendMessage();
+          }}
         />
       </section>
     </div>

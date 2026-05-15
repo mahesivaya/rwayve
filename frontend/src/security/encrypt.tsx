@@ -1,4 +1,9 @@
-async function encrypt(text: string, key: CryptoKey) {
+type EncryptedPayload = {
+    iv: number[];
+    data: number[];
+};
+
+export async function encrypt(text: string, key: CryptoKey) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encoded = new TextEncoder().encode(text);
     const ciphertext = await crypto.subtle.encrypt(
@@ -13,7 +18,7 @@ async function encrypt(text: string, key: CryptoKey) {
     };
   }
 
-async function generateKey() {
+export async function generateKey() {
 return crypto.subtle.generateKey(
     { name: "AES-GCM", length: 256 },
     true,
@@ -21,7 +26,7 @@ return crypto.subtle.generateKey(
 );
 }
 
-async function decrypt(encrypted: any, key: CryptoKey) {
+export async function decrypt(encrypted: EncryptedPayload, key: CryptoKey) {
     const iv = new Uint8Array(encrypted.iv);
     const data = new Uint8Array(encrypted.data);
   

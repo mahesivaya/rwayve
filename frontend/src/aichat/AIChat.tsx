@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import "./aichat.css";
 
 import { sendAiChat, type AiTurn } from "../api/ai";
@@ -38,14 +38,14 @@ export default function AIChat() {
       }
 
       setMessages((prev) => [...prev, { role: "model", content: reply }]);
-    } catch (err: any) {
-      setError(err?.message ?? "Request failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Request failed");
     } finally {
       setBusy(false);
     }
   };
 
-  const onKeyDown = (e: any) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       send();

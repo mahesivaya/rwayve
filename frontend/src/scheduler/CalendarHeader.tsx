@@ -2,16 +2,12 @@ import { useMemo } from "react";
 
 type Props = {
   view: "day" | "week" | "month";
-  setView: (v: "day" | "week" | "month") => void;
   currentDate: Date;
-  setCurrentDate: (d: Date) => void;
 };
 
 export default function CalendarHeader({
   view,
-  setView,
-  currentDate,        // ✅ MUST be here
-  setCurrentDate,
+  currentDate,
 }: Props) {
 
   const label = useMemo(() => {

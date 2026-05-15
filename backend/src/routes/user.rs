@@ -7,15 +7,28 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use tracing::{error, info, instrument, warn};
 
-#[get("/users")]
-#[instrument(target = "http", skip(req, pool))]
-pub async fn get_user_by_email(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
-    let query = req.query_string();
+#[derive(Deserialize)]
+pub struct UserLookupQuery {
+    pub email: String,
+}
 
-    let email = match query.split("email=").nth(1) {
-        Some(e) => e,
-        None => return HttpResponse::BadRequest().body("Email required"),
-    };
+#[get("/users")]
+#[instrument(target = "http", skip(req, pool, query))]
+pub async fn get_user_by_email(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    query: web::Query<UserLookupQuery>,
+) -> impl Responder {
+    // Require a valid JWT — this endpoint exposes user ids and public keys,
+    // so it must not be reachable anonymously.
+    if get_user_id_from_request(&req).is_none() {
+        return HttpResponse::Unauthorized().finish();
+    }
+
+    let email = query.email.trim();
+    if email.is_empty() {
+        return HttpResponse::BadRequest().body("Email required");
+    }
 
     let result = sqlx::query_as::<_, UserResponse>(
         "SELECT id, email, public_key FROM users WHERE email = $1",
@@ -490,12 +503,13 @@ pub async fn update_profile(
 
     let result = sqlx::query(
         "UPDATE users
-         SET first_name = $1, last_name = $2
+         SET first_name = COALESCE($1, first_name),
+             last_name = COALESCE($2, last_name)
          WHERE id = $3
          RETURNING id, email, first_name, last_name",
     )
-    .bind(data.first_name.as_deref().unwrap_or(""))
-    .bind(data.last_name.as_deref().unwrap_or(""))
+    .bind(data.first_name.as_deref())
+    .bind(data.last_name.as_deref())
     .bind(user_id)
     .fetch_optional(pool.get_ref())
     .await;
@@ -524,9 +538,14 @@ pub async fn update_profile(
 }
 
 #[get("/users/all")]
-#[instrument(target = "http", skip(pool))]
-async fn get_all_users(pool: web::Data<PgPool>) -> impl Responder {
-    let result = sqlx::query("SELECT id, email FROM users")
+#[instrument(target = "http", skip(req, pool))]
+async fn get_all_users(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
+    // Require a valid JWT — this endpoint enumerates every account.
+    if get_user_id_from_request(&req).is_none() {
+        return HttpResponse::Unauthorized().finish();
+    }
+
+    let result = sqlx::query("SELECT id, email, public_key FROM users")
         .fetch_all(pool.get_ref())
         .await;
 
@@ -537,10 +556,14 @@ async fn get_all_users(pool: web::Data<PgPool>) -> impl Responder {
                 .map(|r| {
                     let id: i32 = r.get("id");
                     let email: String = r.get("email");
+                    let public_key: Option<String> = r.get("public_key");
+                    let public_key =
+                        public_key.and_then(|k| serde_json::from_str::<Vec<u8>>(&k).ok());
 
                     serde_json::json!({
                         "id": id,
-                        "email": email
+                        "email": email,
+                        "public_key": public_key
                     })
                 })
                 .collect();
@@ -551,5 +574,50 @@ async fn get_all_users(pool: web::Data<PgPool>) -> impl Responder {
             error!(target: "db", error = ?e, "get_all_users failed");
             HttpResponse::InternalServerError().finish()
         }
+    }
+}
+
+#[cfg(test)]
+mod auth_regression_tests {
+    use super::*;
+    use actix_web::{App, http::StatusCode, test, web};
+    use sqlx::postgres::PgPoolOptions;
+
+    fn lazy_pool() -> PgPool {
+        PgPoolOptions::new()
+            .connect_lazy("postgres://postgres:postgres@localhost/rwayve_test")
+            .expect("lazy pool")
+    }
+
+    #[actix_web::test]
+    async fn get_user_by_email_requires_auth() {
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(lazy_pool()))
+                .service(get_user_by_email),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/users?email=target@example.com")
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[actix_web::test]
+    async fn get_all_users_requires_auth() {
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(lazy_pool()))
+                .service(get_all_users),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/users/all").to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

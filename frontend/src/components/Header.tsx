@@ -1,5 +1,5 @@
-import { useAuth } from "../auth/AuthContext";
-import { Link, Outlet, useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/useAuth";
+import { useNavigate } from "react-router-dom";
 
 export default function Header() {
   const { user, logout } = useAuth();

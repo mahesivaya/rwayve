@@ -44,6 +44,17 @@ impl Cache {
         let mut conn = self.conn.clone();
         let _: redis::RedisResult<()> = conn.del(key).await;
     }
+
+    pub async fn increment_with_ttl(&self, key: &str, ttl_secs: u64) -> redis::RedisResult<i64> {
+        let mut conn = self.conn.clone();
+        let count: i64 = conn.incr(key, 1).await?;
+
+        if count == 1 {
+            let _: bool = conn.expire(key, ttl_secs as i64).await?;
+        }
+
+        Ok(count)
+    }
 }
 
 pub fn chat_history_key(a: i32, b: i32) -> String {

@@ -2,7 +2,7 @@ import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createAdminUser, type AdminCreatedUser } from "../api/admin";
 import { normalizeAccountType } from "../auth/accountHome";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/useAuth";
 import "../home/home.css";
 import "./businessAdmin.css";
 

@@ -78,6 +78,42 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn update_profile_preserves_omitted_fields() {
+        let pool = test_pool().await;
+        let email = random_email();
+        let user_id = insert_local_user(&pool, &email, "p").await;
+
+        sqlx::query("UPDATE users SET first_name = $1, last_name = $2 WHERE id = $3")
+            .bind("Ada")
+            .bind("Lovelace")
+            .bind(user_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(pool.clone()))
+                .service(update_profile),
+        )
+        .await;
+
+        let req = test::TestRequest::put()
+            .uri("/profile")
+            .insert_header(("Authorization", format!("Bearer {}", jwt_for(user_id, &email))))
+            .set_json(json!({ "first_name": "Augusta" }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        assert_eq!(body["first_name"], "Augusta");
+        assert_eq!(body["last_name"], "Lovelace");
+
+        delete_user(&pool, user_id).await;
+    }
+
+    #[actix_web::test]
     async fn change_password_succeeds_for_local_user() {
         let pool = test_pool().await;
         let email = random_email();

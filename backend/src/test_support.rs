@@ -64,6 +64,12 @@ pub async fn delete_user(pool: &PgPool, user_id: i32) {
 }
 
 pub fn jwt_for(user_id: i32, email: &str) -> String {
+    unsafe {
+        if std::env::var("JWT_SECRET").is_err() {
+            std::env::set_var("JWT_SECRET", "test-jwt-secret");
+        }
+    }
+
     crate::security::jwt::create_jwt(user_id, email.to_string())
 }
 

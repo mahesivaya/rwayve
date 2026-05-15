@@ -8,6 +8,7 @@ use actix_web::web;
 pub fn routes(cfg: &mut web::ServiceConfig) {
     cfg.service(auth::register)
         .service(auth::login)
+        .service(auth::logout)
         .service(auth::forgot_password)
         .service(auth::reset_password)
         .service(user::change_password)

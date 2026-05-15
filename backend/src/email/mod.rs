@@ -20,6 +20,7 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
         .service(handler::get_email_body)
         .service(handler::get_email_by_id)
         .service(handler::send)
+        .service(handler::gmail_connect_url)
         .service(handler::get_me)
         .service(handler::save_public_key);
 }

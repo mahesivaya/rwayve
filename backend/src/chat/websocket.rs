@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tracing::{debug, error, info};
 
+const CHAT_E2E_PREFIX: &str = "WAYVE_CHAT_E2E_V1\n";
+
 lazy_static! {
     static ref SESSIONS: Mutex<HashMap<i32, Addr<ChatSession>>> = Mutex::new(HashMap::new());
 }
@@ -37,17 +39,19 @@ pub async fn chat_ws(
     cache: web::Data<Option<Cache>>,
     query: web::Query<WsAuthQuery>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    // Auth: a valid JWT in `?token=...` is required. user_id is derived from
-    // the verified claims, NOT from the query string — preventing impersonation.
-    let token = match query.token.as_deref() {
-        Some(t) if !t.is_empty() => t,
-        _ => {
+    // Auth: prefer the httpOnly cookie, with query-token fallback for older clients.
+    let token = match crate::security::jwt::token_from_request(&req)
+        .or_else(|| query.token.clone())
+        .filter(|token| !token.trim().is_empty())
+    {
+        Some(token) => token,
+        None => {
             tracing::warn!(target: "ws", "chat_ws rejected: missing token");
             return Ok(HttpResponse::Unauthorized().body("Missing token"));
         }
     };
 
-    let user_id = match crate::security::jwt::decode_jwt(token) {
+    let user_id = match crate::security::jwt::decode_jwt(&token) {
         Some(claims) => claims.sub,
         None => {
             tracing::warn!(target: "ws", "chat_ws rejected: invalid token");
@@ -73,12 +77,18 @@ impl Actor for ChatSession {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("Chat WS connected: user_id={}", self.user_id);
-        SESSIONS.lock().unwrap().insert(self.user_id, ctx.address());
+        SESSIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(self.user_id, ctx.address());
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
         info!("Chat WS disconnected: user_id={}", self.user_id);
-        SESSIONS.lock().unwrap().remove(&self.user_id);
+        SESSIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.user_id);
     }
 }
 
@@ -106,23 +116,48 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                     // ================= READ RECEIPT =================
                     if matches!(data.status, Some(MessageStatus::Read)) {
                         let pool = self.pool.clone();
+                        let cache = self.cache.clone();
                         let reader = self.user_id;
                         let Some(other) = data.receiver_id else {
                             return;
                         };
 
                         actix::spawn(async move {
-                            let _ = sqlx::query(
+                            let updated = sqlx::query(
                                 r#"
                                 UPDATE messages
                                 SET status = 'read'
                                 WHERE receiver_id = $1 AND sender_id = $2
+                                  AND status <> 'read'
                                 "#,
                             )
                             .bind(reader)
                             .bind(other)
                             .execute(&pool)
                             .await;
+
+                            if let Some(cache) = cache.as_ref() {
+                                cache.del(&chat_history_key(reader, other)).await;
+                            }
+
+                            if updated
+                                .as_ref()
+                                .map(|result| result.rows_affected() > 0)
+                                .unwrap_or(false)
+                            {
+                                let receipt = serde_json::json!({
+                                    "type": "status_update",
+                                    "sender_id": reader,
+                                    "receiver_id": other,
+                                    "status": "read"
+                                })
+                                .to_string();
+
+                                let sessions = SESSIONS.lock().unwrap_or_else(|e| e.into_inner());
+                                if let Some(addr) = sessions.get(&other) {
+                                    addr.do_send(WsMessage(receipt));
+                                }
+                            }
                         });
 
                         return;
@@ -136,6 +171,17 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                     let receiver_id = data.receiver_id;
                     let channel_id = data.channel_id;
                     let content = data.content.clone();
+
+                    if !content.starts_with(CHAT_E2E_PREFIX) {
+                        error!(
+                            target: "ws",
+                            sender_id,
+                            receiver_id = ?receiver_id,
+                            channel_id = ?channel_id,
+                            "rejected plaintext chat message"
+                        );
+                        return;
+                    }
 
                     let (iv, encrypted) = match encrypt(&content) {
                         Ok(res) => res,
@@ -218,7 +264,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                                     })
                                     .to_string();
 
-                                    let sessions = SESSIONS.lock().unwrap();
+                                    let sessions =
+                                        SESSIONS.lock().unwrap_or_else(|e| e.into_inner());
                                     for member_id in members {
                                         if member_id == sender_id {
                                             continue;
@@ -282,7 +329,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChatSession {
                                 .to_string();
 
                                 // SEND TO RECEIVER
-                                if let Some(addr) = SESSIONS.lock().unwrap().get(&receiver_id) {
+                                if let Some(addr) = SESSIONS
+                                    .lock()
+                                    .unwrap_or_else(|e| e.into_inner())
+                                    .get(&receiver_id)
+                                {
                                     addr.do_send(WsMessage(msg_json.clone()));
 
                                     // 🔥 DELIVERED

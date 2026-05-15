@@ -1,31 +1,17 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   savePrivateKey,
   savePublicKey,
   loadPrivateKey,
   loadPublicKey,
 } from "../crypto/keyStore";
-import { getMe, saveUserPublicKey } from "../api/Auth";
+import { getMe, logout as logoutRequest, saveUserPublicKey } from "../api/Auth";
 import { clearAuthToken, getAuthToken, setAuthToken } from "./token";
 import { logger } from "../utils/logger";
-import { normalizeAccountType, type AccountType } from "./accountHome";
+import { normalizeAccountType } from "./accountHome";
+import { AuthContext, type UserType } from "./authContextValue";
 
 const log = logger.scope("auth");
-
-type UserType = {
-  email: string;
-  id: number;
-  account_type: AccountType;
-  organization_id?: number | null;
-};
-
-type AuthType = {
-  user: UserType | null;
-  login: (token: string, accountType?: string) => void;
-  logout: () => void;
-};
-
-const AuthContext = createContext<AuthType | null>(null);
 
 type Claims = {
   sub: number;
@@ -35,11 +21,20 @@ type Claims = {
   exp?: number;
 };
 
+const decodeBase64Url = (value: string): string => {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padding = (4 - (normalized.length % 4)) % 4;
+  const padded = normalized.padEnd(normalized.length + padding, "=");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+};
+
 // Decode JWT payload. Returns null on malformed/expired tokens so callers
 // can treat a stale token the same as no token.
 const parseJwt = (token: string): Claims | null => {
   try {
-    const claims = JSON.parse(atob(token.split(".")[1])) as Claims;
+    const claims = JSON.parse(decodeBase64Url(token.split(".")[1])) as Claims;
     if (typeof claims.exp === "number" && claims.exp * 1000 < Date.now()) {
       return null;
     }
@@ -49,27 +44,25 @@ const parseJwt = (token: string): Claims | null => {
   }
 };
 
-// Resolve the boot-time token: prefer the OAuth redirect token, otherwise
-// reuse the stored one. Side-effect: persists the OAuth token and cleans
-// it out of the URL. Runs synchronously before first render so we can
-// optimistically populate `user` without flashing a loading screen.
-//
-// IMPORTANT: only consume `?token=` when an OAuth marker is also present.
-// Other features (like password reset) also use `?token=` on their own URLs
-// and must not have it stolen here.
+// Resolve the boot-time token: prefer the OAuth redirect token from the URL
+// fragment, otherwise reuse the stored one. The fragment keeps the token out of
+// server logs, referrers, and browser request history.
 const resolveBootToken = (): string | null => {
-  const params = new URLSearchParams(window.location.search);
-  const tokenFromUrl = params.get("token");
-  const isOAuthLanding = params.has("signup") || params.has("connected");
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  const tokenFromHash = hashParams.get("token");
+  const isOAuthLanding =
+    hashParams.has("signup") || hashParams.has("connected");
 
-  if (tokenFromUrl && isOAuthLanding) {
+  if (tokenFromHash && isOAuthLanding) {
     log.info("restoring token from OAuth redirect");
-    setAuthToken(tokenFromUrl);
-    params.delete("token");
-    const qs = params.toString();
+    setAuthToken(tokenFromHash);
     const path = window.location.pathname || "/home";
-    window.history.replaceState({}, document.title, qs ? `${path}?${qs}` : path);
-    return tokenFromUrl;
+    window.history.replaceState(
+      {},
+      document.title,
+      `${path}${window.location.search}`
+    );
+    return tokenFromHash;
   }
 
   return getAuthToken();
@@ -80,6 +73,8 @@ async function publishPublicKey(publicKey: ArrayBuffer) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const authVersion = useRef(0);
+
   // Optimistic init: trust a non-expired JWT immediately so the app renders
   // without a round-trip. /api/me below confirms it and logs us out on 401.
   const [user, setUser] = useState<UserType | null>(() => {
@@ -95,14 +90,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       : null;
   });
+  const [initializing, setInitializing] = useState(() => !getAuthToken());
 
-  const setupEncryption = async (token: string) => {
+  const setupEncryption = async (userId: number) => {
     try {
-      const claims = parseJwt(token);
-      if (!claims) return;
-
-      const existingKey = await loadPrivateKey(claims.sub);
-      const existingPublicKey = await loadPublicKey(claims.sub);
+      const existingKey = await loadPrivateKey(userId);
+      const existingPublicKey = await loadPublicKey(userId);
 
       if (existingKey && existingPublicKey) {
         await publishPublicKey(existingPublicKey);
@@ -123,10 +116,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ["encrypt", "decrypt"]
       );
 
-      await savePrivateKey(keyPair.privateKey, claims.sub);
+      await savePrivateKey(keyPair.privateKey, userId);
 
       const publicKey = await crypto.subtle.exportKey("spki", keyPair.publicKey);
-      await savePublicKey(publicKey, claims.sub);
+      await savePublicKey(publicKey, userId);
 
       await publishPublicKey(publicKey);
 
@@ -138,7 +131,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const token = getAuthToken();
-    if (!token) return;
 
     // Validate in the background. AbortController makes StrictMode's
     // double-mount in dev clean up the first request instead of racing.
@@ -149,6 +141,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await getMe(token, ctrl.signal);
 
         if (res.status === 401) {
+          if (authVersion.current > 0) {
+            return;
+          }
           log.warn("/api/me rejected stored token; clearing session");
           clearAuthToken();
           setUser(null);
@@ -165,29 +160,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         const data = await res.json();
+        const nextUser = {
+          email: data.email,
+          id: data.id,
+          account_type: normalizeAccountType(data.account_type),
+          organization_id: data.organization_id ?? null,
+        };
         // Only patch state if the server sees a different user — avoids a
         // pointless re-render when the optimistic claims already matched.
         setUser((prev) =>
           prev &&
-          prev.id === data.id &&
-          prev.email === data.email &&
-          prev.account_type === normalizeAccountType(data.account_type) &&
-          prev.organization_id === (data.organization_id ?? null)
+          prev.id === nextUser.id &&
+          prev.email === nextUser.email &&
+          prev.account_type === nextUser.account_type &&
+          prev.organization_id === nextUser.organization_id
             ? prev
-            : {
-                email: data.email,
-                id: data.id,
-                account_type: normalizeAccountType(data.account_type),
-                organization_id: data.organization_id ?? null,
-              }
+            : nextUser
         );
 
-        setupEncryption(token).catch((err) =>
+        setupEncryption(nextUser.id).catch((err) =>
           log.error("background encryption setup failed", err)
         );
       } catch (err) {
         if ((err as { name?: string }).name === "AbortError") return;
         log.error("auth init network error", err);
+      } finally {
+        setInitializing(false);
       }
     })();
 
@@ -195,7 +193,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = (token: string, accountType?: string) => {
+    authVersion.current += 1;
     setAuthToken(token);
+    setInitializing(false);
 
     const decoded = parseJwt(token);
 
@@ -206,32 +206,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         account_type: normalizeAccountType(accountType ?? decoded.account_type),
         organization_id: decoded.organization_id ?? null,
       });
+      setupEncryption(decoded.sub).catch((err) =>
+        log.error("background encryption setup failed", err)
+      );
     }
-
-    setupEncryption(token).catch((err) =>
-      log.error("background encryption setup failed", err)
-    );
   };
 
   const logout = () => {
+    authVersion.current += 1;
     clearAuthToken();
     setUser(null);
+    logoutRequest().catch((err) => log.error("logout request failed", err));
     window.location.href = "/login";
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, initializing, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-
-  if (!context) {
-    throw new Error("useAuth must be used inside AuthProvider");
-  }
-
-  return context;
 }

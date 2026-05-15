@@ -5,7 +5,7 @@ import {
   listAdminOrganizations,
   type AdminOrganization,
 } from "../api/admin";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/useAuth";
 import "./projectAdmin.css";
 
 export default function ProjectAdminHome() {

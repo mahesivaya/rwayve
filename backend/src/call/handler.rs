@@ -23,13 +23,19 @@ impl Actor for CallSession {
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("Call WS connected: user_id={}", self.user_id);
 
-        SESSIONS.lock().unwrap().insert(self.user_id, ctx.address());
+        SESSIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(self.user_id, ctx.address());
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
         info!("Call WS disconnected: user_id={}", self.user_id);
 
-        SESSIONS.lock().unwrap().remove(&self.user_id);
+        SESSIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.user_id);
     }
 }
 
@@ -37,7 +43,10 @@ impl Handler<SignalMessage> for CallSession {
     type Result = ();
 
     fn handle(&mut self, msg: SignalMessage, ctx: &mut Self::Context) {
-        ctx.text(serde_json::to_string(&msg).unwrap());
+        match serde_json::to_string(&msg) {
+            Ok(text) => ctx.text(text),
+            Err(e) => warn!(target: "ws", error = %e, "failed to serialize signal message"),
+        }
     }
 }
 
@@ -50,7 +59,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for CallSession {
                 if let Ok(signal) = serde_json::from_str::<SignalMessage>(&text) {
                     let target = signal.to;
 
-                    let sessions = SESSIONS.lock().unwrap();
+                    let sessions = SESSIONS.lock().unwrap_or_else(|e| e.into_inner());
 
                     if let Some(addr) = sessions.get(&target).cloned() {
                         debug!(target: "ws", from = self.user_id, to = target, kind = %signal.r#type, "forwarding signal");
@@ -84,17 +93,19 @@ pub async fn call_ws(
     stream: web::Payload,
     query: web::Query<HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
-    // Auth: require a valid JWT and derive user_id from its claims.
-    // Any `user_id=` query param is now ignored — the JWT is the source of truth.
-    let token = match query.get("token").map(String::as_str) {
-        Some(t) if !t.is_empty() => t,
-        _ => {
+    // Auth: prefer the httpOnly cookie, with query-token fallback for older clients.
+    let token = match crate::security::jwt::token_from_request(&req)
+        .or_else(|| query.get("token").cloned())
+        .filter(|token| !token.trim().is_empty())
+    {
+        Some(token) => token,
+        None => {
             warn!(target: "ws", "call_ws rejected: missing token");
             return Ok(HttpResponse::Unauthorized().body("Missing token"));
         }
     };
 
-    let user_id = match crate::security::jwt::decode_jwt(token) {
+    let user_id = match crate::security::jwt::decode_jwt(&token) {
         Some(claims) => claims.sub,
         None => {
             warn!(target: "ws", "call_ws rejected: invalid token");

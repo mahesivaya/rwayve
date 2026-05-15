@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { lazy, Suspense } from "react";
+import { useLocation } from "react-router-dom";
+import { lazy, Suspense, useMemo } from "react";
 
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -7,7 +8,7 @@ import Register from "./auth/Register";
 import Login from "./auth/Login";
 import ForgotPassword from "./auth/ForgotPassword";
 import ResetPassword from "./auth/ResetPassword";
-import { useAuth } from "./auth/AuthContext";
+import { useAuth } from "./auth/useAuth";
 import { homePathForAccount, normalizeAccountType } from "./auth/accountHome";
 
 // 🔥 Lazy loaded pages
@@ -30,8 +31,22 @@ const ServicePage = lazy(() => import("./services/ServicePage"));
 
 export default function App() {
   const { user } = useAuth();
-  const accountHome = homePathForAccount(user?.account_type);
+  const location = useLocation();
+
+  const accountHome = useMemo(() => {
+    const raw = homePathForAccount(user?.account_type);
+    const withSlash = raw.startsWith("/") ? raw : `/${raw}`;
+    return withSlash.toLowerCase();
+  }, [user?.account_type]);
+
   const accountType = normalizeAccountType(user?.account_type);
+
+  const isAtAccountHome = location.pathname.toLowerCase() === accountHome;
+
+  const redirectToAccountHome =
+    isAtAccountHome ? null : (
+      <Navigate to={accountHome} replace />
+    );
 
   return (
     <Suspense fallback={<div>Loading...</div>}>
@@ -40,21 +55,17 @@ export default function App() {
         {/* ROOT */}
         <Route
           path="/"
-          element={user ? <Navigate to={accountHome} replace /> : <Home />}
-        />
-        <Route
-          path="/Home"
-          element={<Navigate to="/" replace />}
+          element={user ? redirectToAccountHome ?? <Home /> : <Home />}
         />
 
         {/* PUBLIC */}
         <Route
           path="/login"
-          element={user ? <Navigate to={accountHome} /> : <Login />}
+          element={user ? redirectToAccountHome ?? <Login /> : <Login />}
         />
         <Route
           path="/register"
-          element={user ? <Navigate to={accountHome} /> : <Register />}
+          element={user ? redirectToAccountHome ?? <Register /> : <Register />}
         />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -69,7 +80,7 @@ export default function App() {
               path="/home"
               element={
                 accountType !== "personal" ? (
-                  <Navigate to={accountHome} replace />
+                  redirectToAccountHome ?? <Home />
                 ) : (
                   <Home />
                 )
@@ -81,7 +92,7 @@ export default function App() {
                 accountType === "business_admin" ? (
                   <BusinessAdminHome />
                 ) : (
-                  <Navigate to={accountHome} replace />
+                  redirectToAccountHome ?? <BusinessAdminHome />
                 )
               }
             />
@@ -91,7 +102,7 @@ export default function App() {
                 accountType === "project_admin" ? (
                   <ProjectAdminHome />
                 ) : (
-                  <Navigate to={accountHome} replace />
+                  redirectToAccountHome ?? <ProjectAdminHome />
                 )
               }
             />
@@ -113,7 +124,13 @@ export default function App() {
         {/* FALLBACK */}
         <Route
           path="*"
-          element={<Navigate to={user ? accountHome : "/"} replace />}
+          element={
+            user ? (
+              <Navigate to={accountHome} replace />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         />
 
       </Routes>

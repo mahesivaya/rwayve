@@ -84,24 +84,19 @@ export default function Notes() {
       return;
     }
 
-    const timeout = setTimeout(() => {void saveNote(selected);}, 800);
-    return () =>
-      clearTimeout(timeout);
-  }, [selected]);
-
-  const saveNote = async (
-    note: EditableNote
-  ) => {
-    try {
-      await updateNoteApi(note.id, {
+    // Debounced save of the in-flight note. Inlined rather than a separate
+    // `saveNote` declared below, which would be referenced before declaration.
+    const note = selected;
+    const timeout = setTimeout(() => {
+      void updateNoteApi(note.id, {
         title: note.title,
         content: note.content,
+      }).catch((err) => {
+        console.error(err);
       });
-
-    } catch (err) {
-      console.error(err);
-    }
-  };
+    }, 800);
+    return () => clearTimeout(timeout);
+  }, [selected]);
 
   // ================= DELETE =================
 

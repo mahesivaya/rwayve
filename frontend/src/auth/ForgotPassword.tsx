@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { forgotPassword } from "../api/Auth";
 import "./login.css";
 
@@ -8,7 +8,6 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState("");
-  const navigate = useNavigate();
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -53,7 +52,7 @@ export default function ForgotPassword() {
         )}
 
         <p className="switch-auth">
-          <span onClick={() => navigate("/login")}>Back to login</span>
+          <Link to="/login">Back to login</Link>
         </p>
       </form>
     </div>

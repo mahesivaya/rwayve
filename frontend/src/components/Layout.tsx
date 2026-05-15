@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/useAuth";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { SearchContext } from "../search/SearchContext";
 import "./Layout.css";
@@ -78,8 +78,13 @@ export default function Layout() {
   // Close the dropdown on any click outside its container.
   useEffect(() => {
     if (!menuOpen) return;
-    const onDocClick = (e: { target: any }) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target;
+      if (
+        menuRef.current &&
+        target instanceof Node &&
+        !menuRef.current.contains(target)
+      ) {
         setMenuOpen(false);
       }
     };
@@ -87,17 +92,24 @@ export default function Layout() {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [menuOpen]);
 
-  if (!user) return null;
-
-  const splitApp = SPLIT_APPS.find((a) => a.key === splitView) ?? null;
-  const SplitComp = splitApp?.Comp ?? null;
-  const splitLabel = splitApp?.label ?? null;
-  const searchLabel = SEARCH_LABELS[location.pathname] ?? "this page";
+  // Hooks must run on every render in a stable order — keep useMemo above
+  // the `!user` early return.
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const searchValue = useMemo(
     () => ({ searchQuery, normalizedSearchQuery, setSearchQuery }),
     [searchQuery, normalizedSearchQuery]
   );
+
+  if (!user) {
+    return (
+      <div className="layout-loading">Loading session...</div>
+    );
+  }
+
+  const splitApp = SPLIT_APPS.find((a) => a.key === splitView) ?? null;
+  const SplitComp = splitApp?.Comp ?? null;
+  const splitLabel = splitApp?.label ?? null;
+  const searchLabel = SEARCH_LABELS[location.pathname] ?? "this page";
 
   // When the split is open, header link clicks target the right pane instead
   // of navigating the URL. When closed, the link behaves normally.

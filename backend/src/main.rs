@@ -25,23 +25,18 @@ mod tests;
 // ==============================
 // 🔹 USE INTERNAL MODULES
 // ==============================
-// use crate::middleware::logger::LoggerMiddleware;
-// use crate::middleware::auth::AuthMiddleware;
-// use crate::middleware::metrics::MetricsMiddleware;
-// use crate::middleware::rate_limit::RateLimitMiddleware;
-
 use crate::observability::devlog::init_devlog;
 use crate::observability::tracing::init_tracing;
 // 🚧 use crate::observability::tracing_root::AppRootSpanBuilder; // disabled
 
 use crate::email::body_worker::run_body_worker;
 use crate::email::sync::sync_all;
+use crate::middleware::rate_limit::RateLimitMiddleware;
 
 // ==============================
 // 🔹 EXTERNAL CRATES
 // ==============================
 use actix_cors::Cors;
-use actix_files::Files;
 use actix_web::{App, HttpServer, web};
 pub use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sqlx::PgPool;
@@ -115,9 +110,10 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
         .configure(email::public_routes)
         // 🔥 WEBSOCKETS
         .configure(chat::ws_routes)
-        .configure(call::routes)
-        // 🔥 STATIC FILES
-        .service(Files::new("/uploads", "./uploads").show_files_listing());
+        .configure(call::routes);
+    // NOTE: uploaded files are no longer served statically from /uploads.
+    // They are delivered via the authenticated, ownership-checked route
+    // GET /api/files/{id}/download (see drive::handler::download_file).
 }
 
 async fn run_sync_worker(pool: PgPool) -> ! {
@@ -141,120 +137,12 @@ async fn run_sync_worker(pool: PgPool) -> ! {
     }
 }
 
-async fn ensure_schema(pool: &PgPool) {
-    for statement in [
-        r#"
-        CREATE TABLE IF NOT EXISTS organizations (
-            id SERIAL PRIMARY KEY,
-            name TEXT UNIQUE NOT NULL,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-        "#,
-        r#"
-        CREATE TABLE IF NOT EXISTS channels (
-            id SERIAL PRIMARY KEY,
-            name TEXT NOT NULL,
-            visibility TEXT NOT NULL DEFAULT 'private',
-            created_by INT REFERENCES users(id) ON DELETE CASCADE,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-        "#,
-        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'private'",
-        r#"
-        CREATE TABLE IF NOT EXISTS channel_members (
-            channel_id INT REFERENCES channels(id) ON DELETE CASCADE,
-            user_id INT REFERENCES users(id) ON DELETE CASCADE,
-            role TEXT NOT NULL DEFAULT 'user',
-            joined_at TIMESTAMP DEFAULT NOW(),
-            PRIMARY KEY (channel_id, user_id)
-        )
-        "#,
-        "ALTER TABLE channel_members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'",
-        "UPDATE channel_members cm SET role = 'admin' FROM channels c WHERE c.id = cm.channel_id AND c.created_by = cm.user_id",
-        r#"
-        CREATE TABLE IF NOT EXISTS channel_join_requests (
-            channel_id INT REFERENCES channels(id) ON DELETE CASCADE,
-            user_id INT REFERENCES users(id) ON DELETE CASCADE,
-            status TEXT NOT NULL DEFAULT 'pending',
-            requested_at TIMESTAMP DEFAULT NOW(),
-            PRIMARY KEY (channel_id, user_id)
-        )
-        "#,
-        r#"
-        CREATE TABLE IF NOT EXISTS channel_invites (
-            id SERIAL PRIMARY KEY,
-            channel_id INT REFERENCES channels(id) ON DELETE CASCADE,
-            email TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user',
-            invited_by INT REFERENCES users(id) ON DELETE SET NULL,
-            created_at TIMESTAMP DEFAULT NOW(),
-            UNIQUE(channel_id, email)
-        )
-        "#,
-        r#"
-        CREATE TABLE IF NOT EXISTS channel_messages (
-            id SERIAL PRIMARY KEY,
-            channel_id INT REFERENCES channels(id) ON DELETE CASCADE,
-            sender_id INT REFERENCES users(id) ON DELETE CASCADE,
-            content_encrypted TEXT,
-            content_iv TEXT,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-        "#,
-        "CREATE INDEX IF NOT EXISTS idx_channel_members_user ON channel_members (user_id, channel_id)",
-        "CREATE INDEX IF NOT EXISTS idx_channel_join_requests_channel ON channel_join_requests (channel_id, status)",
-        "CREATE INDEX IF NOT EXISTS idx_channel_invites_channel ON channel_invites (channel_id, email)",
-        "CREATE INDEX IF NOT EXISTS idx_channel_messages_channel_created ON channel_messages (channel_id, created_at DESC)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'personal'",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id INT REFERENCES organizations(id) ON DELETE SET NULL",
-        "CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx ON users (username) WHERE username IS NOT NULL",
-    ] {
-        if let Err(e) = sqlx::query(statement).execute(pool).await {
-            error!("Failed to ensure chat channel schema: {:?}", e);
-        }
-    }
-
-    if let Err(e) = sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS email_attachments (
-            id SERIAL PRIMARY KEY,
-            email_id INTEGER NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
-            account_id INTEGER NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
-            gmail_id TEXT NOT NULL,
-            attachment_id TEXT NOT NULL,
-            filename TEXT NOT NULL,
-            mime_type TEXT,
-            size BIGINT DEFAULT 0,
-            created_at TIMESTAMP DEFAULT NOW(),
-            UNIQUE(email_id, attachment_id)
-        )
-        "#,
-    )
-    .execute(pool)
-    .await
-    {
-        error!("Failed to ensure email_attachments table: {:?}", e);
-    }
-
-    if let Err(e) = sqlx::query(
-        "ALTER TABLE emails ADD COLUMN IF NOT EXISTS attachments_checked BOOLEAN DEFAULT FALSE",
-    )
-    .execute(pool)
-    .await
-    {
-        error!(
-            "Failed to ensure emails.attachments_checked column: {:?}",
-            e
-        );
-    }
-}
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     init_tracing();
     init_devlog();
     load_env_files();
+    crate::security::jwt::jwt_secret();
     info!("Server starting...");
     tracing::info!("Server starting...");
     let role = RuntimeRole::from_env();
@@ -293,8 +181,6 @@ async fn main() -> std::io::Result<()> {
             }
         }
     };
-
-    ensure_schema(&pool).await;
 
     match role {
         RuntimeRole::EmailSyncWorker => run_sync_worker(pool).await,
@@ -341,11 +227,8 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .wrap(TracingLogger::default()) // 🚧
+            .wrap(RateLimitMiddleware)
             .wrap(cors)
-            // .wrap(LoggerMiddleware)        // observability
-            // .wrap(MetricsMiddleware)       // performance
-            // .wrap(RateLimitMiddleware)     // protection
-            // .wrap(AuthMiddleware)          // security
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(redis_cache.clone()))
             .configure(app_routes)

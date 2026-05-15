@@ -1,6 +1,5 @@
 import { logger } from "../utils/logger";
 import { sendEmail as sendEmailApi } from "../api/email";
-import { getAuthToken } from "../auth/token";
 
 import { useState, useEffect } from "react";
 import {buildEncryptedBody, type EmailEncryptionMode} from "./encryptEmail";
@@ -33,12 +32,6 @@ export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps
       return;
     }
 
-    const token = getAuthToken();
-    if (!token) {
-      setStatus("You must login first ❌");
-      return;
-    }
-
     setLoading(true);
     setStatus("");
 
@@ -49,7 +42,6 @@ export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps
         await buildEncryptedBody(
           to,
           body,
-          token,
           encryptionMode
         );
     
@@ -69,9 +61,9 @@ export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps
       setEncryptionMode("fully_encrypted");
       onSent?.();
       setTimeout(() => onClose?.(), 800);
-    } catch (err: any) {
+    } catch (err) {
       logger.error(err);
-      setStatus(err.message || "Failed to send email ❌");
+      setStatus(err instanceof Error ? err.message : "Failed to send email ❌");
     }finally{
     setLoading(false);
     }
@@ -83,25 +75,6 @@ export default function SendEmail({ accountId, onClose, onSent }: SendEmailProps
       flexDirection: "column",
       gap: "10px"
     }}>
-  
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ margin: 0 }}>Compose Email</h3>
-        {onClose && (
-          <button
-            onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              fontSize: 18,
-              cursor: "pointer",
-              color: "#6b7280"
-            }}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        )}
-      </div>
   
       <input
         placeholder="To"

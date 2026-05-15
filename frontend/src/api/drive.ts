@@ -1,5 +1,4 @@
 import { API_BASE } from "../config/env";
-import { getAuthToken } from "../auth/token";
 import { apiFetch } from "./client";
 
 export type UploadedFile = {
@@ -11,29 +10,43 @@ export type UploadedFile = {
   created_at: string;
 };
 
-export const getDriveFiles = async (userId: number) => {
-  const params = new URLSearchParams({ user_id: String(userId) });
-  const res = await apiFetch(`/api/files?${params.toString()}`);
+// The backend scopes files to the authenticated user (JWT), so no user id
+// is passed from the client anymore.
+export const getDriveFiles = async () => {
+  const res = await apiFetch(`/api/files`);
   return res.json() as Promise<UploadedFile[]>;
 };
 
-export const uploadDriveFiles = async (userId: number, files: File[]) => {
+export const uploadDriveFiles = async (files: File[]) => {
   const formData = new FormData();
-  formData.append("user_id", userId.toString());
   files.forEach((file) => formData.append("files", file));
 
-  const token = getAuthToken();
+  // Raw fetch (not apiFetch) so the browser sets the multipart boundary.
   const res = await fetch(`${API_BASE}/api/files/upload`, {
     method: "POST",
+    credentials: "include",
     body: formData,
-    headers: token
-      ? {
-          Authorization: `Bearer ${token}`,
-        }
-      : undefined,
   });
 
   if (!res.ok) {
     throw new Error("Upload failed");
   }
+};
+
+// Downloads go through the authenticated, ownership-checked route. The file
+// is fetched with the auth header and handed to the browser as a blob, since
+// a plain <a href> can't send the Authorization header.
+export const downloadDriveFile = async (fileId: number, fileName: string) => {
+  const res = await apiFetch(`/api/files/${fileId}/download`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  URL.revokeObjectURL(url);
 };

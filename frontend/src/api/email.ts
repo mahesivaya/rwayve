@@ -1,4 +1,3 @@
-import { API_BASE } from "../config/env";
 import { apiFetch } from "./client";
 
 export type EmailFolder = "inbox" | "sent";
@@ -74,8 +73,13 @@ export const deleteAccount = async (id: number) => {
   });
 };
 
-export const getGmailLoginUrl = (token: string) =>
-  `${API_BASE}/gmail/login?token=${encodeURIComponent(token)}`;
+export const getGmailConnectUrl = async () => {
+  const res = await apiFetch("/api/gmail/connect-url", {
+    method: "POST",
+  });
+  const data = (await res.json()) as { url: string };
+  return data.url;
+};
 
 export const getEmails = async <T = unknown>(
   params: EmailListParams

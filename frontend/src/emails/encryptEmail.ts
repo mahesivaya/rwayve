@@ -8,7 +8,6 @@ export type EmailEncryptionMode = "fully_encrypted" | "standard";
 export async function buildEncryptedBody(
   to: string,
   body: string,
-  token: string,
   encryptionMode: EmailEncryptionMode
 ) {
   // =====================================
@@ -25,7 +24,7 @@ export async function buildEncryptedBody(
   // =====================================
   // CHECK USER
   // =====================================
-  const users = await getWayveRecipientByEmail(to, token);
+  const users = await getWayveRecipientByEmail(to);
 
   const user = Array.isArray(users)
     ? users[0]

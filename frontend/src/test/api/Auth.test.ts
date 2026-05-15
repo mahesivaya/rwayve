@@ -106,12 +106,11 @@ describe("api/Auth", () => {
   });
 
   describe("changePassword", () => {
-    it("attaches Bearer auth header from localStorage", async () => {
-      localStorage.setItem("token", "stored-jwt");
+    it("sends cookie credentials for authenticated requests", async () => {
       const fetchMock = mockFetch(200, { message: "ok" });
       await changePassword("old", "newpass1");
       const init = fetchMock.mock.calls[0][1];
-      expect(init.headers.Authorization).toBe("Bearer stored-jwt");
+      expect(init.credentials).toBe("include");
       expect(JSON.parse(init.body)).toEqual({
         current_password: "old",
         new_password: "newpass1",

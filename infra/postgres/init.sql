@@ -38,6 +38,24 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id
     ON password_reset_tokens(user_id);
 
+-- OAuth authorization-code state. State values are opaque, single-use, and
+-- short lived; JWTs must never be sent through provider redirects.
+CREATE TABLE IF NOT EXISTS oauth_states (
+    state TEXT PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    flow TEXT NOT NULL DEFAULT 'connect',
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '10 minutes'),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE oauth_states ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS flow TEXT NOT NULL DEFAULT 'connect';
+ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+UPDATE oauth_states
+SET expires_at = NOW() + INTERVAL '10 minutes'
+WHERE expires_at IS NULL;
+ALTER TABLE oauth_states ALTER COLUMN expires_at SET NOT NULL;
+ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 
 
 CREATE TABLE IF NOT EXISTS email_accounts (

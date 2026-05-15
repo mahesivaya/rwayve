@@ -1,27 +1,24 @@
 import { logger } from "../utils/logger";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 import { login } from "../api/Auth";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useAuth } from "../auth/useAuth";
 import { homePathForAccount } from "../auth/accountHome";
 import { API_BASE } from "../config";
 import "./login.css";
 
 export default function Login() {
+  const [params] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [params] = useSearchParams();
+  const [error, setError] = useState(() =>
+    params.get("error") === "email_exists"
+      ? "This email is already registered with a password. Please login."
+      : ""
+  );
   const navigate = useNavigate();
   const { login: authLogin } = useAuth();
-
-  // Surface OAuth-side errors that the backend redirected here with.
-  useEffect(() => {
-    if (params.get("error") === "email_exists") {
-      setError("This email is already registered with a password. Please login.");
-    }
-  }, [params]);
 
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -36,7 +33,8 @@ export default function Login() {
 
       authLogin(data.token, data.account_type ?? "personal");
 
-      navigate(homePathForAccount(data.account_type));
+      const target = homePathForAccount(data.account_type);
+      navigate(target.startsWith("/") ? target : `/${target}`);
     } catch (err) {
       logger.error(err);
       setError("Login failed. Check your credentials.");
@@ -84,16 +82,12 @@ export default function Login() {
         {error && <p className="error">{error}</p>}
 
         <p className="switch-auth">
-          <span onClick={() => navigate("/forgot-password")}>
-            Forgot password?
-          </span>
+          <Link to="/forgot-password">Forgot password?</Link>
         </p>
 
         <p className="switch-auth">
           Don’t have an account?{" "}
-          <span onClick={() => navigate("/register")}>
-            Register
-          </span>
+          <Link to="/register">Register</Link>
         </p>
       </form>
     </div>

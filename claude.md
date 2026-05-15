@@ -43,7 +43,7 @@ Docker / full stack (from `infra/` via `just`, or from repo root with `docker co
 Entry point `backend/src/main.rs`:
 - Registers feature modules (`ai`, `cache`, `call`, `chat`, `drive`, `email`, `notes`, `routes`, `scheduler`, `security`, ...) and wires routes in `app_routes`. New HTTP handlers must be added there to be reachable.
 - Routes are split between **feature modules** (`chat::handler`, `email::handler`, `notes::handler`, etc.) and a **cross-cutting `routes/` module** (`routes/auth.rs`, `routes/user.rs`, `routes/account.rs`, `routes/email.rs`) for endpoints that aren't owned by one feature.
-- API surface is mounted under `/api`, with `/gmail/login`, `/oauth/callback`, `/ws/chat`, `/ws/call`, and `/uploads/*` mounted at the root.
+- API surface is mounted under `/api`, with `/gmail/login`, `/oauth/callback`, `/ws/chat`, and `/ws/call` mounted at the root. Uploaded drive files are not served statically; they are delivered through authenticated `/api/files/{id}/download`.
 - CORS allowlist is a **single origin** read from `FRONTEND_URL` — change it (or rework the CORS builder) for multi-origin support.
 - Two background workers spawn at startup:
   - `start_sync_worker` — `email::sync::sync_all`, every 30s with exponential backoff to 5 min on error.
@@ -58,13 +58,15 @@ Entry point `backend/src/main.rs`:
 
 The schema lives in `infra/postgres/init.sql` and is applied **once** when the Postgres container first initializes (via `docker-entrypoint-initdb.d`). It is **not** managed by `sqlx migrate` despite the `just sqlx-migrate` recipe — the file is idempotent (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... IF NOT EXISTS`) and is re-applied verbatim in CI. To evolve the schema, edit this file and `just db-reset` locally.
 
-Key tables: `users` (local + Google auth, `auth_provider` discriminator, nullable `password` for OAuth signups), `email_accounts`, `emails`, `meetings` + `meeting_participants` (with optional Zoom / Google Calendar linkage), `messages` (E2E ciphertext, `message_status` ENUM `sent|delivered|read`), `files`, `notes`, `password_reset_tokens`.
+Key tables: `users` (local + Google auth, `auth_provider` discriminator, nullable `password` for OAuth signups), `email_accounts`, `emails`, `meetings` + `meeting_participants` (with optional Zoom / Google Calendar linkage), `messages` (server-encrypted chat content, `message_status` ENUM `sent|delivered|read`), `files`, `notes`, `password_reset_tokens`.
 
 Per-recipient delivery state is intended to live in a separate `message_recipients` table — **do not name it `message_status`**, which collides with the existing ENUM.
 
 ### Encryption
 
 `security/encryption.rs` provides `encrypt`/`decrypt` (AES-256-GCM, random 12-byte nonce). `AES_KEY` should be high-entropy Hex64: 64 hex characters decoded as input key material, then expanded with HKDF-SHA512 into the 32-byte AES-256 key. `AES_HKDF_SALT` is optional; if set, keep it stable forever because changing it prevents decrypting HKDF-encrypted rows. Decrypt keeps a legacy fallback for rows encrypted with the old direct AES key. Stored ciphertext columns come in pairs: `*_iv` (base64 nonce) + `*_encrypted` (base64 ciphertext) — used for `messages.content_*` and `emails.body_*`.
+
+Chat uses client-side envelope encryption for new direct and channel messages. The frontend encrypts content into a `WAYVE_CHAT_E2E_V1` RSA/AES hybrid envelope for every participant key before sending; `chat/websocket.rs` rejects plaintext normal messages and then applies the backend AES-GCM layer only as storage-at-rest protection for the envelope. `chat/direct_messages.rs` and `chat/channel_messages.rs` decrypt only the storage layer and return the client envelope, which the browser decrypts locally. Legacy rows or manually inserted plaintext are not E2E.
 
 `security/jwt.rs` mints HS256 JWTs from `JWT_SECRET`. The WebSocket endpoints (`chat_ws`, `call_ws`) authenticate from `?token=...` and **derive `user_id` from the verified claims, not from the query string** — preserve that when adding WS routes.
 
@@ -88,7 +90,7 @@ Routing in `src/App.tsx`: public routes (`/login`, `/register`, `/forgot-passwor
 
 Auth state lives in `src/auth/AuthContext.tsx`. API base URLs come from `src/config/env.ts` (`API_BASE`, `WS_BASE`, both reading `VITE_API_URL`/`VITE_WS_URL` with localhost fallbacks). HTTP calls go through `src/api/client.ts`; auth-specific calls through `src/api/Auth.ts`.
 
-E2E encryption helpers live in `src/crypto/` (key handling) and `src/security/encrypt.tsx` (per-message AES wrapper). The backend stores ciphertext only — keep the encryption boundary on the client.
+Client-side RSA/AES hybrid encryption helpers live in `src/crypto/` (key handling). They are used by encrypted email and chat E2E envelopes (`src/chat/e2ee.ts`). Keep chat plaintext out of WebSocket payloads; only encrypted envelopes should cross the backend boundary.
 
 ### Stale `.js` siblings — important gotcha
 

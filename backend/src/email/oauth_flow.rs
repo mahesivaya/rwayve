@@ -1,9 +1,12 @@
 use crate::prelude::*;
 
-use crate::email::oauth::{HTTP_CLIENT, load_google_secrets};
+use crate::email::oauth::{HTTP_CLIENT, try_load_google_secrets};
 use crate::email::sync::sync_account_recent;
-use crate::security::jwt::create_jwt_for_account;
+use crate::security::jwt::{auth_cookie, create_jwt_for_account};
+use crate::security::oauth::{consume_state, store_state};
 use actix_web::{HttpResponse, Responder, web};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use rand::RngCore;
 use sqlx::PgPool;
 use tracing::{error, info, instrument, warn};
 
@@ -15,11 +18,11 @@ pub struct CallbackQuery {
 
 #[derive(Deserialize)]
 pub struct LoginQuery {
-    pub token: Option<String>,
     pub mode: Option<String>,
 }
 
-const SIGNUP_STATE: &str = "signup";
+const OAUTH_FLOW_CONNECT: &str = "connect";
+const OAUTH_FLOW_SIGNUP: &str = "signup";
 
 fn google_redirect_uri(req: &HttpRequest, secrets: &Value) -> String {
     if let Ok(uri) = std::env::var("GOOGLE_OAUTH_REDIRECT_URI") {
@@ -44,60 +47,136 @@ fn google_redirect_uri(req: &HttpRequest, secrets: &Value) -> String {
 
     secrets["web"]["redirect_uris"][0]
         .as_str()
-        .expect("redirect_uris missing in google secrets")
+        .unwrap_or_default()
         .to_string()
 }
 
-#[instrument(target = "gmail", skip(req, query))]
-pub async fn gmail_login(req: HttpRequest, query: web::Query<LoginQuery>) -> impl Responder {
-    let secrets = load_google_secrets();
-    let client_id = secrets["web"]["client_id"]
-        .as_str()
-        .expect("client_id missing in google secrets");
-    let redirect_uri = google_redirect_uri(&req, &secrets);
+fn random_oauth_state() -> String {
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    URL_SAFE_NO_PAD.encode(bytes)
+}
 
-    let is_signup = query.mode.as_deref() == Some("signup");
+fn google_oauth_url(client_id: &str, redirect_uri: &str, scope: &str, state: &str) -> String {
+    let mut url = reqwest::Url::parse("https://accounts.google.com/o/oauth2/v2/auth")
+        .expect("valid Google OAuth URL");
+    url.query_pairs_mut()
+        .append_pair("client_id", client_id)
+        .append_pair("redirect_uri", redirect_uri)
+        .append_pair("response_type", "code")
+        .append_pair("scope", scope)
+        .append_pair("access_type", "offline")
+        .append_pair("prompt", "consent")
+        .append_pair("state", state);
+    url.to_string()
+}
 
-    let state = if is_signup {
-        SIGNUP_STATE.to_string()
-    } else {
-        let token = if let Some(t) = &query.token {
-            t.clone()
-        } else {
-            req.headers()
-                .get("Authorization")
-                .and_then(|h| h.to_str().ok())
-                .and_then(|s| s.strip_prefix("Bearer "))
-                .unwrap_or("")
-                .to_string()
-        };
+fn gmail_scope() -> &'static str {
+    "https://www.googleapis.com/auth/userinfo.email \
+     https://www.googleapis.com/auth/gmail.send \
+     https://www.googleapis.com/auth/gmail.modify \
+     https://www.googleapis.com/auth/gmail.readonly \
+     https://www.googleapis.com/auth/calendar.readonly"
+}
 
-        if token.is_empty() {
-            warn!(target: "gmail", "gmail_login rejected: missing token");
+fn load_google_client() -> std::result::Result<Value, HttpResponse> {
+    let secrets = match try_load_google_secrets() {
+        Ok(value) => value,
+        Err(e) => {
+            error!(target: "gmail", error = %e, "google secrets unavailable");
+            return Err(HttpResponse::InternalServerError().body("Google OAuth is not configured"));
+        }
+    };
+    Ok(secrets)
+}
+
+#[derive(Serialize)]
+pub struct GmailConnectUrlResponse {
+    pub url: String,
+}
+
+fn google_client_id(secrets: &Value) -> std::result::Result<&str, HttpResponse> {
+    let client_id = match secrets["web"]["client_id"].as_str() {
+        Some(value) => value,
+        None => {
+            error!(target: "gmail", "client_id missing in google secrets");
+            return Err(HttpResponse::InternalServerError().body("Google OAuth is not configured"));
+        }
+    };
+    Ok(client_id)
+}
+
+#[post("/gmail/connect-url")]
+#[instrument(target = "gmail", skip(req, pool))]
+pub async fn gmail_connect_url(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
+    let user_id = match crate::security::jwt::get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => {
+            warn!(target: "gmail", "gmail connect-url rejected: missing token");
             return HttpResponse::Unauthorized().body("Missing token");
         }
-
-        token
     };
 
+    let secrets = match load_google_client() {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let client_id = match google_client_id(&secrets) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let redirect_uri = google_redirect_uri(&req, &secrets);
+    let state = random_oauth_state();
+
+    if let Err(e) = store_state(&state, Some(user_id), OAUTH_FLOW_CONNECT, pool.get_ref()).await {
+        error!(target: "gmail", error = %e, "oauth state store failed");
+        return HttpResponse::InternalServerError().body("Failed to start OAuth flow");
+    }
+
+    info!(target: "gmail", user_id, "gmail oauth connect flow start");
+    let url = google_oauth_url(client_id, &redirect_uri, gmail_scope(), &state);
+    HttpResponse::Ok().json(GmailConnectUrlResponse { url })
+}
+
+#[instrument(target = "gmail", skip(req, query, pool))]
+pub async fn gmail_login(
+    req: HttpRequest,
+    query: web::Query<LoginQuery>,
+    pool: web::Data<PgPool>,
+) -> impl Responder {
+    let secrets = match load_google_client() {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let client_id = match google_client_id(&secrets) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let redirect_uri = google_redirect_uri(&req, &secrets);
+    let is_signup = query.mode.as_deref() == Some("signup");
+    let state = random_oauth_state();
+
+    let (user_id, flow) = if is_signup {
+        (None, OAUTH_FLOW_SIGNUP)
+    } else {
+        let user_id = match crate::security::jwt::get_user_id_from_request(&req) {
+            Some(id) => id,
+            None => {
+                warn!(target: "gmail", "gmail_login rejected: missing token");
+                return HttpResponse::Unauthorized().body("Missing token");
+            }
+        };
+
+        (Some(user_id), OAUTH_FLOW_CONNECT)
+    };
+
+    if let Err(e) = store_state(&state, user_id, flow, pool.get_ref()).await {
+        error!(target: "gmail", error = %e, "oauth state store failed");
+        return HttpResponse::InternalServerError().body("Failed to start OAuth flow");
+    }
     info!(target: "gmail", signup = is_signup, "gmail oauth flow start");
 
-    let scope = "https://www.googleapis.com/auth/userinfo.email \
-                 https://www.googleapis.com/auth/gmail.send \
-                 https://www.googleapis.com/auth/gmail.modify \
-                 https://www.googleapis.com/auth/gmail.readonly \
-                 https://www.googleapis.com/auth/calendar.readonly";
-    let url = format!(
-        "https://accounts.google.com/o/oauth2/v2/auth\
-        ?client_id={}\
-        &redirect_uri={}\
-        &response_type=code\
-        &scope={}\
-        &access_type=offline\
-        &prompt=consent\
-        &state={}",
-        client_id, redirect_uri, scope, state
-    );
+    let url = google_oauth_url(client_id, &redirect_uri, gmail_scope(), &state);
 
     HttpResponse::Found()
         .append_header(("Location", url))
@@ -111,7 +190,13 @@ pub async fn oauth_callback(
     query: web::Query<CallbackQuery>,
 ) -> impl Responder {
     let code = &query.code;
-    let secrets = load_google_secrets();
+    let secrets = match try_load_google_secrets() {
+        Ok(value) => value,
+        Err(e) => {
+            error!(target: "gmail", error = %e, "google secrets unavailable");
+            return HttpResponse::InternalServerError().body("Google OAuth is not configured");
+        }
+    };
 
     let state = match &query.state {
         Some(t) => t,
@@ -121,31 +206,42 @@ pub async fn oauth_callback(
         }
     };
 
-    let is_signup = state == SIGNUP_STATE;
-    let mut user_id: i32 = 0;
-    if !is_signup {
-        let decoded = match crate::security::jwt::decode_jwt(state) {
-            Some(d) => d,
-            None => {
-                warn!(target: "gmail", "oauth_callback rejected: invalid jwt state");
-                return HttpResponse::Unauthorized().body("Invalid token");
-            }
-        };
-        user_id = decoded.sub;
-    }
+    let oauth_state = match consume_state(state, pool.get_ref()).await {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            warn!(target: "gmail", "oauth_callback rejected: invalid state");
+            return HttpResponse::Unauthorized().body("Invalid OAuth state");
+        }
+        Err(e) => {
+            error!(target: "gmail", error = %e, "oauth state lookup failed");
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    let is_signup = oauth_state.flow == OAUTH_FLOW_SIGNUP;
+    let mut user_id: i32 = match (is_signup, oauth_state.user_id) {
+        (true, _) => 0,
+        (false, Some(id)) => id,
+        (false, None) => {
+            warn!(target: "gmail", "oauth_callback rejected: connect state missing user");
+            return HttpResponse::Unauthorized().body("Invalid OAuth state");
+        }
+    };
     info!(target: "gmail", user_id, signup = is_signup, "oauth_callback exchanging code");
 
-    let client_id = secrets["web"]["client_id"]
-        .as_str()
-        .expect("client_id missing in google secrets")
-        .to_string();
-    let client_secret = secrets["web"]["client_secret"]
-        .as_str()
-        .expect("client_secret missing in google secrets")
-        .to_string();
+    let (client_id, client_secret) = match (
+        secrets["web"]["client_id"].as_str(),
+        secrets["web"]["client_secret"].as_str(),
+    ) {
+        (Some(id), Some(secret)) => (id.to_string(), secret.to_string()),
+        _ => {
+            error!(target: "gmail", "client_id/client_secret missing in google secrets");
+            return HttpResponse::InternalServerError().body("Google OAuth is not configured");
+        }
+    };
     let redirect_uri = google_redirect_uri(&req, &secrets);
 
-    let res: Value = HTTP_CLIENT
+    let token_response = match HTTP_CLIENT
         .post(crate::external::google_token_url())
         .form(&[
             ("code", code),
@@ -156,25 +252,47 @@ pub async fn oauth_callback(
         ])
         .send()
         .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            error!(target: "gmail", error = %e, "oauth token exchange request failed");
+            return HttpResponse::BadGateway().body("Failed to reach Google");
+        }
+    };
+
+    let res: Value = match token_response.json().await {
+        Ok(value) => value,
+        Err(e) => {
+            error!(target: "gmail", error = %e, "oauth token response parse failed");
+            return HttpResponse::BadGateway().body("Invalid response from Google");
+        }
+    };
 
     let access_token = res["access_token"].as_str().unwrap_or("");
     let refresh_token = res["refresh_token"].as_str().unwrap_or("");
     let expires_in = res["expires_in"].as_i64().unwrap_or(3600);
     let expiry = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
 
-    let user_info: Value = HTTP_CLIENT
+    let userinfo_response = match HTTP_CLIENT
         .get(crate::external::google_userinfo_url())
         .bearer_auth(access_token)
         .send()
         .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            error!(target: "gmail", error = %e, "oauth userinfo request failed");
+            return HttpResponse::BadGateway().body("Failed to reach Google");
+        }
+    };
+
+    let user_info: Value = match userinfo_response.json().await {
+        Ok(value) => value,
+        Err(e) => {
+            error!(target: "gmail", error = %e, "oauth userinfo response parse failed");
+            return HttpResponse::BadGateway().body("Invalid response from Google");
+        }
+    };
 
     let email = user_info["email"].as_str().unwrap_or("");
 
@@ -322,8 +440,6 @@ pub async fn oauth_callback(
         .unwrap_or_else(|_| "personal".to_string());
 
     let redirect = if is_signup {
-        let session_token =
-            create_jwt_for_account(user_id, email.to_string(), account_type.clone());
         let landing_path = if matches!(
             account_type.as_str(),
             "business" | "business_admin" | "project_admin"
@@ -332,15 +448,18 @@ pub async fn oauth_callback(
         } else {
             "home"
         };
-        format!(
-            "{}/{landing_path}?signup=true&token={}",
-            frontend, session_token
-        )
+        format!("{}/{landing_path}#signup=true", frontend)
     } else {
-        format!("{}/emails?connected=true&token={}", frontend, state)
+        format!("{}/emails#connected=true", frontend)
     };
 
-    HttpResponse::Found()
-        .append_header(("Location", redirect))
-        .finish()
+    let mut response = HttpResponse::Found();
+    response.append_header(("Location", redirect));
+
+    if is_signup {
+        let session_token = create_jwt_for_account(user_id, email.to_string(), account_type);
+        response.cookie(auth_cookie(session_token));
+    }
+
+    response.finish()
 }

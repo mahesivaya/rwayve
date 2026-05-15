@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { AuthProvider, useAuth } from "../../auth/AuthContext";
+import { AuthProvider } from "../../auth/AuthContext";
+import { clearAuthToken, getAuthToken, setAuthToken } from "../../auth/token";
+import { useAuth } from "../../auth/useAuth";
 
 // Tiny consumer that surfaces auth state for assertions.
 function AuthProbe() {
@@ -12,6 +14,7 @@ function AuthProbe() {
       <span data-testid="user-id">{user?.id ?? -1}</span>
       <span data-testid="path">{window.location.pathname}</span>
       <span data-testid="search">{window.location.search}</span>
+      <span data-testid="hash">{window.location.hash}</span>
     </div>
   );
 }
@@ -22,6 +25,13 @@ const VALID_JWT =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
   "eyJzdWIiOjk5LCJlbWFpbCI6ImFsaWNlQGV4YW1wbGUuY29tIiwiZXhwIjo5OTk5OTk5OTk5fQ." +
   "Yfk2GANHfoqcl3T1jbBhHptPj0xK_e3pGE9pq5VtZ8I";
+
+// Payload contains `-` in its base64url segment:
+// { "sub": 99, "email": "alice@example.com", "exp": 9999999999, "nonce": " > " }
+const BASE64URL_PAYLOAD_JWT =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+  "eyJzdWIiOjk5LCJlbWFpbCI6ImFsaWNlQGV4YW1wbGUuY29tIiwiZXhwIjo5OTk5OTk5OTk5LCJub25jZSI6IiA-ICJ9." +
+  "signature";
 
 const renderProvider = (initialUrl: string) => {
   // jsdom's location is read-only via assignment; replaceState works.
@@ -50,6 +60,7 @@ describe("AuthContext.resolveBootToken", () => {
   });
 
   afterEach(() => {
+    clearAuthToken();
     vi.unstubAllGlobals();
   });
 
@@ -65,37 +76,57 @@ describe("AuthContext.resolveBootToken", () => {
     expect(window.location.search).toContain("token=");
   });
 
-  it("consumes ?token= when ?signup=true marker is present (Google signup)", () => {
-    renderProvider(`/home?signup=true&token=${VALID_JWT}`);
+  it("consumes #token= when #signup=true marker is present (Google signup)", () => {
+    renderProvider(`/home#signup=true&token=${VALID_JWT}`);
 
-    expect(localStorage.getItem("token")).toBe(VALID_JWT);
+    expect(localStorage.getItem("token")).toBeNull();
+    expect(getAuthToken()).toBe(VALID_JWT);
     expect(screen.getByTestId("user-email").textContent).toBe(
       "alice@example.com",
     );
     expect(screen.getByTestId("user-id").textContent).toBe("99");
 
-    // token query should be stripped from the URL.
+    // token fragment should be stripped from the URL.
     expect(window.location.search).not.toContain("token=");
+    expect(window.location.hash).toBe("");
   });
 
-  it("consumes ?token= when ?connected=true marker is present (Gmail connect)", () => {
-    renderProvider(`/emails?connected=true&token=${VALID_JWT}`);
-    expect(localStorage.getItem("token")).toBe(VALID_JWT);
-    expect(screen.getByTestId("user-email").textContent).toBe(
-      "alice@example.com",
+  it("does not consume OAuth tokens from the query string", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: async () => "",
+        json: async () => ({}),
+      } as unknown as Response),
     );
+
+    renderProvider(`/emails?connected=true&token=${VALID_JWT}`);
+    expect(localStorage.getItem("token")).toBeNull();
+    expect(screen.getByTestId("user-email").textContent).toBe("anon");
+    expect(window.location.search).toContain("token=");
   });
 
-  it("uses stored localStorage token if present and no URL token", () => {
-    localStorage.setItem("token", VALID_JWT);
+  it("uses the in-memory token if present and no URL token", () => {
+    setAuthToken(VALID_JWT);
     renderProvider("/home");
     expect(screen.getByTestId("user-email").textContent).toBe(
       "alice@example.com",
     );
   });
 
+  it("decodes JWT payloads that use base64url characters", () => {
+    setAuthToken(BASE64URL_PAYLOAD_JWT);
+    renderProvider("/home");
+    expect(screen.getByTestId("user-email").textContent).toBe(
+      "alice@example.com",
+    );
+    expect(screen.getByTestId("user-id").textContent).toBe("99");
+  });
+
   it("clears stored token on /api/me 401 but does NOT hard-redirect", async () => {
-    localStorage.setItem("token", VALID_JWT);
+    setAuthToken(VALID_JWT);
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({

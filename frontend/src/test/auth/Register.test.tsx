@@ -4,9 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import Register from "../../auth/Register";
 import { AuthProvider } from "../../auth/AuthContext";
+import { clearAuthToken, getAuthToken } from "../../auth/token";
 
 vi.mock("../../api/Auth", () => ({
+  getMe: vi.fn().mockResolvedValue({ ok: false, status: 401 }),
+  logout: vi.fn(),
   register: vi.fn(),
+  saveUserPublicKey: vi.fn(),
 }));
 import { register as apiRegister } from "../../api/Auth";
 
@@ -21,6 +25,7 @@ const renderAt = (initialEntries: string[]) =>
 
 describe("Register page", () => {
   afterEach(() => {
+    clearAuthToken();
     vi.clearAllMocks();
   });
 
@@ -39,8 +44,9 @@ describe("Register page", () => {
     await userEvent.click(screen.getByRole("button", { name: /^register$/i }));
 
     await waitFor(() => {
-      expect(localStorage.getItem("token")).toBe("jwt-x");
+      expect(getAuthToken()).toBe("jwt-x");
     });
+    expect(localStorage.getItem("token")).toBeNull();
     expect(apiRegister).toHaveBeenCalledWith("x@y.z", "secret123", "secret123");
   });
 

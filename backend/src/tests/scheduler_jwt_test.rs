@@ -3,16 +3,16 @@ mod tests {
     use super::*;
     use actix_web::test::TestRequest;
 
-    fn ensure_default_secret() {
+    fn ensure_test_secret() {
         unsafe {
-            std::env::set_var("JWT_SECRET", "secret");
+            std::env::set_var("JWT_SECRET", "test-jwt-secret");
         }
     }
 
     #[test]
     #[serial_test::serial]
     fn round_trip_encode_decode() {
-        ensure_default_secret();
+        ensure_test_secret();
         let token = create_jwt(42, "alice@example.com".to_string());
         let claims = decode_jwt(&token).expect("valid token decodes");
         assert_eq!(claims.sub, 42);
@@ -22,7 +22,7 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn decode_rejects_garbage() {
-        ensure_default_secret();
+        ensure_test_secret();
         assert!(decode_jwt("not-a-real-jwt").is_none());
     }
 
@@ -30,21 +30,21 @@ mod tests {
     #[serial_test::serial]
     fn decode_rejects_wrong_signature() {
         unsafe {
-            std::env::set_var("JWT_SECRET", "first");
+            std::env::set_var("JWT_SECRET", "first-test-secret");
         }
         let token = create_jwt(1, "x@y.z".to_string());
         unsafe {
-            std::env::set_var("JWT_SECRET", "second");
+            std::env::set_var("JWT_SECRET", "second-test-secret");
         }
         let result = decode_jwt(&token);
-        ensure_default_secret();
+        ensure_test_secret();
         assert!(result.is_none(), "tokens signed with a different secret must not decode");
     }
 
     #[test]
     #[serial_test::serial]
     fn extracts_user_id_from_bearer_header() {
-        ensure_default_secret();
+        ensure_test_secret();
         let token = create_jwt(7, "bob@example.com".to_string());
         let req = TestRequest::default()
             .insert_header(("Authorization", format!("Bearer {token}")))

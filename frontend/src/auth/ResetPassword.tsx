@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { resetPassword } from "../api/Auth";
 import "./login.css";
 
@@ -74,7 +74,7 @@ export default function ResetPassword() {
         )}
 
         <p className="switch-auth">
-          <span onClick={() => navigate("/login")}>Back to login</span>
+          <Link to="/login">Back to login</Link>
         </p>
       </form>
     </div>

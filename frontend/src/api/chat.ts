@@ -3,6 +3,7 @@ import { apiFetch } from "./client";
 export type ChatUser = {
   id: number;
   email: string;
+  public_key?: number[] | null;
 };
 
 export type ChatMessage = {

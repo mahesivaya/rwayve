@@ -2,19 +2,40 @@ use crate::cache::{Cache, chat_history_key};
 use crate::models::message::Message;
 use crate::prelude::*;
 use crate::security::encryption::decrypt;
+use crate::security::jwt::get_user_id_from_request;
 
 use super::dto::QueryParams;
 
 use sqlx::Row;
-use tracing::{debug, error, instrument};
+use tracing::{debug, error, instrument, warn};
 
 #[get("/messages")]
-#[instrument(target = "http", skip(pool, cache, query), fields(user1 = query.user1, user2 = query.user2))]
+#[instrument(target = "http", skip(req, pool, cache, query), fields(user1 = query.user1, user2 = query.user2))]
 pub async fn get_messages(
+    req: HttpRequest,
     pool: web::Data<PgPool>,
     cache: web::Data<Option<Cache>>,
     query: web::Query<QueryParams>,
 ) -> impl Responder {
+    // Auth: require a valid JWT and confirm the caller is one of the two
+    // participants. Without this, any caller could read any conversation by
+    // supplying arbitrary user1/user2 ids.
+    let caller_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    if caller_id != query.user1 && caller_id != query.user2 {
+        warn!(
+            target: "auth",
+            caller_id,
+            user1 = query.user1,
+            user2 = query.user2,
+            "get_messages rejected: caller is not a conversation participant"
+        );
+        return HttpResponse::Forbidden().finish();
+    }
+
     let cache_key = chat_history_key(query.user1, query.user2);
 
     if let Some(c) = cache.get_ref().as_ref()
@@ -24,7 +45,9 @@ pub async fn get_messages(
         // Still flip unread → read on every fetch so the sender sees the
         // status change even on cache hits.
         let _ = sqlx::query(
-            "UPDATE messages SET status = 'read' WHERE receiver_id = $1 AND sender_id = $2",
+            "UPDATE messages
+             SET status = 'read'
+             WHERE receiver_id = $1 AND sender_id = $2 AND status <> 'read'",
         )
         .bind(query.user1)
         .bind(query.user2)
@@ -72,6 +95,7 @@ pub async fn get_messages(
                 UPDATE messages
                 SET status = 'read'
                 WHERE receiver_id = $1 AND sender_id = $2
+                  AND status <> 'read'
                 "#,
             )
             .bind(query.user1)

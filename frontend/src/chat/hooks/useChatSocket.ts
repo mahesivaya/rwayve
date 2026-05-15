@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { getAuthToken } from "../../auth/token";
 import type { ChatMessage } from "../../api/chat";
 import { WS_BASE } from "../../config/env";
 import { logger } from "../../utils/logger";
@@ -12,23 +11,23 @@ type User = {
 export function useChatSocket(
   user: User | null | undefined,
   selectedRef: RefObject<Conversation | null>,
-  onMessage: (message: ChatMessage) => void,
+  onMessage: (message: ChatMessage) => void | Promise<void>,
 ) {
   const wsRef = useRef<WebSocket | null>(null);
   const [readyState, setReadyState] = useState<number>(WebSocket.CLOSED);
 
   useEffect(() => {
     if (!user) {
-      setReadyState(WebSocket.CLOSED);
-      return;
+      const timeout = window.setTimeout(() => setReadyState(WebSocket.CLOSED), 0);
+      return () => window.clearTimeout(timeout);
     }
 
-    const token = getAuthToken() ?? "";
-    const ws = new WebSocket(
-      `${WS_BASE}/ws/chat?token=${encodeURIComponent(token)}`,
-    );
+    const ws = new WebSocket(`${WS_BASE}/ws/chat`);
     wsRef.current = ws;
-    setReadyState(ws.readyState);
+    const initialStateTimeout = window.setTimeout(
+      () => setReadyState(ws.readyState),
+      0,
+    );
 
     ws.onopen = () => {
       setReadyState(ws.readyState);
@@ -40,7 +39,7 @@ export function useChatSocket(
       if (msg.type === "status_update" || msg.sender_id === user.id) return;
 
       if (messageBelongsToSelectedConversation(msg, selectedRef.current)) {
-        onMessage(msg);
+        void onMessage(msg);
       }
     };
 
@@ -54,7 +53,8 @@ export function useChatSocket(
     };
 
     return () => {
-      setReadyState(WebSocket.CLOSED);
+      window.clearTimeout(initialStateTimeout);
+      window.setTimeout(() => setReadyState(WebSocket.CLOSED), 0);
       ws.close();
     };
   }, [onMessage, selectedRef, user]);

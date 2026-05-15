@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./notes.css";
 
 import {
@@ -36,18 +36,22 @@ export default function Notes() {
   }, []);
 
   // ================= LOAD =================
-  const fetchNotes = async () => {
+  const fetchNotes = useCallback(async () => {
     try {
       setNotes(await getNotes());
     } catch(err)
     {
       console.error(err);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void fetchNotes();
-  }, []);
+    const timeout = window.setTimeout(() => {
+      void fetchNotes();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [fetchNotes]);
 
   // Drop transient status banners after a moment.
   useEffect(() => {
@@ -91,7 +95,7 @@ export default function Notes() {
       setSelectedId(saved.id);
       setStatus(isNew ? "Created ✓" : "Saved ✓");
       await fetchNotes();
-    } catch (err) {
+    } catch {
       setStatus("Save failed");
     } finally {
       setSaving(false);
@@ -111,7 +115,7 @@ export default function Notes() {
     closeEditor();
     setStatus("Deleted");
     await fetchNotes();
-    } catch(err)
+    } catch
     {
       setStatus("Delete failed")
     }

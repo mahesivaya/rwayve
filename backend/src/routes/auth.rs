@@ -4,12 +4,13 @@ use crate::email::sender::send_mail;
 use crate::models::auth::{ForgotInput, LoginInput, LoginResponse, RegisterInput, ResetInput};
 use crate::models::message::MessageResponse;
 use crate::models::user::User;
-use crate::security::jwt::{create_jwt, create_jwt_for_account};
+use crate::security::jwt::{auth_cookie, create_jwt, create_jwt_for_account, expired_auth_cookie};
 use bcrypt::{DEFAULT_COST, hash, verify};
 use rand::RngCore;
 use tracing::{error, info, instrument, warn};
 
 const RESET_TTL_MINUTES: i64 = 30;
+const DUMMY_PASSWORD_HASH: &str = "$2b$12$BeUHqArduWoNmhYKnepJYeYTQdhF/XcdcGFHaxiz0/H3JJUbHyLGe";
 
 #[post("/register")]
 #[instrument(target = "auth", skip(pool, data), fields(email = %data.email))]
@@ -42,10 +43,12 @@ pub async fn register(pool: web::Data<PgPool>, data: web::Json<RegisterInput>) -
             let user_id: i32 = row.get("id");
             info!("User registered: {}", data.email);
             let token = create_jwt(user_id, data.email.clone());
-            HttpResponse::Ok().json(serde_json::json!({
-                "token": token,
-                "account_type": "personal"
-            }))
+            HttpResponse::Ok()
+                .cookie(auth_cookie(token.clone()))
+                .json(serde_json::json!({
+                    "token": token,
+                    "account_type": "personal"
+                }))
         }
 
         Err(e) => {
@@ -77,6 +80,7 @@ async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResp
     let user = match user_result {
         Ok(Some(user)) => user,
         Ok(None) => {
+            let _ = verify(&data.password, DUMMY_PASSWORD_HASH);
             warn!("Invalid login attempt: {}", data.email);
             return HttpResponse::Unauthorized().json(MessageResponse {
                 message: "Invalid credentials".to_string(),
@@ -120,10 +124,20 @@ async fn login(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResp
 
     info!("Login success: {}", data.email);
     let token = create_jwt_for_account(user.id, user.email.clone(), user.account_type.clone());
-    HttpResponse::Ok().json(LoginResponse {
-        token,
-        account_type: user.account_type,
-    })
+    HttpResponse::Ok()
+        .cookie(auth_cookie(token.clone()))
+        .json(LoginResponse {
+            token,
+            account_type: user.account_type,
+        })
+}
+
+#[post("/logout")]
+#[instrument(target = "auth")]
+pub async fn logout() -> HttpResponse {
+    HttpResponse::Ok()
+        .cookie(expired_auth_cookie())
+        .json(serde_json::json!({ "message": "Logged out" }))
 }
 
 fn random_token_hex() -> String {

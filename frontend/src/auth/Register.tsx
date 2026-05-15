@@ -1,28 +1,25 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 import { register } from "../api/Auth";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/useAuth";
 import { homePathForAccount } from "../auth/accountHome";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { API_BASE } from "../config";
 import "./login.css"; // ✅ reuse styles
 
 export default function Register() {
+  const [params] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState("");
-  const [params] = useSearchParams();
+  const [error, setError] = useState(() =>
+    params.get("error") === "email_exists"
+      ? "This email is already registered. Please log in instead."
+      : ""
+  );
 
   const { login } = useAuth();
   const navigate = useNavigate();
-
-  // Surface OAuth-side errors that the backend redirected here with.
-  useEffect(() => {
-    if (params.get("error") === "email_exists") {
-      setError("This email is already registered. Please log in instead.");
-    }
-  }, [params]);
 
   const handleGoogleSignup = () => {
     window.location.href = `${API_BASE}/gmail/login?mode=signup`;
@@ -47,9 +44,10 @@ export default function Register() {
 
       login(data.token, data.account_type ?? "personal");
 
-      navigate(homePathForAccount(data.account_type));
-    } catch (err: any) {
-      setError(err.message || "Registration failed");
+      const target = homePathForAccount(data.account_type);
+      navigate(target.startsWith("/") ? target : `/${target}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed");
     }
   };
 
@@ -101,9 +99,7 @@ export default function Register() {
         {/* ✅ Switch to login */}
         <p className="switch-auth">
           Already have an account?{" "}
-          <span onClick={() => navigate("/login")}>
-            Login
-          </span>
+          <Link to="/login">Login</Link>
         </p>
       </form>
     </div>

@@ -7,6 +7,7 @@ import {
   decryptWayveBodyIfNeeded,
   emailBodyErrorMessage,
 } from "./bodyUtils";
+import Modal from "../components/Modal";
 import { formatFileSize, renderEmailBody } from "./renderUtils";
 
 import {
@@ -17,19 +18,39 @@ import {
   getEmailAttachments,
   getEmailBody,
   getEmails,
-  getGmailLoginUrl,
+  getGmailConnectUrl,
 } from "../api/email";
-import { useAuth } from "../auth/AuthContext";
-import { getAuthToken } from "../auth/token";
+import { useAuth } from "../auth/useAuth";
 import { useGlobalSearch } from "../search/SearchContext";
+
+type EmailAccount = {
+  id: number;
+  email: string;
+};
+
+type EmailItem = {
+  id: number;
+  subject?: string | null;
+  sender?: string | null;
+  receiver?: string | null;
+  preview?: string | null;
+  body?: string | null;
+  created_at: string;
+  has_attachments?: boolean;
+  attachments_checked?: boolean;
+  attachments?: EmailAttachment[];
+  zoom_join_url?: string | null;
+  _bodyLoading?: boolean;
+  _bodyError?: unknown;
+};
 
 export default function Emails() {
   const { user } = useAuth();
   const { normalizedSearchQuery } = useGlobalSearch();
   const navigate = useNavigate();
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [emails, setEmails] = useState<any[]>([]);
-  const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
+  const [accounts, setAccounts] = useState<EmailAccount[]>([]);
+  const [emails, setEmails] = useState<EmailItem[]>([]);
+  const [selectedEmail, setSelectedEmail] = useState<EmailItem | null>(null);
 
   const [activeAccount, setActiveAccount] = useState<number | null>(null);
   const [activeFolder, setActiveFolder] = useState<"inbox" | "sent">("inbox");
@@ -40,7 +61,7 @@ export default function Emails() {
 
   const [composeOpen, setComposeOpen] = useState(false);
 
-  const emailCache = useRef<{ [key: number]: any }>({});
+  const emailCache = useRef<Record<number, EmailItem>>({});
 
   // ================= NARROW MODE (split-pane / small viewport) =================
   // When the container is narrow (e.g. rendered inside the split view), we
@@ -68,7 +89,7 @@ export default function Emails() {
   // ================= FETCH ACCOUNTS =================
   const fetchAccounts = async () => {
     try{
-      const data = await getAccounts();
+      const data = await getAccounts<EmailAccount>();
       setAccounts(data);
     }
     catch(err){
@@ -81,12 +102,16 @@ export default function Emails() {
   }, []);
 
   // ================= HANDLE OAUTH RETURN =================
-  // After /oauth/callback redirects back with ?connected=true, refresh the
+  // After /oauth/callback redirects back with #connected=true, refresh the
   // account list so the newly linked account shows up immediately. The 30s
   // sync worker will import its emails on the next tick.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("connected") === "true") {
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    if (
+      params.get("connected") === "true" ||
+      hashParams.get("connected") === "true"
+    ) {
       fetchAccounts();
       setRefreshTick((tick) => tick + 1);
       window.history.replaceState({}, "", "/emails");
@@ -106,16 +131,15 @@ export default function Emails() {
   }, []);
 
   // ================= ADD ACCOUNT =================
-  const addAccount = () => {
-    const token = getAuthToken();
-    if (!token) return;
-    window.location.href = getGmailLoginUrl(token);
+  const addAccount = async () => {
+    const url = await getGmailConnectUrl();
+    window.location.href = url;
   };
 
   // ================= FETCH EMAILS =================
   useEffect(() => {
     const fetchEmails = async () => {
-      const { emails: data, hasMore: hasMorePage } = await getEmails({
+      const { emails: data, hasMore: hasMorePage } = await getEmails<EmailItem>({
         folder: activeFolder,
         accountId: activeAccount,
         query: normalizedSearchQuery,
@@ -141,7 +165,7 @@ export default function Emails() {
     const before = Math.floor(new Date(last.created_at).getTime() / 1000);
     const before_id = last.id;
 
-    const { emails: data, hasMore: hasMorePage } = await getEmails({
+    const { emails: data, hasMore: hasMorePage } = await getEmails<EmailItem>({
       folder: activeFolder,
       accountId: activeAccount,
       query: normalizedSearchQuery,
@@ -157,19 +181,19 @@ export default function Emails() {
   };
 
   // ================= OPEN EMAIL =================
-  const openEmail = async (email: any) => {
+  const openEmail = async (email: EmailItem) => {
     if (emailCache.current[email.id]) {
       setSelectedEmail(emailCache.current[email.id]);
       return;
     }
 
-    let data: any;
+    let data: EmailItem;
     let attachments: EmailAttachment[] = [];
 
     try {
       // 1) Show metadata immediately. Body may be empty if body_worker hasn't
       //    fetched it yet — render the placeholder via bodyLoading.
-      data = await getEmail(email.id);
+      data = await getEmail<EmailItem>(email.id);
     } catch (err) {
       console.error("Email detail load failed", err);
       setSelectedEmail({
@@ -215,12 +239,12 @@ export default function Emails() {
         const merged = { ...data, body: decryptedBody, attachments, _bodyLoading: false };
         emailCache.current[email.id] = merged;
         // Only update if user hasn't navigated away to a different email.
-        setSelectedEmail((cur: any) => (cur && cur.id === email.id ? merged : cur));
+        setSelectedEmail((cur) => (cur && cur.id === email.id ? merged : cur));
         return;
     
       } catch (err) {
         console.error("Wayve email body load/decrypt failed", err);
-        setSelectedEmail((cur: any) =>
+        setSelectedEmail((cur) =>
           cur && cur.id === email.id
             ? {
                 ...cur,
@@ -301,7 +325,7 @@ export default function Emails() {
       {/* ================= EMAIL LIST ================= */}
       {showList && (
         <div className="email-list">
-          {emails.map((email: any) => (
+          {emails.map((email) => (
             <div
               key={email.id}
               className={`email-item ${
@@ -346,37 +370,16 @@ export default function Emails() {
       )}
 
       {/* ================= COMPOSE MODAL ================= */}
-      {composeOpen && accounts.length > 0 && (
-        <div
-          onClick={() => setComposeOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "#fff",
-              padding: 20,
-              borderRadius: 8,
-              width: 480,
-              maxWidth: "90vw",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-            }}
-          >
-            <SendEmail
-              accountId={activeAccount ?? accounts[0].id}
-              onClose={() => setComposeOpen(false)}
-            />
-          </div>
-        </div>
-      )}
+      <Modal
+        isOpen={composeOpen && accounts.length > 0}
+        onClose={() => setComposeOpen(false)}
+        title="New Message"
+      >
+        <SendEmail
+          accountId={activeAccount ?? accounts[0].id}
+          onClose={() => setComposeOpen(false)}
+        />
+      </Modal>
 
       {/* ================= EMAIL DETAIL ================= */}
       {showDetail && (
@@ -418,10 +421,10 @@ export default function Emails() {
                 )}
               </div>
 
-              {selectedEmail.attachments?.length > 0 && (
+              {(selectedEmail.attachments?.length ?? 0) > 0 && (
                 <div className="email-attachments">
                   <div className="email-attachments-title">Attachments</div>
-                  {selectedEmail.attachments.map((attachment: EmailAttachment) => (
+                  {selectedEmail.attachments?.map((attachment: EmailAttachment) => (
                     <button
                       key={attachment.id}
                       className="email-attachment"

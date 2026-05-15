@@ -1,5 +1,6 @@
 use crate::prelude::*;
 
+use crate::email::oauth::{HTTP_CLIENT, refresh_access_token, try_load_google_secrets};
 use crate::models::email_request::SendEmailRequest;
 use crate::security::jwt::get_user_id_from_request;
 use actix_web::HttpResponse;
@@ -26,21 +27,60 @@ pub async fn send(
     info!(target: "gmail", user_id, account_id = data.account_id, "send email request");
 
     let account = sqlx::query(
-        "SELECT email, access_token FROM email_accounts 
+        "SELECT email, refresh_token FROM email_accounts
         WHERE id = $1 AND user_id = $2",
     )
     .bind(data.account_id)
     .bind(user_id)
     .fetch_one(pool.get_ref())
     .await;
-    let (from_email, access_token) = match account {
+    let (from_email, refresh_token) = match account {
         Ok(row) => {
             let email: String = row.get("email");
-            let token: String = row.get("access_token");
-            (email, token)
+            let refresh_token: Option<String> = row.get("refresh_token");
+            (email, refresh_token)
         }
         Err(_) => return HttpResponse::Unauthorized().body("Email account not found"),
     };
+
+    let refresh_token = match refresh_token.filter(|value| !value.trim().is_empty()) {
+        Some(value) => value,
+        None => {
+            return HttpResponse::Conflict().json(serde_json::json!({
+                "error": "Reconnect Gmail account to send email"
+            }));
+        }
+    };
+
+    let secrets = match try_load_google_secrets() {
+        Ok(value) => value,
+        Err(e) => {
+            error!(target: "gmail", error = %e, "google secrets unavailable");
+            return HttpResponse::InternalServerError().body("Google OAuth is not configured");
+        }
+    };
+    let client_id = secrets["web"]["client_id"].as_str().unwrap_or("");
+    let client_secret = secrets["web"]["client_secret"].as_str().unwrap_or("");
+    let access_token = match refresh_access_token(client_id, client_secret, &refresh_token).await {
+        Ok(token) => token,
+        Err(e) => {
+            error!(
+                target: "gmail",
+                user_id,
+                account_id = data.account_id,
+                error = ?e,
+                "send token refresh failed"
+            );
+            return HttpResponse::BadGateway().body("Failed to refresh Gmail credentials");
+        }
+    };
+
+    let _ = sqlx::query("UPDATE email_accounts SET access_token = $1 WHERE id = $2")
+        .bind(&access_token)
+        .bind(data.account_id)
+        .execute(pool.get_ref())
+        .await;
+
     let raw_email = format!(
         "From: {}\r\n\
     To: {}\r\n\
@@ -58,9 +98,7 @@ pub async fn send(
 
     let encoded = base64::engine::general_purpose::URL_SAFE.encode(raw_email.as_bytes());
 
-    let client = reqwest::Client::new();
-
-    let res = client
+    let res = HTTP_CLIENT
         .post(crate::external::gmail_send_url())
         .bearer_auth(&access_token)
         .json(&serde_json::json!({ "raw": encoded }))

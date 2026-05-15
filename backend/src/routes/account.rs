@@ -7,17 +7,10 @@ use tracing::{error, info, instrument};
 #[get("/accounts")]
 #[instrument(target = "http", skip(req, pool))]
 async fn get_accounts(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
-    let token = match req.headers().get("Authorization") {
-        Some(h) => h.to_str().unwrap_or("").replace("Bearer ", ""),
-        None => return HttpResponse::Unauthorized().body("Missing token"),
+    let user_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().body("Missing or invalid token"),
     };
-
-    let decoded = match crate::security::jwt::decode_jwt(&token) {
-        Some(d) => d,
-        None => return HttpResponse::Unauthorized().body("Invalid token"),
-    };
-
-    let user_id = decoded.sub;
 
     let result = sqlx::query_as::<_, Account>(
         r#"

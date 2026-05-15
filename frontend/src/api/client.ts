@@ -38,6 +38,7 @@ export async function apiFetch(
         url,
         {
           ...rest,
+          credentials: "include",
 
           headers: {
             "Content-Type":

@@ -1,6 +1,7 @@
 import { logger } from "../utils/logger";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./scheduler.css";
+import Modal from "../components/Modal";
 import {
   createMeetingApi,
   deleteMeetingApi,
@@ -29,6 +30,32 @@ import {
 import { readJson, writeJson } from "./storage";
 import type { CalendarItem, SchedulerView } from "./types";
 
+type SchedulerEvent = {
+  id: number;
+  title: string;
+  date: string;
+  start: number;
+  end: number;
+  participants: string[];
+  zoom_join_url: string | null;
+  source: string;
+};
+
+type ApiMeeting = {
+  id: number;
+  title: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  participants?: string[] | null;
+  zoom_join_url?: string | null;
+  source?: string | null;
+};
+
+type CreatedMeeting = {
+  meeting_id?: number;
+};
+
 export default function Scheduler() {
   const { normalizedSearchQuery } = useGlobalSearch();
   const daySlotsRef = useRef<HTMLDivElement>(null);
@@ -36,7 +63,7 @@ export default function Scheduler() {
 
   const [view, setView] = useState<SchedulerView>("week");
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<SchedulerEvent[]>([]);
   const [calendars, setCalendars] = useState<CalendarItem[]>(() =>
     readJson(CALENDAR_STORAGE_KEY, DEFAULT_CALENDARS)
   );
@@ -47,7 +74,7 @@ export default function Scheduler() {
 
   // modal
   const [showModal, setShowModal] = useState(false);
-  const [editingEvent, setEditingEvent] = useState<any | null>(null);
+  const [editingEvent, setEditingEvent] = useState<SchedulerEvent | null>(null);
 
   const [title, setTitle] = useState("");
   const [start, setStart] = useState("09:00");
@@ -87,30 +114,30 @@ export default function Scheduler() {
 
   const slots = DAY_SLOTS;
 
-  const scrollToDefaultVisibleTime = (targetView = view) => {
+  const scrollToDefaultVisibleTime = useCallback((targetView = view) => {
     const scrollTarget = DEFAULT_VISIBLE_START_HOUR * 2 * 44;
     const target = targetView === "day" ? daySlotsRef.current : weekGridRef.current;
     if (target) {
       target.scrollTop = scrollTarget;
     }
-  };
+  }, [view]);
 
-  const queueDefaultTimeScroll = (targetView = view) => {
+  const queueDefaultTimeScroll = useCallback((targetView = view) => {
     window.requestAnimationFrame(() => scrollToDefaultVisibleTime(targetView));
-  };
+  }, [scrollToDefaultVisibleTime, view]);
 
   useEffect(() => {
     if (view === "day" || view === "week") {
       queueDefaultTimeScroll(view);
     }
-  }, [view, currentDate]);
+  }, [view, currentDate, queueDefaultTimeScroll]);
 
-  const getCalendarIdForEvent = (event: any) => {
+  const getCalendarIdForEvent = (event: SchedulerEvent) => {
     if (event.source === "google") return "holiday";
     return eventCalendars[String(event.id)] ?? "office";
   };
 
-  const getCalendarForEvent = (event: any) => {
+  const getCalendarForEvent = (event: SchedulerEvent) => {
     const calendarId = getCalendarIdForEvent(event);
     return calendars.find((calendar) => calendar.id === calendarId) ?? calendars[0];
   };
@@ -164,10 +191,10 @@ export default function Scheduler() {
   };
 
   // ================= FETCH =================
-  const fetchMeetings = async () => {
-    const data = await getMeetings();
+  const fetchMeetings = useCallback(async () => {
+    const data = await getMeetings() as ApiMeeting[];
 
-    const formatted = data.map((m: any) => ({
+    const formatted = data.map((m) => ({
       id: m.id,
       title: m.title,
       date: m.date,
@@ -179,11 +206,11 @@ export default function Scheduler() {
     }));
 
     setEvents(formatted);
-  };
+  }, []);
 
   useEffect(() => {
-    fetchMeetings();
-  }, []);
+    void fetchMeetings();
+  }, [fetchMeetings]);
 
   // ================= CREATE / UPDATE =================
   const saveMeeting = async () => {
@@ -205,7 +232,7 @@ export default function Scheduler() {
       return;
     }
 
-    let finalParticipants = [...participants];
+    const finalParticipants = [...participants];
 
     // auto-add typed email if not added
     const email = emailInput.trim().toLowerCase();
@@ -232,7 +259,7 @@ export default function Scheduler() {
         [String(editingEvent.id)]: selectedCalendarId,
       }));
     } else {
-      const created = await createMeetingApi(payload);
+      const created = await createMeetingApi(payload) as CreatedMeeting;
       if (created?.meeting_id) {
         setEventCalendars((prev) => ({
           ...prev,
@@ -242,7 +269,7 @@ export default function Scheduler() {
     }
 
     resetModal();
-    fetchMeetings();
+    void fetchMeetings();
   };
 
   const resetModal = () => {
@@ -254,7 +281,7 @@ export default function Scheduler() {
   };
 
   // ================= EDIT =================
-  const openEdit = (event: any) => {
+  const openEdit = (event: SchedulerEvent) => {
     setEditingEvent(event);
 
     setTitle(event.title);
@@ -666,156 +693,139 @@ export default function Scheduler() {
 
 
       {/* MODAL */}
-      {showModal && (
-        <div className="modal-overlay">
-          <div className="modal">
-
-            <button
-              className="close-btn"
-              onClick={() => setShowModal(false)}
-            >
-              ✕
-            </button>
-
-            <h3>
-              {editingEvent ? "Edit Meeting" : "Schedule Meeting"}
-            </h3>
-
-            <div className="form">
-
-              <div className="form-group">
-                <label>Date</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  min={editingEvent ? undefined : todayStr()}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (!editingEvent && v && v < todayStr()) {
-                      setSelectedDate(todayStr());
-                    } else {
-                      setSelectedDate(v);
-                    }
-                  }}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Title</label>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Calendar</label>
-                <select
-                  value={selectedCalendarId}
-                  onChange={(e) => setSelectedCalendarId(e.target.value)}
-                >
-                  {calendars.map((calendar) => (
-                    <option key={calendar.id} value={calendar.id}>
-                      {calendar.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Participants</label>
-
-                <div className="chips">
-                  {participants.map((p) => (
-                    <div key={p} className="chip">
-                      {p}
-                      <span onClick={() => removeParticipant(p)}>×</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="participant-input">
-                  <input
-                    type="email"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                  />
-                  <button onClick={addParticipant}>Add</button>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Start</label>
-                <input
-                  type="time"
-                  value={start}
-                  min={
-                    !editingEvent && selectedDate === todayStr()
-                      ? nowTimeStr()
-                      : undefined
-                  }
-                  onChange={(e) => {
-                    let v = e.target.value;
-                    if (!editingEvent && selectedDate === todayStr() && v < nowTimeStr()) {
-                      v = nowTimeStr();
-                    }
-                    setStart(v);
-                    if (toMinutes(end) <= toMinutes(v)) {
-                      setEnd(addMinutesToTime(v, 30));
-                    }
-                  }}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>End</label>
-                <input
-                  type="time"
-                  value={end}
-                  min={addMinutesToTime(start, 1)}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (toMinutes(v) <= toMinutes(start)) {
-                      setEnd(addMinutesToTime(start, 30));
-                    } else {
-                      setEnd(v);
-                    }
-                  }}
-                />
-              </div>
-
-              {editingEvent?.zoom_join_url && (
-                <div className="form-group">
-                  <label>Zoom link</label>
-                  <a
-                    href={editingEvent.zoom_join_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {editingEvent.zoom_join_url}
-                  </a>
-                </div>
-              )}
-
-            </div>
-
-            <div className="modal-actions">
-                {editingEvent && (
-              <button className="delete-btn" onClick={deleteMeeting}>
-                Delete
-              </button>
-                )}
-              <button onClick={saveMeeting}>
-                {editingEvent ? "Update" : "Save"}
-              </button>
-              <button onClick={() => setShowModal(false)}>
-                Cancel
-              </button>
-            </div>
-
+      <Modal
+        isOpen={showModal}
+        onClose={resetModal}
+        title={editingEvent ? "Edit Meeting" : "Schedule Meeting"}
+      >
+        <div className="form">
+          <div className="form-group">
+            <label>Date</label>
+            <input
+              type="date"
+              value={selectedDate}
+              min={editingEvent ? undefined : todayStr()}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!editingEvent && v && v < todayStr()) {
+                  setSelectedDate(todayStr());
+                } else {
+                  setSelectedDate(v);
+                }
+              }}
+            />
           </div>
+
+          <div className="form-group">
+            <label>Title</label>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Calendar</label>
+            <select
+              value={selectedCalendarId}
+              onChange={(e) => setSelectedCalendarId(e.target.value)}
+            >
+              {calendars.map((calendar) => (
+                <option key={calendar.id} value={calendar.id}>
+                  {calendar.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Participants</label>
+            <div className="chips">
+              {participants.map((p) => (
+                <div key={p} className="chip">
+                  {p}
+                  <span onClick={() => removeParticipant(p)}>×</span>
+                </div>
+              ))}
+            </div>
+            <div className="participant-input">
+              <input
+                type="email"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+              />
+              <button onClick={addParticipant}>Add</button>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Start</label>
+            <input
+              type="time"
+              value={start}
+              min={
+                !editingEvent && selectedDate === todayStr()
+                  ? nowTimeStr()
+                  : undefined
+              }
+              onChange={(e) => {
+                let v = e.target.value;
+                if (!editingEvent && selectedDate === todayStr() && v < nowTimeStr()) {
+                  v = nowTimeStr();
+                }
+                setStart(v);
+                if (toMinutes(end) <= toMinutes(v)) {
+                  setEnd(addMinutesToTime(v, 30));
+                }
+              }}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>End</label>
+            <input
+              type="time"
+              value={end}
+              min={addMinutesToTime(start, 1)}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (toMinutes(v) <= toMinutes(start)) {
+                  setEnd(addMinutesToTime(start, 30));
+                } else {
+                  setEnd(v);
+                }
+              }}
+            />
+          </div>
+
+          {editingEvent?.zoom_join_url && (
+            <div className="form-group">
+              <label>Zoom link</label>
+              <a
+                href={editingEvent.zoom_join_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {editingEvent.zoom_join_url}
+              </a>
+            </div>
+          )}
         </div>
-      )}
+
+        <div className="modal-actions">
+          {editingEvent && (
+            <button className="delete-btn" onClick={deleteMeeting}>
+              Delete
+            </button>
+          )}
+          <button onClick={saveMeeting}>
+            {editingEvent ? "Update" : "Save"}
+          </button>
+          <button onClick={resetModal}>
+            Cancel
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

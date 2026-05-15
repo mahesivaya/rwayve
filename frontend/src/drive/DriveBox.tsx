@@ -1,12 +1,13 @@
 import { logger } from "../utils/logger";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./drive.css";
 import {
   getDriveFiles,
   uploadDriveFiles,
+  downloadDriveFile,
   type UploadedFile,
 } from "../api/drive";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/useAuth";
 import { useGlobalSearch } from "../search/SearchContext";
 
 export default function Drive() {
@@ -17,17 +18,19 @@ export default function Drive() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   //
   // ✅ FETCH FILES
   //
-  const fetchFiles = async () => {
+  const fetchFiles = useCallback(async () => {
     if (!user) return;
 
     setLoading(true);
+    setError(null);
 
     try {
-      const data = await getDriveFiles(user.id);
+      const data = await getDriveFiles();
 
       logger.log("🔥 API DATA:", data);
       logger.log("👤 USER ID:", user.id);
@@ -35,16 +38,17 @@ export default function Drive() {
       setUploadedFiles(Array.isArray(data) ? data : []);
     } catch (err) {
       logger.error("❌ Fetch error:", err);
+      setError("Failed to load files.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (user?.id) {
-      fetchFiles();
+      void Promise.resolve().then(fetchFiles);
     }
-  }, [user]);
+  }, [fetchFiles, user?.id]);
 
   //
   // ✅ HANDLE FILE SELECT
@@ -73,30 +77,44 @@ export default function Drive() {
   // ✅ UPLOAD FILES
   //
   const uploadFiles = async () => {
+    setError(null);
     if (!files.length) {
-      alert("No files selected");
+      setError("No files selected");
       return;
     }
 
     if (!user) {
-      alert("User not logged in");
+      setError("User not logged in");
       return;
     }
 
     setUploading(true);
 
     try {
-      await uploadDriveFiles(user.id, files);
+      await uploadDriveFiles(files);
 
       logger.log("✅ Upload success");
 
       setFiles([]);
-      fetchFiles(); // refresh list
+      void fetchFiles(); // refresh list
     } catch (err) {
       logger.error("❌ Upload error:", err);
-      alert("Upload failed");
+      setError("Upload failed. Please try again.");
     } finally {
       setUploading(false);
+    }
+  };
+
+  //
+  // ✅ DOWNLOAD FILE (authenticated route)
+  //
+  const downloadFile = async (file: UploadedFile) => {
+    try {
+      setError(null);
+      await downloadDriveFile(file.id, file.name);
+    } catch (err) {
+      logger.error("❌ Download error:", err);
+      setError("Download failed.");
     }
   };
 
@@ -144,6 +162,8 @@ export default function Drive() {
             />
           </label>
         </div>
+
+        {error && <p className="drive-error-msg" style={{ color: 'red', fontSize: '0.9rem' }}>{error}</p>}
 
         {files.length > 0 && (
           <div className="selected-files">
@@ -193,11 +213,12 @@ export default function Drive() {
                 </div>
 
                 <div className="file-right">
-                  {file.drive_url && (
-                    <a href={file.drive_url} target="_blank" rel="noreferrer">
-                      Open
-                    </a>
-                  )}
+                  <button
+                    className="file-download-btn"
+                    onClick={() => downloadFile(file)}
+                  >
+                    Download
+                  </button>
                 </div>
 
               </div>

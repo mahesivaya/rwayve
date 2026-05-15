@@ -4,9 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import Login from "../../auth/Login";
 import { AuthProvider } from "../../auth/AuthContext";
+import { clearAuthToken, getAuthToken } from "../../auth/token";
 
 vi.mock("../../api/Auth", () => ({
+  getMe: vi.fn().mockResolvedValue({ ok: false, status: 401 }),
   login: vi.fn(),
+  logout: vi.fn(),
+  saveUserPublicKey: vi.fn(),
 }));
 import { login as apiLogin } from "../../api/Auth";
 
@@ -21,10 +25,11 @@ const renderAt = (initialEntries: string[]) =>
 
 describe("Login page", () => {
   afterEach(() => {
+    clearAuthToken();
     vi.clearAllMocks();
   });
 
-  it("submits credentials and stores the token on success", async () => {
+  it("submits credentials and keeps the token out of localStorage", async () => {
     (apiLogin as unknown as { mockResolvedValue: (v: unknown) => void })
       .mockResolvedValue({ token: "jwt-1" });
 
@@ -35,8 +40,9 @@ describe("Login page", () => {
     await userEvent.click(screen.getByRole("button", { name: /^login$/i }));
 
     await waitFor(() => {
-      expect(localStorage.getItem("token")).toBe("jwt-1");
+      expect(getAuthToken()).toBe("jwt-1");
     });
+    expect(localStorage.getItem("token")).toBeNull();
     expect(apiLogin).toHaveBeenCalledWith("a@b.c", "pw");
   });
 

@@ -1,11 +1,12 @@
-const TOKEN_KEY = "token";
+let inMemoryToken: string | null = null;
 
-export const getAuthToken = () => localStorage.getItem(TOKEN_KEY);
+export const getAuthToken = () => inMemoryToken;
 
 export const setAuthToken = (token: string) => {
-  localStorage.setItem(TOKEN_KEY, token);
+  inMemoryToken = token;
 };
 
 export const clearAuthToken = () => {
-  localStorage.removeItem(TOKEN_KEY);
+  inMemoryToken = null;
+  localStorage.removeItem("token");
 };
