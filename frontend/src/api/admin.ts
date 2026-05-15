@@ -12,6 +12,14 @@ export type AdminOrganization = {
   id: number;
   name: string;
   user_count: number;
+  admin?: AdminCreatedUser | null;
+};
+
+export type CreateBusinessInput = {
+  name: string;
+  adminUsername: string;
+  adminEmail: string;
+  adminPassword: string;
 };
 
 export async function listAdminOrganizations(): Promise<AdminOrganization[]> {
@@ -28,11 +36,18 @@ export async function listAdminOrganizations(): Promise<AdminOrganization[]> {
   return data;
 }
 
-export async function createAdminOrganization(name: string): Promise<AdminOrganization> {
+export async function createAdminOrganization(
+  input: CreateBusinessInput
+): Promise<AdminOrganization> {
   const res = await apiFetch("/api/admin/organizations", {
     method: "POST",
     preserve401: true,
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({
+      name: input.name,
+      admin_username: input.adminUsername,
+      admin_email: input.adminEmail,
+      admin_password: input.adminPassword,
+    }),
   });
 
   const data = await res.json().catch(() => ({}));

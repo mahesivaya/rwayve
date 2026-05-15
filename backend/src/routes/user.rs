@@ -79,6 +79,11 @@ pub struct AdminCreateUserInput {
 #[derive(Deserialize)]
 pub struct CreateOrganizationInput {
     pub name: String,
+    /// Optional business admin to provision together with the business. When
+    /// any of the three fields is supplied, all three are required.
+    pub admin_username: Option<String>,
+    pub admin_email: Option<String>,
+    pub admin_password: Option<String>,
 }
 
 fn normalized_account_type(value: &str) -> &str {
@@ -180,7 +185,56 @@ pub async fn admin_create_organization(
             .json(serde_json::json!({ "message": "Business name is required" }));
     }
 
-    match sqlx::query(
+    // The business admin block is optional, but if any field is supplied the
+    // whole set (username, email, password) must be present.
+    let admin_username = data
+        .admin_username
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let admin_email = data
+        .admin_email
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_lowercase);
+    let admin_password = data
+        .admin_password
+        .as_deref()
+        .filter(|value| !value.is_empty());
+
+    let business_admin = if admin_username.is_some()
+        || admin_email.is_some()
+        || admin_password.is_some()
+    {
+        match (admin_username, admin_email.as_deref(), admin_password) {
+            (Some(username), Some(email), Some(password)) => {
+                if password.len() < 6 {
+                    return HttpResponse::BadRequest().json(serde_json::json!({
+                        "message": "Password must be at least 6 characters"
+                    }));
+                }
+                Some((username.to_string(), email.to_string(), password.to_string()))
+            }
+            _ => {
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "message": "Business admin username, email, and password are all required"
+                }));
+            }
+        }
+    } else {
+        None
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            error!(target: "db", admin_id, error = ?e, "begin business transaction failed");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    let org_row = match sqlx::query(
         r#"
         INSERT INTO organizations (name)
         VALUES ($1)
@@ -189,24 +243,83 @@ pub async fn admin_create_organization(
         "#,
     )
     .bind(name)
-    .fetch_one(pool.get_ref())
+    .fetch_one(&mut *tx)
     .await
     {
-        Ok(row) => {
-            let id: i32 = row.get("id");
-            let name: String = row.get("name");
-            info!(target: "auth", admin_id, organization_id = id, "project admin created business");
-            HttpResponse::Created().json(serde_json::json!({
-                "id": id,
-                "name": name,
-                "user_count": 0
-            }))
-        }
+        Ok(row) => row,
         Err(e) => {
             error!(target: "db", admin_id, error = ?e, "create organization failed");
-            HttpResponse::InternalServerError().finish()
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    let organization_id: i32 = org_row.get("id");
+    let organization_name: String = org_row.get("name");
+
+    let mut admin_json = serde_json::Value::Null;
+
+    if let Some((username, email, password)) = business_admin {
+        let hashed = match hash(&password, DEFAULT_COST) {
+            Ok(value) => value,
+            Err(e) => {
+                error!(target: "auth", error = %e, "business admin bcrypt hash failed");
+                return HttpResponse::InternalServerError().finish();
+            }
+        };
+
+        match sqlx::query(
+            r#"
+            INSERT INTO users (username, email, password, auth_provider, account_type, organization_id)
+            VALUES ($1, $2, $3, 'local', 'business_admin', $4)
+            RETURNING id, username, email, account_type, organization_id
+            "#,
+        )
+        .bind(&username)
+        .bind(&email)
+        .bind(&hashed)
+        .bind(organization_id)
+        .fetch_one(&mut *tx)
+        .await
+        {
+            Ok(row) => {
+                let id: i32 = row.get("id");
+                let username: Option<String> = row.try_get("username").ok();
+                let email: String = row.get("email");
+                let account_type: String = row.get("account_type");
+                let org_id: Option<i32> = row.try_get("organization_id").ok().flatten();
+                admin_json = serde_json::json!({
+                    "id": id,
+                    "username": username,
+                    "email": email,
+                    "account_type": normalized_account_type(&account_type),
+                    "organization_id": org_id
+                });
+            }
+            Err(e) => {
+                if e.to_string().contains("duplicate key") {
+                    return HttpResponse::Conflict().json(serde_json::json!({
+                        "message": "A user with that username or email already exists"
+                    }));
+                }
+                error!(target: "db", admin_id, error = ?e, "create business admin failed");
+                return HttpResponse::InternalServerError().finish();
+            }
         }
     }
+
+    if let Err(e) = tx.commit().await {
+        error!(target: "db", admin_id, error = ?e, "commit business transaction failed");
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    let user_count = if admin_json.is_null() { 0 } else { 1 };
+    info!(target: "auth", admin_id, organization_id, "project admin created business");
+    HttpResponse::Created().json(serde_json::json!({
+        "id": organization_id,
+        "name": organization_name,
+        "user_count": user_count,
+        "admin": admin_json
+    }))
 }
 
 #[post("/admin/users")]

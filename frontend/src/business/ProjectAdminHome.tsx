@@ -12,6 +12,9 @@ export default function ProjectAdminHome() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [businessName, setBusinessName] = useState("");
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [businesses, setBusinesses] = useState<AdminOrganization[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,7 +49,12 @@ export default function ProjectAdminHome() {
     setSaving(true);
 
     try {
-      const created = await createAdminOrganization(businessName);
+      const created = await createAdminOrganization({
+        name: businessName,
+        adminUsername,
+        adminEmail,
+        adminPassword,
+      });
       setBusinesses((prev) => {
         const exists = prev.some((item) => item.id === created.id);
         return exists
@@ -54,7 +62,13 @@ export default function ProjectAdminHome() {
           : [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
       });
       setBusinessName("");
-      setSuccess(`Created business ${created.name}`);
+      setAdminUsername("");
+      setAdminEmail("");
+      setAdminPassword("");
+      setSuccess(
+        `Created business ${created.name}` +
+          (created.admin ? ` with admin ${created.admin.email}` : "")
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create business");
     } finally {
@@ -87,7 +101,7 @@ export default function ProjectAdminHome() {
         <div className="project-admin-section-header">
           <div>
             <h2>Create business</h2>
-            <p>Add a new business organization that can later receive business admins and users.</p>
+            <p>Add a new business organization and provision its business admin account.</p>
           </div>
         </div>
 
@@ -98,6 +112,36 @@ export default function ProjectAdminHome() {
               value={businessName}
               onChange={(event) => setBusinessName(event.target.value)}
               placeholder="Enter business name"
+              required
+            />
+          </label>
+          <label>
+            <span>Business admin username</span>
+            <input
+              value={adminUsername}
+              onChange={(event) => setAdminUsername(event.target.value)}
+              placeholder="Enter business admin username"
+              required
+            />
+          </label>
+          <label>
+            <span>Business admin email</span>
+            <input
+              type="email"
+              value={adminEmail}
+              onChange={(event) => setAdminEmail(event.target.value)}
+              placeholder="Enter business admin email"
+              required
+            />
+          </label>
+          <label>
+            <span>Business admin password</span>
+            <input
+              type="password"
+              value={adminPassword}
+              onChange={(event) => setAdminPassword(event.target.value)}
+              placeholder="At least 6 characters"
+              minLength={6}
               required
             />
           </label>

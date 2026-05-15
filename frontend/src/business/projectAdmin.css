@@ -96,8 +96,7 @@
 
 .project-admin-form {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
-  align-items: end;
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
@@ -127,6 +126,10 @@
 .project-admin-form input:focus {
   outline: 2px solid #bfdbfe;
   border-color: #2563eb;
+}
+
+.project-admin-form button {
+  justify-self: start;
 }
 
 .project-admin-form button:disabled {
@@ -202,9 +205,5 @@
   .project-admin-header-actions {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .project-admin-form {
-    grid-template-columns: 1fr;
   }
 }
