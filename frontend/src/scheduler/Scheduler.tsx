@@ -8,68 +8,41 @@ import {
   updateMeetingApi,
 } from "../api/scheduler";
 import { useGlobalSearch } from "../search/SearchContext";
-
-type CalendarItem = {
-  id: string;
-  name: string;
-  color: string;
-  visible: boolean;
-};
-
-const CALENDAR_STORAGE_KEY = "wayve.scheduler.calendars";
-const EVENT_CALENDAR_STORAGE_KEY = "wayve.scheduler.eventCalendars";
-
-const DEFAULT_CALENDARS: CalendarItem[] = [
-  { id: "office", name: "Office Calendar", color: "#1a73e8", visible: true },
-  { id: "personal", name: "Personal Calendar", color: "#34a853", visible: true },
-  { id: "holiday", name: "Holiday Calendar", color: "#fbbc04", visible: true },
-];
-
-const CALENDAR_COLORS = [
-  "#1a73e8",
-  "#34a853",
-  "#fbbc04",
-  "#a142f4",
-  "#fa7b17",
-  "#24c1e0",
-  "#e8710a",
-];
+import {
+  CALENDAR_COLORS,
+  CALENDAR_STORAGE_KEY,
+  DAY_SLOTS,
+  DEFAULT_CALENDARS,
+  DEFAULT_VISIBLE_START_HOUR,
+  EVENT_CALENDAR_STORAGE_KEY,
+} from "./constants";
+import {
+  addMinutesToTime,
+  formatDateLocal,
+  formatHour,
+  fromTime,
+  nowTimeStr,
+  todayStr,
+  toMinutes,
+  toTime,
+} from "./dateUtils";
+import { readJson, writeJson } from "./storage";
+import type { CalendarItem, SchedulerView } from "./types";
 
 export default function Scheduler() {
   const { normalizedSearchQuery } = useGlobalSearch();
   const daySlotsRef = useRef<HTMLDivElement>(null);
   const weekGridRef = useRef<HTMLDivElement>(null);
 
-  // Format a Date as YYYY-MM-DD in the user's local timezone. Calendars
-  // should always show events in the viewer's wall clock — using a hardcoded
-  // zone here desyncs the displayed date from the date sent on create, which
-  // caused the "Meeting cannot be in the past" 400.
-  const formatDateLocal = (date: Date) => {
-    const y = date.getFullYear();
-    const m = (date.getMonth() + 1).toString().padStart(2, "0");
-    const d = date.getDate().toString().padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  };
-  
-  const [view, setView] = useState<"day" | "week" | "month">("week");
+  const [view, setView] = useState<SchedulerView>("week");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<any[]>([]);
-  const [calendars, setCalendars] = useState<CalendarItem[]>(() => {
-    try {
-      const stored = localStorage.getItem(CALENDAR_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : DEFAULT_CALENDARS;
-    } catch {
-      return DEFAULT_CALENDARS;
-    }
-  });
-  const [eventCalendars, setEventCalendars] = useState<Record<string, string>>(() => {
-    try {
-      const stored = localStorage.getItem(EVENT_CALENDAR_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [calendars, setCalendars] = useState<CalendarItem[]>(() =>
+    readJson(CALENDAR_STORAGE_KEY, DEFAULT_CALENDARS)
+  );
+  const [eventCalendars, setEventCalendars] = useState<Record<string, string>>(() =>
+    readJson(EVENT_CALENDAR_STORAGE_KEY, {})
+  );
   const [newCalendarName, setNewCalendarName] = useState("");
 
   // modal
@@ -88,11 +61,11 @@ export default function Scheduler() {
   const [emailInput, setEmailInput] = useState("");
 
   useEffect(() => {
-    localStorage.setItem(CALENDAR_STORAGE_KEY, JSON.stringify(calendars));
+    writeJson(CALENDAR_STORAGE_KEY, calendars);
   }, [calendars]);
 
   useEffect(() => {
-    localStorage.setItem(EVENT_CALENDAR_STORAGE_KEY, JSON.stringify(eventCalendars));
+    writeJson(EVENT_CALENDAR_STORAGE_KEY, eventCalendars);
   }, [eventCalendars]);
 
   const deleteMeeting = async () => {
@@ -112,11 +85,10 @@ export default function Scheduler() {
     }
   };
 
-  const defaultVisibleStartHour = 6;
-  const slots = Array.from({ length: 48 }, (_, i) => i);
+  const slots = DAY_SLOTS;
 
   const scrollToDefaultVisibleTime = (targetView = view) => {
-    const scrollTarget = defaultVisibleStartHour * 2 * 44;
+    const scrollTarget = DEFAULT_VISIBLE_START_HOUR * 2 * 44;
     const target = targetView === "day" ? daySlotsRef.current : weekGridRef.current;
     if (target) {
       target.scrollTop = scrollTarget;
@@ -132,17 +104,6 @@ export default function Scheduler() {
       queueDefaultTimeScroll(view);
     }
   }, [view, currentDate]);
-
-  // ================= HELPERS =================
-  const toMinutes = (time: string) => {
-    const [h, m] = time.split(":").map(Number);
-    return h * 60 + m;
-  };
-
-  const fromTime = (time: string) => {
-    const [h, m] = time.split(":").map(Number);
-    return h * 60 + m;
-  };
 
   const getCalendarIdForEvent = (event: any) => {
     if (event.source === "google") return "holiday";
@@ -178,25 +139,6 @@ export default function Scheduler() {
       )
     );
   };
-
-  const toTime = (mins: number) => {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return `${h.toString().padStart(2, "0")}:${m
-      .toString()
-      .padStart(2, "0")}`;
-  };
-
-  const todayStr = () => formatDateLocal(new Date());
-  const nowTimeStr = () => {
-    const d = new Date();
-    return `${d.getHours().toString().padStart(2, "0")}:${d
-      .getMinutes()
-      .toString()
-      .padStart(2, "0")}`;
-  };
-  const addMinutesToTime = (t: string, n: number) =>
-    toTime(Math.min(toMinutes(t) + n, 23 * 60 + 59));
 
   // ================= PARTICIPANTS =================
   const addParticipant = () => {
@@ -382,12 +324,6 @@ export default function Scheduler() {
     day.setDate(weekStart.getDate() + i);
     return day;
   });
-
-  const formatHour = (mins: number) => {
-    const date = new Date();
-    date.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
-    return date.toLocaleTimeString([], { hour: "numeric" });
-  };
 
   return (
     <div className="scheduler">

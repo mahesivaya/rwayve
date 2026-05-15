@@ -1,5 +1,8 @@
+pub mod auth;
+pub mod email_notifications;
 pub mod google_calendar;
 pub mod handler;
+pub mod time;
 pub mod zoom;
 
 use actix_web::web;

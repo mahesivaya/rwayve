@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import "./emails.css";
 import "./loadMore.css";
 import SendEmail from "./SendEmail";
+import {
+  decryptWayveBodyIfNeeded,
+  emailBodyErrorMessage,
+} from "./bodyUtils";
+import { formatFileSize, renderEmailBody } from "./renderUtils";
 
 import {
   downloadEmailAttachment,
@@ -15,209 +19,9 @@ import {
   getEmails,
   getGmailLoginUrl,
 } from "../api/email";
-import { decryptMessage } from "../crypto/crypto";
-import { loadPrivateKey } from "../crypto/keyStore";
 import { useAuth } from "../auth/AuthContext";
 import { getAuthToken } from "../auth/token";
 import { useGlobalSearch } from "../search/SearchContext";
-
-type Email = {
-  id: number;
-  sender: string;
-  receiver: string;
-  subject: string;
-  preview?: string;
-  body?: string;
-  created_at: string;
-};
-
-type WayveEncryptedBody = {
-  type: "wayve_encrypted";
-  data: number[];
-  key: number[];
-  iv: number[];
-};
-
-const WAYVE_SECURE_PREFIX = "WAYVE_SECURE_V1";
-const LINK_PATTERN = /((?:https?:\/\/|www\.)[^\s<>()]+|mailto:[^\s<>()]+)/gi;
-
-function normalizeEmailBody(body: string) {
-  if (!/[<&][a-zA-Z#/!]/.test(body)) {
-    return body;
-  }
-
-  const doc = new DOMParser().parseFromString(body, "text/html");
-
-  doc
-    .querySelectorAll("script, style, noscript, svg")
-    .forEach((node) => node.remove());
-
-  doc
-    .querySelectorAll("br")
-    .forEach((node) => node.replaceWith(doc.createTextNode("\n")));
-
-  doc
-    .querySelectorAll("p, div, section, article, header, footer, tr, table")
-    .forEach((node) => node.append(doc.createTextNode("\n")));
-
-  doc
-    .querySelectorAll("li")
-    .forEach((node) => node.prepend(doc.createTextNode("\n- ")));
-
-  const text = doc.body.textContent || body;
-
-  return text
-    .replace(/\u00a0/g, " ")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function parseWayveEncryptedBody(body: string): WayveEncryptedBody | null {
-  const trimmed = normalizeEmailBody(body).trim();
-
-  if (!trimmed.startsWith(WAYVE_SECURE_PREFIX)) {
-    return null;
-  }
-
-  const jsonStart = trimmed.indexOf("{");
-  if (jsonStart === -1) {
-    throw new Error("Encrypted Wayve email is missing its payload");
-  }
-
-  const jsonEnd = trimmed.lastIndexOf("}");
-  if (jsonEnd < jsonStart) {
-    throw new Error("Encrypted Wayve email payload is incomplete");
-  }
-
-  const parsed = JSON.parse(trimmed.slice(jsonStart, jsonEnd + 1));
-
-  if (
-    parsed?.type !== "wayve_encrypted" ||
-    !Array.isArray(parsed.data) ||
-    !Array.isArray(parsed.key) ||
-    !Array.isArray(parsed.iv)
-  ) {
-    throw new Error("Encrypted Wayve email payload is invalid");
-  }
-
-  return parsed;
-}
-
-function emailBodyErrorMessage(err: unknown) {
-  const message = err instanceof Error ? err.message : "";
-
-  if (
-    message.includes("private key") ||
-    message.includes("decrypt") ||
-    message.includes("operation failed")
-  ) {
-    return "Unable to decrypt this fully encrypted email on this device. Sign out and back in to refresh your Wayve encryption key, then ask the sender to resend it.";
-  }
-
-  if (message) {
-    return message;
-  }
-
-  return "Failed to load email body. Try again.";
-}
-
-function formatFileSize(size?: number | null) {
-  if (!size) return "";
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function renderEmailBody(body: string) {
-  const parts: ReactNode[] = [];
-  let lastIndex = 0;
-
-  for (const match of body.matchAll(LINK_PATTERN)) {
-    const raw = match[0];
-    const index = match.index ?? 0;
-
-    if (index > lastIndex) {
-      parts.push(body.slice(lastIndex, index));
-    }
-
-    const href = raw.startsWith("www.") ? `https://${raw}` : raw;
-    const trailing = href.match(/[.,;:!?)]$/)?.[0] ?? "";
-    const cleanHref = trailing ? href.slice(0, -1) : href;
-    const cleanLabel = trailing ? raw.slice(0, -1) : raw;
-
-    parts.push(
-      <a
-        key={`${cleanHref}-${index}`}
-        href={cleanHref}
-        target="_blank"
-        rel="noreferrer"
-      >
-        {cleanLabel}
-      </a>
-    );
-
-    if (trailing) {
-      parts.push(trailing);
-    }
-
-    lastIndex = index + raw.length;
-  }
-
-  if (lastIndex < body.length) {
-    parts.push(body.slice(lastIndex));
-  }
-
-  return parts;
-}
-
-async function decryptWayveBodyIfNeeded(
-  body: string,
-  userId?: number | null
-): Promise<string> {
-  const encrypted = parseWayveEncryptedBody(body);
-
-  if (!encrypted) {
-    return normalizeEmailBody(body);
-  }
-
-  const privateKeys: CryptoKey[] = [];
-  const scopedPrivateKey = await loadPrivateKey(userId);
-
-  if (scopedPrivateKey) {
-    privateKeys.push(scopedPrivateKey);
-  }
-
-  if (userId) {
-    const legacyPrivateKey = await loadPrivateKey();
-    if (legacyPrivateKey && legacyPrivateKey !== scopedPrivateKey) {
-      privateKeys.push(legacyPrivateKey);
-    }
-  }
-
-  if (privateKeys.length === 0) {
-    throw new Error("This device does not have your Wayve private key");
-  }
-
-  let lastError: unknown = null;
-
-  for (const privateKey of privateKeys) {
-    try {
-      return await decryptMessage(
-        new Uint8Array(encrypted.data),
-        new Uint8Array(encrypted.key),
-        new Uint8Array(encrypted.iv),
-        privateKey
-      ).then(normalizeEmailBody);
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error("Unable to decrypt Wayve email");
-}
 
 export default function Emails() {
   const { user } = useAuth();

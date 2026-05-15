@@ -1,156 +1,20 @@
 use crate::models::scheduler::{CreateMeeting, Meeting};
 use crate::prelude::*;
+use crate::scheduler::auth::get_user_id;
+use crate::scheduler::email_notifications::{
+    MeetingEmailKind, MeetingEmailRequest, send_meeting_emails,
+};
+use crate::scheduler::time::minutes_to_time;
 use crate::scheduler::zoom::create_zoom_meeting;
 use actix_web::{HttpRequest, HttpResponse, delete, post, put, web};
-use base64::Engine;
 use chrono::{TimeZone, Utc};
 use chrono_tz::Tz;
 use serde_json::json;
 use std::str::FromStr;
 use tracing::{error, info, instrument, warn};
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use sqlx::{PgPool, Row};
-
-// ================= HELPER =================
-fn minutes_to_time(mins: i32) -> NaiveTime {
-    let h = mins / 60;
-    let m = mins % 60;
-    NaiveTime::from_hms_opt(h as u32, m as u32, 0).unwrap_or_default()
-}
-
-// ================= EXTRACT USER =================
-fn get_user_id(req: &HttpRequest) -> Result<i32, HttpResponse> {
-    let token = req
-        .headers()
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-        .ok_or_else(|| HttpResponse::Unauthorized().body("Missing token"))?;
-
-    let decoded = crate::security::jwt::decode_jwt(token)
-        .ok_or_else(|| HttpResponse::Unauthorized().body("Invalid token"))?;
-
-    Ok(decoded.sub)
-}
-
-// ================= REQUEST STRUCT =================
-#[derive(Clone, Copy)]
-pub enum MeetingEmailKind {
-    Invite,
-    Update,
-    Cancel,
-}
-
-pub struct MeetingEmailRequest {
-    pub user_id: i32,
-    pub participants: Vec<String>,
-    pub title: String,
-    pub date: NaiveDate,
-    pub start: NaiveTime,
-    pub end: NaiveTime,
-    pub kind: MeetingEmailKind,
-    pub zoom_join_url: Option<String>,
-}
-
-// ================= MAIN FUNCTION =================
-pub async fn send_meeting_emails(pool: &PgPool, req: MeetingEmailRequest) -> Result<(), String> {
-    let MeetingEmailRequest {
-        user_id,
-        participants,
-        title,
-        date,
-        start,
-        end,
-        kind,
-        zoom_join_url,
-    } = req;
-
-    let row = sqlx::query(
-        "SELECT access_token, email FROM email_accounts 
-         WHERE user_id = $1 AND is_active = true LIMIT 1",
-    )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| format!("DB error: {:?}", e))?;
-
-    let row = match row {
-        Some(r) => r,
-        None => return Err("No active Gmail account found".into()),
-    };
-
-    let access_token: String = row.get("access_token");
-    let sender_email: String = row.get("email");
-
-    if access_token.is_empty() {
-        return Err("Missing access token".into());
-    }
-
-    let valid_participants: Vec<String> = participants
-        .into_iter()
-        .map(|e| e.trim().to_lowercase())
-        .filter(|e| e.contains("@") && e.contains("."))
-        .collect();
-
-    if valid_participants.is_empty() {
-        return Err("No valid participants".into());
-    }
-
-    let start_str = start.format("%H:%M").to_string();
-    let end_str = end.format("%H:%M").to_string();
-
-    let (header, subject_prefix) = match kind {
-        MeetingEmailKind::Invite => ("📅 Meeting Invitation", "Meeting"),
-        MeetingEmailKind::Update => ("✏️ Meeting Updated", "Updated"),
-        MeetingEmailKind::Cancel => ("❌ Meeting Cancelled", "Cancelled"),
-    };
-
-    let zoom_line = match &zoom_join_url {
-        Some(url) if !url.is_empty() => format!("\nZoom: {}", url),
-        _ => String::new(),
-    };
-
-    let body = format!(
-        "{}\n\nTitle: {}\nDate: {}\nStart: {}\nEnd: {}{}\n\n-- Wayve Scheduler",
-        header, title, date, start_str, end_str, zoom_line
-    );
-
-    let to_list = valid_participants.join(",");
-
-    let raw_message = format!(
-        "From: {}\r\n\
-To: {}\r\n\
-Subject: {}: {}\r\n\
-Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}",
-        sender_email, to_list, subject_prefix, title, body
-    );
-
-    let encoded = URL_SAFE_NO_PAD.encode(raw_message);
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("HTTP client error: {:?}", e))?;
-
-    let res = client
-        .post(crate::external::gmail_send_url())
-        .bearer_auth(access_token)
-        .json(&json!({ "raw": encoded }))
-        .send()
-        .await
-        .map_err(|e| format!("HTTP send error: {:?}", e))?;
-
-    if !res.status().is_success() {
-        let text = res.text().await.unwrap_or_default();
-        return Err(format!("Gmail failed: {}", text));
-    }
-
-    info!(target: "scheduler", user_id, "meeting emails sent");
-
-    Ok(())
-}
 
 // ================= CREATE MEETING =================
 
