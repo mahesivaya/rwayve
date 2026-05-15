@@ -89,14 +89,14 @@ db-reset:
     {{compose-dev}} up -d postgres_db
 
 db-shell:
-    docker exec -it rwayve_postgres_dev psql -U wayve_user -d wayve_db
+    docker exec -it rwayve_postgres_dev psql -U wayve_user -d wayve_dev
 
 # =========================
 # 🔐 SQLx
 # =========================
 
 sqlx-prepare:
-    DATABASE_URL=postgres://wayve_user:wayve_password@localhost:5432/wayve_db cargo sqlx prepare
+    DATABASE_URL=postgres://wayve_user:wayve_password@localhost:5432/wayve_dev cargo sqlx prepare
 
 sqlx-migrate:
     sqlx migrate run

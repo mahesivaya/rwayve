@@ -1,4 +1,4 @@
-name: rwayve_db
+name: rwayve
 
 services:
   postgres_db:
@@ -62,7 +62,7 @@ services:
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: api
-      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_db
+      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_dev
       REDIS_URL: redis://redis:6379
       GOOGLE_CLIENT_SECRET_PATH: /app/client_secret.json
       SMTP_HOST: mailhog
@@ -98,7 +98,7 @@ services:
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: email-sync-worker
-      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_db
+      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_dev
       REDIS_URL: redis://redis:6379
       GOOGLE_CLIENT_SECRET_PATH: /app/client_secret.json
       SMTP_HOST: mailhog
@@ -125,7 +125,7 @@ services:
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: email-body-worker
-      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_db
+      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_dev
       REDIS_URL: redis://redis:6379
       GOOGLE_CLIENT_SECRET_PATH: /app/client_secret.json
       SMTP_HOST: mailhog

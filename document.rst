@@ -458,7 +458,7 @@ flake.nix code:
 
 AES_KEY=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
 AES_HKDF_SALT=wayve-production-stable-salt
-DATABASE_URL=postgres://wayve_user:wayve_password@postgres_db:5432/wayve_db
+DATABASE_URL=postgres://wayve_user:wayve_password@postgres_db:5432/wayve_dev
 
 
 git add .
@@ -932,3 +932,7 @@ business_admin:
 personal:
   email: maheshpy85@gmail.com
   password: mahesh
+
+update users set account_type='project_admin' where email='maheshiv199@gmail.com';
+update users set account_type='business_amdin' where email='maheshwayve@gmail.com';
+update users set account_type='personal' where email='maheshpy85@gmail.com';
