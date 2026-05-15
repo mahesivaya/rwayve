@@ -24,7 +24,13 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes"]
+    command:
+      [
+        "redis-server",
+        "--appendonly", "yes",
+        "--maxmemory", "256mb",
+        "--maxmemory-policy", "allkeys-lru"
+      ]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -80,10 +86,8 @@ services:
       start_period: 20s
 
   email_sync_worker:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
-    image: rwayve-email-sync-worker:dev
+    # Same image as backend (built once); RWAYVE_ROLE selects worker behaviour.
+    image: rwayve-backend:dev
     container_name: rwayve_email_sync_worker_dev
     hostname: rwayve_email_sync_worker_dev
     restart: unless-stopped
@@ -107,10 +111,8 @@ services:
       - ../logs:/app/logs
 
   email_body_worker:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
-    image: rwayve-email-body-worker:dev
+    # Same image as backend (built once); RWAYVE_ROLE selects worker behaviour.
+    image: rwayve-backend:dev
     container_name: rwayve_email_body_worker_dev
     hostname: rwayve_email_body_worker_dev
     restart: unless-stopped
@@ -145,6 +147,11 @@ services:
       - backend
     env_file:
       - ../frontend/.env.development
+    volumes:
+      # Live-mount host source so Vite HMR picks up edits without a rebuild.
+      - ../frontend:/app
+      # Keep the image's Linux-built node_modules; don't let the host shadow it.
+      - /app/node_modules
     healthcheck:
       test:
         [

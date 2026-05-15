@@ -20,7 +20,13 @@ services:
     image: redis:7
     container_name: rwayve_redis_prod
     restart: always
-    command: ["redis-server", "--appendonly", "yes"]
+    command:
+      [
+        "redis-server",
+        "--appendonly", "yes",
+        "--maxmemory", "256mb",
+        "--maxmemory-policy", "allkeys-lru"
+      ]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -58,10 +64,8 @@ services:
       start_period: 20s
 
   email_sync_worker:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
-    image: rwayve-email-sync-worker:prod
+    # Same image as backend (built once); RWAYVE_ROLE selects worker behaviour.
+    image: rwayve-backend:prod
     container_name: rwayve_email_sync_worker_prod
     hostname: rwayve_email_sync_worker_prod
     restart: always
@@ -80,10 +84,8 @@ services:
       - logs_prod:/app/logs
 
   email_body_worker:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
-    image: rwayve-email-body-worker:prod
+    # Same image as backend (built once); RWAYVE_ROLE selects worker behaviour.
+    image: rwayve-backend:prod
     container_name: rwayve_email_body_worker_prod
     hostname: rwayve_email_body_worker_prod
     restart: always

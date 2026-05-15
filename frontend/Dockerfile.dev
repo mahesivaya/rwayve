@@ -1,11 +1,14 @@
 # syntax=docker/dockerfile:1.7
 FROM node:20-bookworm-slim
 
+# Prevent some npm noise
+ENV CI=true
+
 WORKDIR /app
 
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm install
+    npm ci
 
 COPY . .
 
