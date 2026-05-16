@@ -9,7 +9,7 @@ import Login from "./auth/Login";
 import ForgotPassword from "./auth/ForgotPassword";
 import ResetPassword from "./auth/ResetPassword";
 import { useAuth } from "./auth/useAuth";
-import { homePathForAccount, normalizeAccountType } from "./auth/accountHome";
+import { homePathForUser, normalizeAccountType } from "./auth/accountHome";
 
 // 🔥 Lazy loaded pages
 const Home = lazy(() => import("./home/Home"));
@@ -26,6 +26,7 @@ const Settings = lazy(() => import("./profile/Settings"));
 const Business = lazy(() => import("./business/Business"));
 const BusinessAdminHome = lazy(() => import("./business/BusinessAdminHome"));
 const ProjectAdminHome = lazy(() => import("./business/ProjectAdminHome"));
+const BusinessHome = lazy(() => import("./business/BusinessHome"));
 const EmailFiles = lazy(() => import("./files/EmailFiles"));
 const ServicePage = lazy(() => import("./services/ServicePage"));
 
@@ -33,11 +34,10 @@ export default function App() {
   const { user } = useAuth();
   const location = useLocation();
 
-  const accountHome = useMemo(() => {
-    const raw = homePathForAccount(user?.account_type);
-    const withSlash = raw.startsWith("/") ? raw : `/${raw}`;
-    return withSlash.toLowerCase();
-  }, [user?.account_type]);
+  const accountHome = useMemo(
+    () => homePathForUser(user).toLowerCase(),
+    [user?.account_type, user?.organization_id, user?.organization_slug]
+  );
 
   const accountType = normalizeAccountType(user?.account_type);
 
@@ -78,13 +78,7 @@ export default function App() {
 
             <Route
               path="/home"
-              element={
-                accountType !== "personal" ? (
-                  redirectToAccountHome ?? <Home />
-                ) : (
-                  <Home />
-                )
-              }
+              element={redirectToAccountHome ?? <Home />}
             />
             <Route
               path="/business-home"
@@ -106,6 +100,7 @@ export default function App() {
                 )
               }
             />
+            <Route path="/business/:slug" element={<BusinessHome />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/email-files" element={<EmailFiles />} />
             <Route path="/chat" element={<Chat />} />

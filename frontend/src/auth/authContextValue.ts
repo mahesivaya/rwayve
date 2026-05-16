@@ -6,6 +6,8 @@ export type UserType = {
   id: number;
   account_type: AccountType;
   organization_id?: number | null;
+  organization_slug?: string | null;
+  organization_name?: string | null;
 };
 
 export type AuthType = {

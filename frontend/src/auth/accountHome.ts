@@ -18,3 +18,29 @@ export function homePathForAccount(accountType?: string | null) {
   if (normalized === "business_admin") return "/business-home";
   return "/home";
 }
+
+type AccountLike = {
+  account_type?: string | null;
+  organization_id?: number | null;
+  organization_slug?: string | null;
+};
+
+// Landing route for a fully-resolved user. Business members (business admins
+// and the personal accounts created inside a business) land on their own
+// /business/<slug> home page. Until the slug is known (optimistic JWT boot or
+// right after login, before /api/me resolves) we fall back to "/home", which
+// re-redirects itself once the slug arrives — never a dead end.
+export function homePathForUser(user?: AccountLike | null): string {
+  const normalized = normalizeAccountType(user?.account_type);
+  if (normalized === "project_admin") return "/project-admin-home";
+
+  const inBusiness =
+    normalized === "business_admin" || user?.organization_id != null;
+  if (inBusiness) {
+    return user?.organization_slug
+      ? `/business/${user.organization_slug}`
+      : "/home";
+  }
+
+  return "/home";
+}

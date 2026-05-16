@@ -132,6 +132,16 @@
   justify-self: start;
 }
 
+.project-admin-hint {
+  margin: -4px 0 0;
+  color: #475569;
+  font-size: 12px;
+}
+
+.project-admin-hint strong {
+  color: #1d4ed8;
+}
+
 .project-admin-form button:disabled {
   background: #93c5fd;
   border-color: #93c5fd;

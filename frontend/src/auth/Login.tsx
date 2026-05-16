@@ -4,7 +4,7 @@ import type { FormEvent } from "react";
 import { login } from "../api/Auth";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
-import { homePathForAccount } from "../auth/accountHome";
+import { homePathForUser } from "../auth/accountHome";
 import { API_BASE } from "../config";
 import "./login.css";
 
@@ -33,8 +33,9 @@ export default function Login() {
 
       authLogin(data.token, data.account_type ?? "personal");
 
-      const target = homePathForAccount(data.account_type);
-      navigate(target.startsWith("/") ? target : `/${target}`);
+      // Org slug isn't known yet at login; routing settles to /business/<slug>
+      // once AuthContext's post-login /api/me fetch resolves.
+      navigate(homePathForUser({ account_type: data.account_type }));
     } catch (err) {
       logger.error(err);
       setError("Login failed. Check your credentials.");

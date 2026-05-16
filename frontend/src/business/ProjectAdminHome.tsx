@@ -8,16 +8,18 @@ import {
 import { useAuth } from "../auth/useAuth";
 import "./projectAdmin.css";
 
+// Mirrors the backend slugify(): lowercase, ASCII-alphanumeric only.
+const slugify = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
 export default function ProjectAdminHome() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [businessName, setBusinessName] = useState("");
-  const [adminUsername, setAdminUsername] = useState("");
-  const [adminEmail, setAdminEmail] = useState("");
+  const [adminHandle, setAdminHandle] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [businesses, setBusinesses] = useState<AdminOrganization[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -46,13 +48,12 @@ export default function ProjectAdminHome() {
     event.preventDefault();
     setError("");
     setSuccess("");
-    setSaving(true);
+    setCreating(true);
 
     try {
       const created = await createAdminOrganization({
         name: businessName,
-        adminUsername,
-        adminEmail,
+        adminHandle,
         adminPassword,
       });
       setBusinesses((prev) => {
@@ -62,8 +63,7 @@ export default function ProjectAdminHome() {
           : [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
       });
       setBusinessName("");
-      setAdminUsername("");
-      setAdminEmail("");
+      setAdminHandle("");
       setAdminPassword("");
       setSuccess(
         `Created business ${created.name}` +
@@ -72,7 +72,7 @@ export default function ProjectAdminHome() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create business");
     } finally {
-      setSaving(false);
+      setCreating(false);
     }
   };
 
@@ -116,24 +116,22 @@ export default function ProjectAdminHome() {
             />
           </label>
           <label>
-            <span>Business admin username</span>
+            <span>Business admin handle</span>
             <input
-              value={adminUsername}
-              onChange={(event) => setAdminUsername(event.target.value)}
-              placeholder="Enter business admin username"
+              value={adminHandle}
+              onChange={(event) => setAdminHandle(event.target.value)}
+              placeholder="e.g. john"
               required
             />
           </label>
-          <label>
-            <span>Business admin email</span>
-            <input
-              type="email"
-              value={adminEmail}
-              onChange={(event) => setAdminEmail(event.target.value)}
-              placeholder="Enter business admin email"
-              required
-            />
-          </label>
+          {adminHandle && businessName && (
+            <p className="project-admin-hint">
+              Login email will be{" "}
+              <strong>
+                {slugify(adminHandle)}@{slugify(businessName)}.com
+              </strong>
+            </p>
+          )}
           <label>
             <span>Business admin password</span>
             <input
@@ -145,8 +143,8 @@ export default function ProjectAdminHome() {
               required
             />
           </label>
-          <button type="submit" disabled={saving}>
-            {saving ? "Creating..." : "Create business"}
+          <button type="submit" disabled={creating}>
+            {creating ? "Creating..." : "Create business"}
           </button>
         </form>
 
@@ -172,7 +170,10 @@ export default function ProjectAdminHome() {
             {businesses.map((business) => (
               <article key={business.id}>
                 <strong>{business.name}</strong>
-                <span>{business.user_count} users</span>
+                <span>
+                  {business.slug ? `${business.slug}.com · ` : ""}
+                  {business.user_count} users
+                </span>
               </article>
             ))}
           </div>

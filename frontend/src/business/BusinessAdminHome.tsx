@@ -6,11 +6,13 @@ import { useAuth } from "../auth/useAuth";
 import "../home/home.css";
 import "./businessAdmin.css";
 
+// Mirrors the backend slugify(): lowercase, ASCII-alphanumeric only.
+const slugify = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
 export default function BusinessAdminHome() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
+  const [handle, setHandle] = useState("");
   const [password, setPassword] = useState("");
   const [accountType, setAccountType] = useState("personal");
   const [organizationName, setOrganizationName] = useState("");
@@ -23,6 +25,16 @@ export default function BusinessAdminHome() {
   const isProjectAdmin = currentAccountType === "project_admin";
   const pageTitle = isProjectAdmin ? "Complete Project Admin page" : "Business Admin page";
 
+  // Email domain the new account will land on — the business domain, or
+  // wayve.com for plain personal/project accounts.
+  const emailDomain = isProjectAdmin
+    ? accountType === "business_admin" && organizationName
+      ? `${slugify(organizationName)}.com`
+      : "wayve.com"
+    : user?.organization_slug
+      ? `${user.organization_slug}.com`
+      : "your-business.com";
+
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setCreateError("");
@@ -31,19 +43,17 @@ export default function BusinessAdminHome() {
 
     try {
       const created = await createAdminUser(
-        username,
-        email,
+        handle,
         password,
         isProjectAdmin ? accountType : "personal",
         organizationName
       );
       setCreatedUsers((prev) => [created, ...prev]);
-      setUsername("");
-      setEmail("");
+      setHandle("");
       setPassword("");
       setAccountType("personal");
       setOrganizationName("");
-      setCreateSuccess(`Created user ${created.email}`);
+      setCreateSuccess(`Created account ${created.email}`);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create user");
     } finally {
@@ -71,36 +81,34 @@ export default function BusinessAdminHome() {
       <section className="business-admin-create">
         <div className="business-admin-section-header">
           <div>
-            <h2>Create user</h2>
+            <h2>Create account</h2>
             <p>
               {isProjectAdmin
                 ? "Create project admin, business admin, or personal accounts."
-                : "Add a new personal account inside your organization."}
+                : "Add a new account inside your business. Enter a handle — the email is generated automatically."}
             </p>
           </div>
         </div>
 
         <form className="business-admin-form" onSubmit={createUser}>
           <label>
-            <span>Username</span>
+            <span>Handle</span>
             <input
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="Enter username"
+              value={handle}
+              onChange={(event) => setHandle(event.target.value)}
+              placeholder="e.g. john"
               required
             />
           </label>
 
-          <label>
-            <span>Email</span>
-            <input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="Enter email"
-              required
-            />
-          </label>
+          {handle && (
+            <p className="business-admin-hint">
+              Login email will be{" "}
+              <strong>
+                {slugify(handle)}@{emailDomain}
+              </strong>
+            </p>
+          )}
 
           <label>
             <span>Password</span>
@@ -108,7 +116,8 @@ export default function BusinessAdminHome() {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Enter password"
+              placeholder="At least 6 characters"
+              minLength={6}
               required
             />
           </label>
@@ -142,7 +151,7 @@ export default function BusinessAdminHome() {
           )}
 
           <button type="submit" disabled={creating}>
-            {creating ? "Creating..." : "Create user"}
+            {creating ? "Creating..." : "Create account"}
           </button>
         </form>
 

@@ -87,6 +87,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: claims.sub,
           account_type: normalizeAccountType(claims.account_type),
           organization_id: claims.organization_id ?? null,
+          // The JWT carries no org slug/name — /api/me fills these in below.
+          organization_slug: null,
+          organization_name: null,
         }
       : null;
   });
@@ -165,6 +168,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: data.id,
           account_type: normalizeAccountType(data.account_type),
           organization_id: data.organization_id ?? null,
+          organization_slug: data.organization_slug ?? null,
+          organization_name: data.organization_name ?? null,
         };
         // Only patch state if the server sees a different user — avoids a
         // pointless re-render when the optimistic claims already matched.
@@ -173,7 +178,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           prev.id === nextUser.id &&
           prev.email === nextUser.email &&
           prev.account_type === nextUser.account_type &&
-          prev.organization_id === nextUser.organization_id
+          prev.organization_id === nextUser.organization_id &&
+          prev.organization_slug === nextUser.organization_slug &&
+          prev.organization_name === nextUser.organization_name
             ? prev
             : nextUser
         );
@@ -205,10 +212,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: decoded.sub,
         account_type: normalizeAccountType(accountType ?? decoded.account_type),
         organization_id: decoded.organization_id ?? null,
+        organization_slug: null,
+        organization_name: null,
       });
       setupEncryption(decoded.sub).catch((err) =>
         log.error("background encryption setup failed", err)
       );
+
+      // The AuthProvider /api/me effect only runs once at mount, so a fresh
+      // login needs its own profile fetch to learn the org slug/name that
+      // drive business routing.
+      getMe(token)
+        .then(async (res) => {
+          if (!res.ok) return;
+          const data = await res.json();
+          setUser({
+            email: data.email,
+            id: data.id,
+            account_type: normalizeAccountType(data.account_type),
+            organization_id: data.organization_id ?? null,
+            organization_slug: data.organization_slug ?? null,
+            organization_name: data.organization_name ?? null,
+          });
+        })
+        .catch((err) => log.error("post-login profile fetch failed", err));
     }
   };
 

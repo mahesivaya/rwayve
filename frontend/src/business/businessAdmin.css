@@ -127,6 +127,16 @@
   cursor: default;
 }
 
+.business-admin-hint {
+  margin: -4px 0 0;
+  color: #475569;
+  font-size: 12px;
+}
+
+.business-admin-hint strong {
+  color: #1d4ed8;
+}
+
 .business-admin-error,
 .business-admin-success {
   margin-top: 10px;

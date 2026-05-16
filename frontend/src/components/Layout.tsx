@@ -54,6 +54,8 @@ const SEARCH_LABELS: Record<string, string> = {
   "/settings": "settings",
 };
 
+const HIDE_SEARCH_PATHS = ["/scheduler"];
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -267,7 +269,7 @@ export default function Layout() {
       </div>
 
       <SearchContext.Provider value={searchValue}>
-      {location.pathname !== "/scheduler" && (
+      {!HIDE_SEARCH_PATHS.includes(location.pathname) && (
         <div className="global-search-row">
           <div className="global-search-box">
             <span className="global-search-icon" aria-hidden="true">⌕</span>

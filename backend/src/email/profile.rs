@@ -16,11 +16,18 @@ pub async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder
         }
     };
 
-    let result =
-        sqlx::query("SELECT id, email, account_type, organization_id FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(pool.get_ref())
-            .await;
+    let result = sqlx::query(
+        r#"
+        SELECT u.id, u.email, u.account_type, u.organization_id,
+               o.slug AS organization_slug, o.name AS organization_name
+        FROM users u
+        LEFT JOIN organizations o ON o.id = u.organization_id
+        WHERE u.id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await;
 
     match result {
         Ok(Some(row)) => {
@@ -28,12 +35,18 @@ pub async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder
             let email: String = row.get("email");
             let account_type: String = row.get("account_type");
             let organization_id: Option<i32> = row.try_get("organization_id").ok().flatten();
+            let organization_slug: Option<String> =
+                row.try_get("organization_slug").ok().flatten();
+            let organization_name: Option<String> =
+                row.try_get("organization_name").ok().flatten();
 
             HttpResponse::Ok().json(serde_json::json!({
                 "id": id,
                 "email": email,
                 "account_type": account_type,
-                "organization_id": organization_id
+                "organization_id": organization_id,
+                "organization_slug": organization_slug,
+                "organization_name": organization_name
             }))
         }
         Ok(None) => {

@@ -11,14 +11,16 @@ export type AdminCreatedUser = {
 export type AdminOrganization = {
   id: number;
   name: string;
+  slug?: string | null;
   user_count: number;
   admin?: AdminCreatedUser | null;
 };
 
+// The business admin's email is generated server-side as
+// <adminHandle>@<business-slug>.com — only the handle is supplied here.
 export type CreateBusinessInput = {
   name: string;
-  adminUsername: string;
-  adminEmail: string;
+  adminHandle: string;
   adminPassword: string;
 };
 
@@ -44,8 +46,7 @@ export async function createAdminOrganization(
     preserve401: true,
     body: JSON.stringify({
       name: input.name,
-      admin_username: input.adminUsername,
-      admin_email: input.adminEmail,
+      admin_handle: input.adminHandle,
       admin_password: input.adminPassword,
     }),
   });
@@ -59,9 +60,10 @@ export async function createAdminOrganization(
   return data;
 }
 
+// `handle` is the email local part; the backend builds the full address using
+// the business domain (or wayve.com for personal accounts).
 export async function createAdminUser(
-  username: string,
-  email: string,
+  handle: string,
   password: string,
   accountType = "personal",
   organizationName = ""
@@ -70,8 +72,7 @@ export async function createAdminUser(
     method: "POST",
     preserve401: true,
     body: JSON.stringify({
-      username,
-      email,
+      handle,
       password,
       account_type: accountType,
       organization_name: organizationName,
