@@ -58,6 +58,22 @@ if [[ -f "$ENV_FILE" ]]; then
   log "using env file: $ENV_FILE"
 fi
 
+log "preparing environment files from templates"
+# Docker Compose hard-fails if an 'env_file' specified in the YAML is missing.
+# In CI environments, these files are absent. We populate them from .example templates.
+for f in ".env" ".env.development" "backend/.env.development" "frontend/.env.development" "infra/.env.development"; do
+  if [[ ! -f "$REPO_ROOT/$f" && -f "$REPO_ROOT/$f.example" ]]; then
+    log "creating $f"
+    cp "$REPO_ROOT/$f.example" "$REPO_ROOT/$f"
+  fi
+done
+
+# Create a dummy client_secret.json if missing to prevent Docker from mounting a directory
+if [[ ! -f "$REPO_ROOT/client_secret.json" ]]; then
+  log "creating dummy client_secret.json"
+  echo "{}" > "$REPO_ROOT/client_secret.json"
+fi
+
 log "building + starting stack"
 "${COMPOSE[@]}" up -d --build
 
