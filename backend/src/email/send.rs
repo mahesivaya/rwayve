@@ -1,6 +1,9 @@
 use crate::prelude::*;
 
 use crate::email::oauth::{HTTP_CLIENT, refresh_access_token, try_load_google_secrets};
+use crate::email::outlook::{
+    OUTLOOK_MAIL_SCOPE, outlook_credentials, refresh_outlook_token, send_outlook_mail,
+};
 use crate::models::email_request::SendEmailRequest;
 use crate::security::jwt::get_user_id_from_request;
 use actix_web::HttpResponse;
@@ -27,18 +30,21 @@ pub async fn send(
     info!(target: "gmail", user_id, account_id = data.account_id, "send email request");
 
     let account = sqlx::query(
-        "SELECT email, refresh_token FROM email_accounts
+        "SELECT email, refresh_token, provider FROM email_accounts
         WHERE id = $1 AND user_id = $2",
     )
     .bind(data.account_id)
     .bind(user_id)
     .fetch_one(pool.get_ref())
     .await;
-    let (from_email, refresh_token) = match account {
+    let (from_email, refresh_token, provider) = match account {
         Ok(row) => {
             let email: String = row.get("email");
             let refresh_token: Option<String> = row.get("refresh_token");
-            (email, refresh_token)
+            let provider: String = row
+                .try_get("provider")
+                .unwrap_or_else(|_| "google".to_string());
+            (email, refresh_token, provider)
         }
         Err(_) => return HttpResponse::Unauthorized().body("Email account not found"),
     };
@@ -47,10 +53,15 @@ pub async fn send(
         Some(value) => value,
         None => {
             return HttpResponse::Conflict().json(serde_json::json!({
-                "error": "Reconnect Gmail account to send email"
+                "error": "Reconnect the email account to send email"
             }));
         }
     };
+
+    // Outlook mailboxes send through Microsoft Graph; Gmail continues below.
+    if provider == "microsoft" {
+        return send_via_outlook(pool.get_ref(), data.account_id, &refresh_token, &data).await;
+    }
 
     let secrets = match try_load_google_secrets() {
         Ok(value) => value,
@@ -125,6 +136,60 @@ pub async fn send(
         Err(e) => {
             error!("Failed to connect to Gmail API: {}", e);
             HttpResponse::InternalServerError().body("Failed to reach Gmail")
+        }
+    }
+}
+
+/// Sends from a connected Outlook mailbox: refresh the Microsoft token (and
+/// persist the rotated refresh token), then hand off to Graph `sendMail`.
+async fn send_via_outlook(
+    pool: &PgPool,
+    account_id: i32,
+    refresh_token: &str,
+    data: &SendEmailRequest,
+) -> HttpResponse {
+    let creds = match outlook_credentials() {
+        Some(c) => c,
+        None => {
+            error!(target: "gmail", "Outlook OAuth is not configured");
+            return HttpResponse::InternalServerError().body("Outlook is not configured");
+        }
+    };
+
+    let tokens = match refresh_outlook_token(&creds, refresh_token, OUTLOOK_MAIL_SCOPE).await {
+        Ok(t) => t,
+        Err(e) => {
+            error!(target: "gmail", account_id, error = ?e, "outlook send token refresh failed");
+            return HttpResponse::BadGateway().body("Failed to refresh Outlook credentials");
+        }
+    };
+
+    // Microsoft rotates refresh tokens — persist the new one with the access token.
+    let stored_refresh = tokens.refresh_token.as_deref().unwrap_or(refresh_token);
+    let _ = sqlx::query(
+        "UPDATE email_accounts SET access_token = $1, refresh_token = $2 WHERE id = $3",
+    )
+    .bind(&tokens.access_token)
+    .bind(stored_refresh)
+    .bind(account_id)
+    .execute(pool)
+    .await;
+
+    match send_outlook_mail(
+        &tokens.access_token,
+        data.to.trim(),
+        data.subject.trim(),
+        &data.body,
+    )
+    .await
+    {
+        Ok(()) => {
+            info!(target: "gmail", account_id, "outlook email sent");
+            HttpResponse::Ok().body("Email sent ✅")
+        }
+        Err(e) => {
+            error!(target: "gmail", account_id, error = ?e, "outlook send failed");
+            HttpResponse::InternalServerError().body("Failed to send via Outlook")
         }
     }
 }

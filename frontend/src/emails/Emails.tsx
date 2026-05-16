@@ -19,6 +19,7 @@ import {
   getEmailBody,
   getEmails,
   getGmailConnectUrl,
+  getOutlookConnectUrl,
 } from "../api/email";
 import { useAuth } from "../auth/useAuth";
 import { useGlobalSearch } from "../search/SearchContext";
@@ -152,6 +153,11 @@ export default function Emails() {
   // ================= ADD ACCOUNT =================
   const addAccount = async () => {
     const url = await getGmailConnectUrl();
+    window.location.href = url;
+  };
+
+  const addOutlookAccount = async () => {
+    const url = await getOutlookConnectUrl();
     window.location.href = url;
   };
 
@@ -315,7 +321,11 @@ export default function Emails() {
         ))}
 
         <button className="add-email-btn" onClick={addAccount}>
-          ➕ Add Account
+          ➕ Add Gmail
+        </button>
+
+        <button className="add-email-btn" onClick={addOutlookAccount}>
+          ➕ Add Outlook
         </button>
 
         <div className="mail-section-title">Folders</div>

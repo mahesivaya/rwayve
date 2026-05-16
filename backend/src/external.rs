@@ -39,3 +39,27 @@ pub fn zoom_oauth_token_url() -> String {
 pub fn zoom_api_base() -> String {
     std::env::var("ZOOM_API_BASE").unwrap_or_else(|_| "https://api.zoom.us".to_string())
 }
+
+/// Microsoft identity platform authority. `MICROSOFT_AUTHORITY` wins if set
+/// (e.g. `.../consumers` for personal mailboxes, `.../common` for any account);
+/// otherwise it falls back to a tenant-pinned URL or `common`.
+pub fn microsoft_authority() -> String {
+    if let Ok(val) = std::env::var("MICROSOFT_AUTHORITY") {
+        let val = val.trim();
+        if !val.is_empty() {
+            return val.to_string();
+        }
+    }
+    let tenant = std::env::var("OUTLOOK_TENANT_ID")
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| "common".to_string());
+    format!("https://login.microsoftonline.com/{tenant}")
+}
+
+/// Microsoft Graph API root — used for mailbox sync, send, and profile reads.
+pub fn microsoft_graph_base() -> String {
+    std::env::var("MICROSOFT_GRAPH_BASE")
+        .unwrap_or_else(|_| "https://graph.microsoft.com".to_string())
+}

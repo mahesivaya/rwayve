@@ -87,6 +87,10 @@ CREATE TABLE IF NOT EXISTS email_accounts (
         ON DELETE CASCADE
 );
 
+-- Mail provider for a connected mailbox: 'google' (Gmail API) or 'microsoft'
+-- (Outlook / Microsoft Graph). The sync worker branches on this column.
+ALTER TABLE email_accounts ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'google';
+
 
 CREATE TABLE IF NOT EXISTS emails (
     id SERIAL PRIMARY KEY,

@@ -103,3 +103,14 @@
   .login-card .google-btn:hover {
     background: #f7f7f7;
   }
+
+  .login-card .outlook-btn {
+    background: #0f6cbd;
+    color: white;
+    border: 1px solid #0f6cbd;
+    font-weight: 500;
+  }
+
+  .login-card .outlook-btn:hover {
+    background: #0c578f;
+  }

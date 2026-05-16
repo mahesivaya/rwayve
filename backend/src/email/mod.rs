@@ -4,6 +4,8 @@ pub mod body_worker;
 pub mod handler;
 pub mod oauth;
 mod oauth_flow;
+pub mod outlook;
+mod outlook_oauth;
 mod profile;
 mod send;
 pub mod sender;
@@ -21,11 +23,17 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
         .service(handler::get_email_by_id)
         .service(handler::send)
         .service(handler::gmail_connect_url)
+        .service(outlook_oauth::outlook_connect_url)
         .service(handler::get_me)
         .service(handler::save_public_key);
 }
 
 pub fn public_routes(cfg: &mut web::ServiceConfig) {
     cfg.route("/gmail/login", web::get().to(handler::gmail_login))
-        .route("/oauth/callback", web::get().to(handler::oauth_callback));
+        .route("/oauth/callback", web::get().to(handler::oauth_callback))
+        .route("/outlook/login", web::get().to(outlook_oauth::outlook_login))
+        .route(
+            "/oauth/outlook/callback",
+            web::get().to(outlook_oauth::outlook_callback),
+        );
 }

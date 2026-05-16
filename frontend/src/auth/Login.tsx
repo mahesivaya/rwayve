@@ -46,6 +46,10 @@ export default function Login() {
     window.location.href = `${API_BASE}/gmail/login?mode=signup`;
   };
 
+  const handleOutlook = () => {
+    window.location.href = `${API_BASE}/outlook/login?mode=signup`;
+  };
+
   return (
     <div className="login-page">
       <form className="login-card" onSubmit={handleLogin}>
@@ -78,6 +82,14 @@ export default function Login() {
           onClick={handleGoogle}
         >
           Continue with Gmail
+        </button>
+
+        <button
+          type="button"
+          className="outlook-btn"
+          onClick={handleOutlook}
+        >
+          Continue with Outlook
         </button>
 
         {error && <p className="error">{error}</p>}

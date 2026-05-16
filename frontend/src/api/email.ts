@@ -81,6 +81,14 @@ export const getGmailConnectUrl = async () => {
   return data.url;
 };
 
+export const getOutlookConnectUrl = async () => {
+  const res = await apiFetch("/api/outlook/connect-url", {
+    method: "POST",
+  });
+  const data = (await res.json()) as { url: string };
+  return data.url;
+};
+
 export const getEmails = async <T = unknown>(
   params: EmailListParams
 ): Promise<EmailListResult<T>> => {
