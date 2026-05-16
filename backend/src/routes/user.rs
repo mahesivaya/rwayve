@@ -89,7 +89,8 @@ pub struct CreateOrganizationInput {
 
 fn normalized_account_type(value: &str) -> &str {
     match value {
-        "business" | "business_admin" => "business_admin",
+        "business" => "business",
+        "business_admin" => "business_admin",
         "project_admin" => "project_admin",
         _ => "personal",
     }
@@ -413,10 +414,10 @@ pub async fn admin_create_user(
 
     let account_type = match admin_account_type {
         "project_admin" => match requested_account_type {
-            "business_admin" | "project_admin" | "personal" => requested_account_type,
+            "business_admin" | "project_admin" | "business" | "personal" => requested_account_type,
             _ => "personal",
         },
-        "business_admin" => "personal",
+        "business_admin" => "business",
         _ => "personal",
     };
 

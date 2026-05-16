@@ -1,8 +1,12 @@
-export type AccountType = "personal" | "business_admin" | "project_admin";
+export type AccountType = "personal" | "business" | "business_admin" | "project_admin";
 
 export function normalizeAccountType(accountType?: string | null): AccountType {
-  if (accountType === "business" || accountType === "business_admin") {
+  if (accountType === "business_admin") {
     return "business_admin";
+  }
+  
+  if (accountType === "business") {
+    return "business";
   }
 
   if (accountType === "project_admin") {
@@ -33,9 +37,10 @@ type AccountLike = {
 export function homePathForUser(user?: AccountLike | null): string {
   const normalized = normalizeAccountType(user?.account_type);
   if (normalized === "project_admin") return "/project-admin-home";
+  if (normalized === "business_admin") return "/business-home";
 
   const inBusiness =
-    normalized === "business_admin" || user?.organization_id != null;
+    normalized === "business" || user?.organization_id != null;
   if (inBusiness) {
     return user?.organization_slug
       ? `/business/${user.organization_slug}`

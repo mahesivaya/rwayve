@@ -45,7 +45,7 @@ export default function BusinessAdminHome() {
       const created = await createAdminUser(
         handle,
         password,
-        isProjectAdmin ? accountType : "personal",
+        isProjectAdmin ? accountType : "business",
         organizationName
       );
       setCreatedUsers((prev) => [created, ...prev]);
