@@ -113,6 +113,13 @@ export default function Emails() {
     void fetchAccounts();
   }, [fetchAccounts]);
 
+  // ================= CACHE MANAGEMENT =================
+  // Clear the decryption cache when switching accounts or user identity changes
+  // (e.g. on logout) to ensure security and prevent stale data.
+  useEffect(() => {
+    emailCache.current = {};
+  }, [activeAccount, user?.id]);
+
   // ================= HANDLE OAUTH RETURN =================
   // After /oauth/callback redirects back with #connected=true, refresh the
   // account list so the newly linked account shows up immediately. The 30s
