@@ -169,21 +169,6 @@ export default function Home() {
 
   return (
     <div className="dashboard">
-      <div className="dashboard-topbar">
-        <button className="dashboard-brand" onClick={() => navigate("/home")}>
-          Wayve
-        </button>
-        <button
-          className="dashboard-logout-btn"
-          onClick={() => {
-            logout();
-            navigate("/login");
-          }}
-        >
-          Logout
-        </button>
-      </div>
-
       {/* HEADER */}
       <div className="dashboard-header">
         <h2>Welcome, {user.email} 👋</h2>

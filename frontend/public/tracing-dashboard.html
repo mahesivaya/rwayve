@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Wayve | Tracing Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #f4f7f6; padding: 40px; color: #333; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #2563eb; margin-bottom: 10px; }
+        .stats { display: flex; gap: 20px; margin-bottom: 30px; }
+        .stat-card { flex: 1; padding: 15px; background: #eff6ff; border-radius: 8px; border: 1px solid #dbeafe; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #1e40af; }
+        .chart-container { height: 400px; position: relative; }
+        .refresh-btn { padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; float: right; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <button class="refresh-btn" onclick="loadTraces()">🔄 Refresh Data</button>
+        <h1>Backend Trace Durations</h1>
+        <p>Visualizing the last 50 traces from Jaeger for service: <strong>rwayve</strong></p>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div>Total Traces Fetched</div>
+                <div id="trace-count" class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+                <div>Avg. Duration</div>
+                <div id="avg-duration" class="stat-value">0ms</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="traceChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let chart;
+        const JAEGER_API = 'http://localhost:16686/api/traces?service=rwayve&limit=50';
+
+        async function loadTraces() {
+            try {
+                const response = await fetch(JAEGER_API);
+                const json = await response.json();
+                const traces = json.data || [];
+
+                const labels = [];
+                const durations = [];
+                let totalMs = 0;
+
+                // Process traces for the graph (most recent first)
+                traces.forEach(trace => {
+                    // Duration is in microseconds in Jaeger API
+                    const durationMs = (trace.duration / 1000).toFixed(2);
+                    const startTime = new Date(trace.startTime / 1000).toLocaleTimeString();
+                    
+                    labels.push(startTime);
+                    durations.push(parseFloat(durationMs));
+                    totalMs += parseFloat(durationMs);
+                });
+
+                document.getElementById('trace-count').innerText = traces.length;
+                document.getElementById('avg-duration').innerText = 
+                    traces.length > 0 ? (totalMs / traces.length).toFixed(2) + 'ms' : '0ms';
+
+                updateChart(labels.reverse(), durations.reverse());
+            } catch (err) {
+                console.error("Failed to fetch traces from Jaeger:", err);
+                alert("Make sure Jaeger is running at localhost:16686 and CORS is handled.");
+            }
+        }
+
+        function updateChart(labels, data) {
+            const ctx = document.getElementById('traceChart').getContext('2d');
+            
+            if (chart) chart.destroy();
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Trace Duration (ms)',
+                        data: data,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Milliseconds (ms)' }
+                        },
+                        x: { title: { display: true, text: 'Start Time' } }
+                    }
+                }
+            });
+        }
+
+        // Initial load
+        loadTraces();
+    </script>
+</body>
+</html>

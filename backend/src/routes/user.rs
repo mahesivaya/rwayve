@@ -509,7 +509,15 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
     };
 
     let result = sqlx::query(
-        "SELECT id, email, first_name, last_name, auth_provider FROM users WHERE id = $1",
+        r#"
+        SELECT 
+            u.id, u.email, u.first_name, u.last_name, u.auth_provider, u.account_type,
+            (SELECT COUNT(*)::BIGINT FROM emails e JOIN email_accounts ea ON e.account_id = ea.id WHERE ea.user_id = u.id) as total_emails,
+            (SELECT COALESCE(SUM(octet_length(body_encrypted)), 0)::BIGINT FROM emails e JOIN email_accounts ea ON e.account_id = ea.id WHERE ea.user_id = u.id) as email_storage_bytes,
+            (SELECT COALESCE(SUM(size), 0)::BIGINT FROM files f WHERE f.user_id = u.id) as drive_storage_bytes
+        FROM users u 
+        WHERE u.id = $1
+        "#,
     )
     .bind(user_id)
     .fetch_optional(pool.get_ref())
@@ -521,7 +529,11 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
             let email: String = row.get("email");
             let first_name: Option<String> = row.try_get("first_name").ok();
             let last_name: Option<String> = row.try_get("last_name").ok();
-            let auth_provider: String = row.get("auth_provider");
+            let auth_provider: String = row.try_get("auth_provider").unwrap_or_else(|_| "local".to_string());
+            let account_type: String = row.try_get("account_type").unwrap_or_else(|_| "personal".to_string());
+            let total_emails: i64 = row.get("total_emails");
+            let email_storage_bytes: i64 = row.get("email_storage_bytes");
+            let drive_storage_bytes: i64 = row.get("drive_storage_bytes");
 
             HttpResponse::Ok().json(serde_json::json!({
                 "id": id,
@@ -529,6 +541,12 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
                 "first_name": first_name,
                 "last_name": last_name,
                 "auth_provider": auth_provider,
+                "account_type": account_type,
+                "total_emails": total_emails,
+                "email_storage_bytes": email_storage_bytes,
+                "drive_storage_bytes": drive_storage_bytes,
+                "memory_used_bytes": 1_932_735_283_i64, // 1.8 GB placeholder
+                "memory_limit_bytes": 10_737_418_240_i64, // 10 GB limit
             }))
         }
         Ok(None) => HttpResponse::NotFound().finish(),

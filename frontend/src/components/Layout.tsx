@@ -7,6 +7,17 @@ import ProfileMenu from "./ProfileMenu";
 import { SPLIT_APPS, type AppKey } from "./LayoutConfig";
 import "./Layout.css";
 
+function appKeyFromPath(pathname: string): AppKey {
+  const match = SPLIT_APPS.find((app) => {
+    if (app.key === "home") {
+      return pathname === "/" || pathname === "/home";
+    }
+    return pathname === app.path;
+  });
+
+  return match?.key ?? "home";
+}
+
 export default function Layout() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -17,8 +28,8 @@ export default function Layout() {
   const [rightView, setRightView] = useState<AppKey | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   
-  // Decides where the next header-link click lands
-  const [splitTarget, setSplitTarget] = useState<"left" | "middle" | "right">("middle");
+  // Decides whether the next header-link click navigates or changes the duplicate pane.
+  const [splitTarget, setSplitTarget] = useState<"left" | "right">("left");
 
   if (!user) {
     return (
@@ -33,6 +44,11 @@ export default function Layout() {
   const rightApp = SPLIT_APPS.find((a) => a.key === rightView) ?? null;
   const RightComp = rightApp?.Comp ?? null;
   const rightLabel = rightApp?.label ?? null;
+
+  function duplicateCurrentApp() {
+    setRightView(appKeyFromPath(location.pathname));
+    setSplitTarget("right");
+  }
 
   // When the split is open, header link clicks target the right pane instead
   // of navigating the URL. When closed, the link behaves normally.
@@ -49,10 +65,7 @@ export default function Layout() {
           isMiddleActive || isRightActive ? "active-split" : "",
         ].filter(Boolean).join(" ")}
         onClick={(e: { preventDefault: () => void }) => {
-          if (splitTarget === "middle") {
-            e.preventDefault();
-            setMiddleView(app);
-          } else if (splitTarget === "right") {
+          if (splitTarget === "right") {
             e.preventDefault();
             setRightView(app);
           }
@@ -94,32 +107,23 @@ export default function Layout() {
         </div>
 
         <div className="actions">
-          <div className="split-target" role="group" aria-label="Header click target">
-            <button
-              type="button"
-              className={`split-target-btn ${splitTarget === "left" ? "active" : ""}`}
-              onClick={() => setSplitTarget("left")}
-              title="Target: URL (Left)"
+          <button
+            type="button"
+            className={`duplicate-pane-btn ${splitTarget === "right" ? "active" : ""}`}
+            onClick={duplicateCurrentApp}
+            title="Duplicate current app"
+            aria-label="Duplicate current app"
+          >
+            <svg
+              className="duplicate-pane-icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
             >
-              L
-            </button>
-            <button
-              type="button"
-              className={`split-target-btn ${splitTarget === "middle" ? "active" : ""}`}
-              onClick={() => setSplitTarget("middle")}
-              title="Target: Middle Pane"
-            >
-              M
-            </button>
-            <button
-              type="button"
-              className={`split-target-btn ${splitTarget === "right" ? "active" : ""}`}
-              onClick={() => setSplitTarget("right")}
-              title="Target: Right Pane"
-            >
-              R
-            </button>
-          </div>
+              <rect x="3" y="4" width="18" height="16" rx="1.8" />
+              <path d="M3 8.5h18" />
+              <path d="M12 8.5V20" />
+            </svg>
+          </button>
 
           <div className="split-status">
             {middleView && <span className="split-hint">M: {middleLabel}</span>}
@@ -159,7 +163,10 @@ export default function Layout() {
 
         {/* MAIN CONTENT */}
         <div className={`content`}>
-          <div className="split-pane left">
+          <div
+            className={`split-pane left ${splitTarget === "left" ? "active-target" : ""}`}
+            onMouseDown={() => setSplitTarget("left")}
+          >
             <Outlet />
           </div>
 
@@ -180,10 +187,16 @@ export default function Layout() {
           )}
 
           {rightView && (
-            <div className="split-pane right">
+            <div
+              className={`split-pane right ${splitTarget === "right" ? "active-target" : ""}`}
+              onMouseDown={() => setSplitTarget("right")}
+            >
               <div className="split-pane-toolbar">
                 <span className="split-pane-title">{rightLabel}</span>
-                <button className="split-close-btn" onClick={() => setRightView(null)}>✕</button>
+                <button className="split-close-btn" onClick={() => {
+                  setRightView(null);
+                  setSplitTarget("left");
+                }}>✕</button>
               </div>
               <div className="split-pane-body">
                 {RightComp && (

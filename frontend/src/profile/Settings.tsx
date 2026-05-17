@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 import "./profile.css";
 
 import { deleteAccount, getAccounts } from "../api/email";
+import { getProfile, type ProfileData } from "../api/profile";
+import { useAuth } from "../auth/useAuth";
 
 type Account = {
   id: number;
@@ -10,20 +12,33 @@ type Account = {
 };
 
 export default function Settings() {
+  const { user } = useAuth();
+  const [profile, setProfile] = useState<(ProfileData & {
+    total_emails?: number;
+    email_storage_bytes?: number;
+    drive_storage_bytes?: number;
+    memory_used_bytes?: number;
+    memory_limit_bytes?: number;
+  }) | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const fetchAccounts = async () => {
-    try {
-      setAccounts(await getAccounts<Account>());
 
+  const loadData = useCallback(async () => {
+    try {
+      const [accs, prof] = await Promise.all([
+        getAccounts<Account>(),
+        getProfile(),
+      ]);
+      setAccounts(accs);
+      setProfile(prof);
     } finally {
       setLoaded(true);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void fetchAccounts();
-  }, []);
+    void loadData();
+  }, [loadData]);
 
   const remove = async (
     id: number,
@@ -60,6 +75,59 @@ export default function Settings() {
         <h2 className="settings-title">
           Settings & Privacy
         </h2>
+
+        {user && (
+          <div className="settings-usage-section">
+            <div className="settings-usage-row">
+              <span>User</span>
+              <strong>{profile ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || user.email : "Loading…"}</strong>
+            </div>
+            <div className="settings-usage-row">
+              <span>Email</span>
+              <strong>{user.email}</strong>
+            </div>
+            <div className="settings-usage-row">
+              <span>Account Type</span>
+              <strong style={{ textTransform: "capitalize" }}>{user.account_type}</strong>
+            </div>
+          </div>
+        )}
+
+        <div className="settings-section-title">
+          Storage & Usage
+        </div>
+
+        <div className="settings-usage-section">
+          <div className="settings-usage-row">
+            <span>Memory Used</span>
+            <strong>
+              {profile?.memory_used_bytes !== undefined 
+                ? `${(profile.memory_used_bytes / (1024 ** 3)).toFixed(1)} GB / 
+                   ${((profile.memory_limit_bytes ?? 10737418240) / (1024 ** 3)).toFixed(0)} GB` 
+                : "Loading…"}
+            </strong>
+          </div>
+          <div className="settings-usage-row">
+            <span>Emails</span>
+            <strong>
+              {profile?.total_emails !== undefined ? `${profile.total_emails.toLocaleString()} emails` : "Loading…"}
+            </strong>
+          </div>
+          <div className="settings-usage-row">
+            <span>Email Storage</span>
+            <strong>{profile?.email_storage_bytes !== undefined ? `${(profile.email_storage_bytes / (1024 ** 2)).toFixed(1)} MB` : "Loading…"}</strong>
+          </div>
+          <div className="settings-usage-row">
+            <span>Drive Storage</span>
+            <strong>{profile?.drive_storage_bytes !== undefined ? `${(profile.drive_storage_bytes / (1024 ** 2)).toFixed(1)} MB` : "Loading…"}</strong>
+          </div>
+          <div className="settings-usage-row">
+            <span>Connected Accounts</span>
+            <strong>
+              {loaded ? `${accounts.length} ${accounts.length === 1 ? "account" : "accounts"}` : "Loading…"}
+            </strong>
+          </div>
+        </div>
 
         <div className="settings-section-title">
           Connected email accounts

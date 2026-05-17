@@ -14,7 +14,7 @@
    🔝 HEADER
 ============================== */
 .header {
-  height: 60px;
+  height: 40px;
   background: lightslategray;
   color: black;
 
@@ -104,37 +104,40 @@
   white-space: nowrap;
 }
 
-/* Segmented toggle: which pane the next header-link click targets. */
-.split-target {
+.duplicate-pane-btn {
+  width: 34px;
+  height: 32px;
   display: inline-flex;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  overflow: hidden;
-  background: white;
-}
-
-.split-target-btn {
-  border: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
   background: transparent;
-  padding: 5px 10px;
-  font-size: 12px;
+  color: #1f2937;
   cursor: pointer;
-  color: #374151;
-  white-space: nowrap;
   transition: 0.15s;
 }
 
-.split-target-btn + .split-target-btn {
-  border-left: 1px solid #e5e7eb;
-}
-
-.split-target-btn:hover:not(.active) {
+.duplicate-pane-btn:hover {
   background: #f3f4f6;
+  border-color: #d1d5db;
 }
 
-.split-target-btn.active {
-  background: #2563eb;
-  color: white;
+.duplicate-pane-btn.active {
+  background: #eef2ff;
+  border-color: #818cf8;
+  color: #3730a3;
+}
+
+.duplicate-pane-icon {
+  width: 23px;
+  height: 23px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .split-toggle-btn {
@@ -329,7 +332,7 @@
 }
 
 .global-search-row {
-  height: 52px;
+  height: 40px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -539,6 +542,15 @@
   overflow: hidden;
   background: lightsteelblue;
   position: relative;
+}
+
+.split-pane.active-target::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 2px solid rgba(37, 99, 235, 0.45);
+  z-index: 5;
 }
 
 /* Automatically add vertical borders between any adjacent active panes */
