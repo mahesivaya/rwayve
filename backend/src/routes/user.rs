@@ -529,8 +529,12 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
             let email: String = row.get("email");
             let first_name: Option<String> = row.try_get("first_name").ok();
             let last_name: Option<String> = row.try_get("last_name").ok();
-            let auth_provider: String = row.try_get("auth_provider").unwrap_or_else(|_| "local".to_string());
-            let account_type: String = row.try_get("account_type").unwrap_or_else(|_| "personal".to_string());
+            let auth_provider: String = row
+                .try_get("auth_provider")
+                .unwrap_or_else(|_| "local".to_string());
+            let account_type: String = row
+                .try_get("account_type")
+                .unwrap_or_else(|_| "personal".to_string());
             let total_emails: i64 = row.get("total_emails");
             let email_storage_bytes: i64 = row.get("email_storage_bytes");
             let drive_storage_bytes: i64 = row.get("drive_storage_bytes");

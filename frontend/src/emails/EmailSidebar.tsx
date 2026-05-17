@@ -54,7 +54,13 @@ export const EmailSidebar: React.FC<EmailSidebarProps> = ({
           className={`filter-btn ${activeAccount === acc.id ? "active" : ""}`}
           onClick={() => setActiveAccount(acc.id)}
         >
-          {acc.email}
+          <span className="account-filter-label">{acc.email}</span>
+          <span
+            className="account-unread-count"
+            aria-label={`${acc.unread_count ?? 0} unread emails`}
+          >
+            {acc.unread_count ?? 0}
+          </span>
         </button>
       ))}
 

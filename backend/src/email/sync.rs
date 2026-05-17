@@ -8,8 +8,8 @@ use crate::email::provider::{MailProvider, MailProviderClients, refresh_and_pers
 use serde_json::Value;
 use tracing::{debug, error, info, instrument, warn};
 
-// (msg_id, sender, receiver, subject, gmail_timestamp) — body is fetched later by body_worker
-pub type EmailHeader = (String, String, String, String, NaiveDateTime);
+// (msg_id, sender, receiver, subject, gmail_timestamp, is_read) — body is fetched later by body_worker
+pub type EmailHeader = (String, String, String, String, NaiveDateTime, bool);
 
 pub async fn fetch_headers_only(token: &str, msg_id: &str) -> Result<EmailHeader> {
     let url = format!(
@@ -28,12 +28,17 @@ pub async fn fetch_headers_only(token: &str, msg_id: &str) -> Result<EmailHeader
 
     let (sender, receiver, subject) = extract_headers(&res);
     let gmail_timestamp = extract_gmail_timestamp(&res);
+    let is_read = !res["labelIds"]
+        .as_array()
+        .map(|labels| labels.iter().any(|label| label.as_str() == Some("UNREAD")))
+        .unwrap_or(false);
     Ok((
         msg_id.to_string(),
         sender,
         receiver,
         subject,
         gmail_timestamp,
+        is_read,
     ))
 }
 
@@ -390,13 +395,13 @@ where
 
     // Insert headers with empty body sentinel — body_worker will fill these in.
     let mut query = String::from(
-        "INSERT INTO emails(gmail_id, sender, receiver, subject, created_at, body_encrypted, body_iv, account_id) VALUES ",
+        "INSERT INTO emails(gmail_id, sender, receiver, subject, created_at, body_encrypted, body_iv, account_id, is_read) VALUES ",
     );
 
     for (i, _) in batch.iter().enumerate() {
-        let idx = i * 8;
+        let idx = i * 9;
         query.push_str(&format!(
-            "(${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}),",
+            "(${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}),",
             idx + 1,
             idx + 2,
             idx + 3,
@@ -404,7 +409,8 @@ where
             idx + 5,
             idx + 6,
             idx + 7,
-            idx + 8
+            idx + 8,
+            idx + 9
         ));
     }
 
@@ -414,12 +420,13 @@ where
          sender = EXCLUDED.sender, \
          receiver = EXCLUDED.receiver, \
          subject = EXCLUDED.subject, \
-         created_at = EXCLUDED.created_at",
+         created_at = EXCLUDED.created_at, \
+         is_read = EXCLUDED.is_read",
     );
 
     let mut q = sqlx::query(&query);
 
-    for (gmail_id, sender, receiver, subject, gmail_timestamp) in batch.iter() {
+    for (gmail_id, sender, receiver, subject, gmail_timestamp, is_read) in batch.iter() {
         q = q
             .bind(gmail_id)
             .bind(sender)
@@ -428,7 +435,8 @@ where
             .bind(gmail_timestamp)
             .bind("") // body_encrypted — empty until body_worker fills it
             .bind("") // body_iv
-            .bind(account_id);
+            .bind(account_id)
+            .bind(is_read);
     }
 
     q.execute(pool).await?;

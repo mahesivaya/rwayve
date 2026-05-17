@@ -70,7 +70,7 @@ pub async fn get_emails(
                EXISTS (
                    SELECT 1 FROM email_attachments ea WHERE ea.email_id = e.id
                ) AS has_attachments,
-               e.account_id, e.created_at
+               e.account_id, e.is_read, e.created_at
         FROM emails e
         JOIN email_accounts a ON e.account_id = a.id
         WHERE a.user_id =
@@ -153,6 +153,7 @@ pub async fn get_emails(
                         "has_body": row.get::<bool,_>("has_body"),
                         "has_attachments": row.get::<bool,_>("has_attachments"),
                         "account_id": row.get::<Option<i32>,_>("account_id"),
+                        "is_read": row.get::<Option<bool>,_>("is_read").unwrap_or(true),
                         "created_at": created_at,
                     })
                 })

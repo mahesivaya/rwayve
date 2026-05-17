@@ -12,6 +12,7 @@ use std::time::Duration;
 use tracing::{info, instrument, warn};
 
 #[instrument(target = "startup", skip(db_url), fields(max_conns))]
+#[allow(dead_code)]
 pub async fn establish_db_connection(db_url: &str, max_conns: u32) -> PgPool {
     let mut attempts: u32 = 0;
     loop {
@@ -41,7 +42,19 @@ pub async fn establish_db_connection(db_url: &str, max_conns: u32) -> PgPool {
     }
 }
 
+#[instrument(target = "startup", skip(pool))]
+pub async fn ensure_email_schema(pool: &PgPool) {
+    if let Err(e) =
+        sqlx::query("ALTER TABLE emails ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT TRUE")
+            .execute(pool)
+            .await
+    {
+        warn!(error = ?e, "email schema compatibility check failed");
+    }
+}
+
 #[instrument(target = "startup", skip(cfg))]
+#[allow(dead_code)]
 pub fn configure_app(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")

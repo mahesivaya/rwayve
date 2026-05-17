@@ -105,9 +105,12 @@ CREATE TABLE IF NOT EXISTS emails (
     body_iv TEXT,
     body_cached TEXT,
     body_cached_at TIMESTAMP,
+    is_read BOOLEAN DEFAULT TRUE,
     attachments_checked BOOLEAN DEFAULT FALSE,
     UNIQUE(account_id, gmail_id)
 );
+
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS email_attachments (
     id SERIAL PRIMARY KEY,

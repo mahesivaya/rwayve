@@ -3,6 +3,7 @@ import { type EmailAttachment } from "../api/email";
 export type EmailAccount = {
   id: number;
   email: string;
+  unread_count?: number;
 };
 
 export interface EmailItem {
@@ -14,6 +15,7 @@ export interface EmailItem {
   body?: string | null;
   created_at: string;
   has_attachments?: boolean;
+  is_read?: boolean;
   attachments_checked?: boolean;
   attachments?: EmailAttachment[];
   zoom_join_url?: string | null;

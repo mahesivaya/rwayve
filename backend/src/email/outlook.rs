@@ -143,6 +143,7 @@ struct OutlookMessage {
     received: NaiveDateTime,
     body: String,
     has_attachments: bool,
+    is_read: bool,
 }
 
 fn parse_message(m: &Value) -> Option<OutlookMessage> {
@@ -179,6 +180,7 @@ fn parse_message(m: &Value) -> Option<OutlookMessage> {
         received,
         body,
         has_attachments: m["hasAttachments"].as_bool().unwrap_or(false),
+        is_read: m["isRead"].as_bool().unwrap_or(true),
     })
 }
 
@@ -194,7 +196,7 @@ fn first_page_url(last_sync: Option<i64>) -> String {
         let mut q = url.query_pairs_mut();
         q.append_pair(
             "$select",
-            "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body",
+            "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body,isRead",
         );
         q.append_pair("$orderby", "receivedDateTime desc");
         q.append_pair("$top", &OUTLOOK_PAGE_SIZE.to_string());
@@ -223,7 +225,7 @@ fn first_before_page_url(before_timestamp: i64, limit: usize) -> String {
         let mut q = url.query_pairs_mut();
         q.append_pair(
             "$select",
-            "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body",
+            "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body,isRead",
         );
         q.append_pair("$orderby", "receivedDateTime desc");
         q.append_pair("$top", &limit.min(OUTLOOK_PAGE_SIZE).to_string());
@@ -300,15 +302,16 @@ async fn upsert_messages(
             r#"
             INSERT INTO emails
               (gmail_id, sender, receiver, subject, created_at,
-               body_encrypted, body_iv, account_id, attachments_checked)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+               body_encrypted, body_iv, account_id, attachments_checked, is_read)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9)
             ON CONFLICT (account_id, gmail_id) DO UPDATE SET
               sender = EXCLUDED.sender,
               receiver = EXCLUDED.receiver,
               subject = EXCLUDED.subject,
               created_at = EXCLUDED.created_at,
               body_encrypted = EXCLUDED.body_encrypted,
-              body_iv = EXCLUDED.body_iv
+              body_iv = EXCLUDED.body_iv,
+              is_read = EXCLUDED.is_read
             RETURNING id
             "#,
         )
@@ -320,6 +323,7 @@ async fn upsert_messages(
         .bind(&encrypted)
         .bind(&iv)
         .bind(account_id)
+        .bind(m.is_read)
         .fetch_one(pool)
         .await?;
 

@@ -125,11 +125,6 @@ export default function Layout() {
             </svg>
           </button>
 
-          <div className="split-status">
-            {middleView && <span className="split-hint">M: {middleLabel}</span>}
-            {rightView && <span className="split-hint">R: {rightLabel}</span>}
-          </div>
-
           <ProfileMenu />
         </div>
       </div>

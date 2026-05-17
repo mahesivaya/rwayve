@@ -17,6 +17,7 @@ mod prelude;
 mod routes;
 mod scheduler;
 pub mod security;
+mod startup;
 mod workers;
 
 #[cfg(test)]
@@ -116,6 +117,8 @@ async fn main() -> std::io::Result<()> {
             }
         }
     };
+
+    crate::startup::ensure_email_schema(&pool).await;
 
     match role {
         RuntimeRole::EmailSyncWorker => run_sync_worker(pool).await,

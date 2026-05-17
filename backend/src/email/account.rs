@@ -127,25 +127,25 @@ pub async fn load_user_email_accounts_for_older_sync(
 
 #[instrument(target = "db", skip(pool), fields(user_id))]
 pub async fn load_account_summaries_for_user(pool: &PgPool, user_id: i32) -> Result<Vec<Account>> {
-    if let Some(accounts) = USER_ACCOUNT_LIST_CACHE.get(&user_id).await {
-        return Ok(accounts);
-    }
-
     let accounts = sqlx::query_as::<_, Account>(
         r#"
-        SELECT id, email
-        FROM email_accounts
-        WHERE user_id = $1
-        ORDER BY id DESC
+        SELECT
+          a.id,
+          a.email,
+          COUNT(e.id) FILTER (
+            WHERE e.is_read = false
+              AND e.receiver LIKE '%' || a.email || '%'
+          )::BIGINT AS unread_count
+        FROM email_accounts a
+        LEFT JOIN emails e ON e.account_id = a.id
+        WHERE a.user_id = $1
+        GROUP BY a.id, a.email
+        ORDER BY a.id DESC
         "#,
     )
     .bind(user_id)
     .fetch_all(pool)
     .await?;
-
-    USER_ACCOUNT_LIST_CACHE
-        .insert(user_id, accounts.clone())
-        .await;
 
     Ok(accounts)
 }
