@@ -1,3 +1,4 @@
+use crate::email::account::invalidate_email_account_cache;
 use crate::email::oauth::{refresh_access_token, try_load_google_secrets};
 use crate::email::outlook::{
     OUTLOOK_MAIL_SCOPE, OutlookCredentials, outlook_credentials, refresh_outlook_token,
@@ -146,6 +147,8 @@ pub async fn persist_refreshed_token(
     .bind(account_id)
     .execute(pool)
     .await?;
+
+    invalidate_email_account_cache(account_id).await;
 
     Ok(())
 }

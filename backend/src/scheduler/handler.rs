@@ -9,12 +9,24 @@ use crate::scheduler::zoom::create_zoom_meeting;
 use actix_web::{HttpRequest, HttpResponse, delete, post, put, web};
 use chrono::{TimeZone, Utc};
 use chrono_tz::Tz;
+use moka::future::Cache as MokaCache;
 use serde_json::json;
 use std::str::FromStr;
+use std::time::Duration;
 use tracing::{error, info, instrument, warn};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use sqlx::{PgPool, Row};
+
+const MEETINGS_CACHE_TTL_SECS: u64 = 60;
+const MEETINGS_CACHE_MAX_CAPACITY: u64 = 10_000;
+
+static MEETINGS_CACHE: Lazy<MokaCache<i32, Vec<Meeting>>> = Lazy::new(|| {
+    MokaCache::builder()
+        .max_capacity(MEETINGS_CACHE_MAX_CAPACITY)
+        .time_to_live(Duration::from_secs(MEETINGS_CACHE_TTL_SECS))
+        .build()
+});
 
 // ================= CREATE MEETING =================
 
@@ -172,6 +184,7 @@ pub async fn create_meeting(
         error!(target: "db", meeting_id, error = ?e, "create_meeting tx commit failed");
         return HttpResponse::InternalServerError().finish();
     }
+    MEETINGS_CACHE.invalidate(&user_id).await;
 
     info!(
         "Meeting created: id={} user_id={} title=\"{}\"",
@@ -214,6 +227,10 @@ pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResp
         Err(resp) => return resp,
     };
 
+    if let Some(cached) = MEETINGS_CACHE.get(&user_id).await {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let result = sqlx::query_as::<_, Meeting>(
         r#"
         SELECT
@@ -240,7 +257,10 @@ pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResp
     .await;
 
     match result {
-        Ok(rows) => HttpResponse::Ok().json(rows),
+        Ok(rows) => {
+            MEETINGS_CACHE.insert(user_id, rows.clone()).await;
+            HttpResponse::Ok().json(rows)
+        }
         Err(e) => {
             error!(target: "db", user_id, error = ?e, "get_meetings failed");
             HttpResponse::InternalServerError().finish()
@@ -377,6 +397,7 @@ pub async fn update_meeting(
         error!(target: "db", meeting_id = id, error = ?e, "update_meeting tx commit failed");
         return HttpResponse::InternalServerError().finish();
     }
+    MEETINGS_CACHE.invalidate(&user_id).await;
 
     info!("Meeting updated: id={} user_id={}", id, user_id);
 
@@ -486,6 +507,7 @@ pub async fn delete_meeting(
 
     match result {
         Ok(_) => {
+            MEETINGS_CACHE.invalidate(&user_id).await;
             if let Some((title, date, start_time, end_time, zoom_join_url)) = snapshot
                 && !participants.is_empty()
             {

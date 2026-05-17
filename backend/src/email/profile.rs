@@ -2,8 +2,24 @@ use crate::prelude::*;
 
 use crate::security::jwt::get_user_id_from_request;
 use actix_web::{HttpResponse, Responder, get};
+use moka::future::Cache as MokaCache;
 use sqlx::PgPool;
+use std::time::Duration;
 use tracing::{error, info, instrument};
+
+const ME_CACHE_TTL_SECS: u64 = 60;
+const ME_CACHE_MAX_CAPACITY: u64 = 10_000;
+
+static ME_CACHE: Lazy<MokaCache<i32, Value>> = Lazy::new(|| {
+    MokaCache::builder()
+        .max_capacity(ME_CACHE_MAX_CAPACITY)
+        .time_to_live(Duration::from_secs(ME_CACHE_TTL_SECS))
+        .build()
+});
+
+pub async fn invalidate_me_cache(user_id: i32) {
+    ME_CACHE.invalidate(&user_id).await;
+}
 
 #[get("/me")]
 #[instrument(target = "http", skip(req, pool))]
@@ -15,6 +31,10 @@ pub async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder
                 .json(serde_json::json!({ "error": "Missing or invalid token" }));
         }
     };
+
+    if let Some(cached) = ME_CACHE.get(&user_id).await {
+        return HttpResponse::Ok().json(cached);
+    }
 
     let result = sqlx::query(
         r#"
@@ -37,15 +57,17 @@ pub async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder
             let organization_id: Option<i32> = row.try_get("organization_id").ok().flatten();
             let organization_slug: Option<String> = row.try_get("organization_slug").ok().flatten();
             let organization_name: Option<String> = row.try_get("organization_name").ok().flatten();
-
-            HttpResponse::Ok().json(serde_json::json!({
+            let response = serde_json::json!({
                 "id": id,
                 "email": email,
                 "account_type": account_type,
                 "organization_id": organization_id,
                 "organization_slug": organization_slug,
                 "organization_name": organization_name
-            }))
+            });
+
+            ME_CACHE.insert(user_id, response.clone()).await;
+            HttpResponse::Ok().json(response)
         }
         Ok(None) => {
             HttpResponse::Unauthorized().json(serde_json::json!({ "error": "User not found" }))

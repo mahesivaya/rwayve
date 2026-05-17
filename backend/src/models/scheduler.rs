@@ -1,7 +1,7 @@
 use crate::prelude::*;
 
 // ================= MODEL =================
-#[derive(Serialize, FromRow)]
+#[derive(Clone, Serialize, FromRow)]
 pub struct Meeting {
     pub id: i32,
     pub title: String,

@@ -1,13 +1,19 @@
+use moka::future::Cache as MokaCache;
 use redis::AsyncCommands;
 use redis::aio::MultiplexedConnection;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::env;
+use std::time::Duration;
 use tracing::warn;
+
+const DEFAULT_LOCAL_JSON_CACHE_TTL_SECS: u64 = 60;
+const DEFAULT_LOCAL_JSON_CACHE_MAX_CAPACITY: u64 = 10_000;
 
 #[derive(Clone)]
 pub struct Cache {
     conn: MultiplexedConnection,
+    local_json: MokaCache<String, String>,
 }
 
 impl Cache {
@@ -15,13 +21,21 @@ impl Cache {
         let url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://redis:6379".to_string());
         let client = redis::Client::open(url)?;
         let conn = client.get_multiplexed_async_connection().await?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            local_json: local_json_cache(),
+        })
     }
 
     pub async fn get_json<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
+        if let Some(raw) = self.local_json.get(key).await {
+            return serde_json::from_str(&raw).ok();
+        }
+
         let mut conn = self.conn.clone();
         let raw: Option<String> = conn.get(key).await.ok()?;
         let raw = raw?;
+        self.local_json.insert(key.to_string(), raw.clone()).await;
         serde_json::from_str(&raw).ok()
     }
 
@@ -33,6 +47,9 @@ impl Cache {
                 return;
             }
         };
+
+        self.local_json.insert(key.to_string(), raw.clone()).await;
+
         let mut conn = self.conn.clone();
         let res: redis::RedisResult<()> = conn.set_ex(key, raw, ttl_secs).await;
         if let Err(e) = res {
@@ -41,6 +58,7 @@ impl Cache {
     }
 
     pub async fn del(&self, key: &str) {
+        self.local_json.invalidate(key).await;
         let mut conn = self.conn.clone();
         let _: redis::RedisResult<()> = conn.del(key).await;
     }
@@ -63,6 +81,22 @@ impl Cache {
 
         Ok(count)
     }
+}
+
+fn local_json_cache() -> MokaCache<String, String> {
+    let ttl_secs = env::var("LOCAL_JSON_CACHE_TTL_SECS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_LOCAL_JSON_CACHE_TTL_SECS);
+    let max_capacity = env::var("LOCAL_JSON_CACHE_MAX_CAPACITY")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_LOCAL_JSON_CACHE_MAX_CAPACITY);
+
+    MokaCache::builder()
+        .max_capacity(max_capacity)
+        .time_to_live(Duration::from_secs(ttl_secs))
+        .build()
 }
 
 pub fn chat_history_key(a: i32, b: i32) -> String {

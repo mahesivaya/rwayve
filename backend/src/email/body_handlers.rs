@@ -6,8 +6,20 @@ use crate::email::utils::{extract_attachments, extract_body};
 use crate::security::encryption::{decrypt, encrypt};
 use crate::security::jwt::get_user_id_from_request;
 use actix_web::{HttpResponse, Responder, get};
+use moka::future::Cache as MokaCache;
 use sqlx::PgPool;
+use std::time::Duration;
 use tracing::{error, info, instrument, warn};
+
+const EMAIL_BODY_CACHE_TTL_SECS: u64 = 300;
+const EMAIL_BODY_CACHE_MAX_CAPACITY: u64 = 10_000;
+
+static EMAIL_BODY_CACHE: Lazy<MokaCache<(i32, i32), String>> = Lazy::new(|| {
+    MokaCache::builder()
+        .max_capacity(EMAIL_BODY_CACHE_MAX_CAPACITY)
+        .time_to_live(Duration::from_secs(EMAIL_BODY_CACHE_TTL_SECS))
+        .build()
+});
 
 #[get("/emails/{id}")]
 #[instrument(target = "http", skip(pool))]
@@ -41,6 +53,9 @@ pub async fn get_email_by_id(
         Ok(Some(row)) => {
             let body_iv: String = row.get("body_iv");
             let body_encrypted: String = row.get("body_encrypted");
+            let attachments_checked = row
+                .get::<Option<bool>, _>("attachments_checked")
+                .unwrap_or(false);
 
             let body = if body_encrypted.is_empty() || body_iv.is_empty() {
                 String::new()
@@ -58,6 +73,11 @@ pub async fn get_email_by_id(
                     }
                 }
             };
+            if attachments_checked && !body.is_empty() {
+                EMAIL_BODY_CACHE
+                    .insert((user_id, row.get::<i32, _>("id")), body.clone())
+                    .await;
+            }
 
             HttpResponse::Ok().json(serde_json::json!({
                 "id": row.get::<i32, _>("id"),
@@ -65,7 +85,7 @@ pub async fn get_email_by_id(
                 "sender": row.get::<Option<String>, _>("sender").unwrap_or_default(),
                 "receiver": row.get::<Option<String>, _>("receiver").unwrap_or_default(),
                 "body": body,
-                "attachments_checked": row.get::<Option<bool>, _>("attachments_checked").unwrap_or(false)
+                "attachments_checked": attachments_checked
             }))
         }
         Ok(None) => HttpResponse::NotFound().body("Email not found"),
@@ -89,6 +109,11 @@ pub async fn get_email_body(
     };
 
     let email_id = path.into_inner();
+    let cache_key = (user_id, email_id);
+
+    if let Some(body) = EMAIL_BODY_CACHE.get(&cache_key).await {
+        return HttpResponse::Ok().json(serde_json::json!({ "body": body }));
+    }
 
     let row = sqlx::query(
         r#"
@@ -121,6 +146,7 @@ pub async fn get_email_body(
         match decrypt(&body_iv, &body_encrypted) {
             Ok(body) => {
                 if attachments_checked.unwrap_or(false) {
+                    EMAIL_BODY_CACHE.insert(cache_key, body.clone()).await;
                     return HttpResponse::Ok().json(serde_json::json!({ "body": body }));
                 }
 
@@ -263,6 +289,8 @@ pub async fn get_email_body(
         &attachments,
     )
     .await;
+
+    EMAIL_BODY_CACHE.insert(cache_key, body.clone()).await;
 
     HttpResponse::Ok().json(serde_json::json!({ "body": body }))
 }

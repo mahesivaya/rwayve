@@ -1,3 +1,4 @@
+use crate::email::handler::invalidate_me_cache;
 use crate::models::auth::ChangePasswordInput;
 use crate::models::email_request::UserResponse;
 use crate::security::jwt::get_user_id_from_request;
@@ -632,6 +633,7 @@ pub async fn update_profile(
 
     match result {
         Ok(Some(row)) => {
+            invalidate_me_cache(user_id).await;
             let id: i32 = row.get("id");
             let email: String = row.get("email");
             let first_name: Option<String> = row.try_get("first_name").ok();

@@ -1,10 +1,33 @@
 use crate::email::provider::MailProvider;
+use crate::models::account::Account;
 use crate::prelude::*;
+use moka::future::Cache as MokaCache;
 use sqlx::QueryBuilder;
+use std::time::Duration;
+
+const EMAIL_ACCOUNT_CACHE_TTL_SECS: u64 = 60;
+const EMAIL_ACCOUNT_CACHE_MAX_CAPACITY: u64 = 10_000;
+const USER_ACCOUNT_LIST_CACHE_TTL_SECS: u64 = 60;
+const USER_ACCOUNT_LIST_CACHE_MAX_CAPACITY: u64 = 10_000;
+
+static EMAIL_ACCOUNT_CACHE: Lazy<MokaCache<i32, EmailAccount>> = Lazy::new(|| {
+    MokaCache::builder()
+        .max_capacity(EMAIL_ACCOUNT_CACHE_MAX_CAPACITY)
+        .time_to_live(Duration::from_secs(EMAIL_ACCOUNT_CACHE_TTL_SECS))
+        .build()
+});
+
+static USER_ACCOUNT_LIST_CACHE: Lazy<MokaCache<i32, Vec<Account>>> = Lazy::new(|| {
+    MokaCache::builder()
+        .max_capacity(USER_ACCOUNT_LIST_CACHE_MAX_CAPACITY)
+        .time_to_live(Duration::from_secs(USER_ACCOUNT_LIST_CACHE_TTL_SECS))
+        .build()
+});
 
 #[derive(Clone)]
 pub struct EmailAccount {
     pub id: i32,
+    pub user_id: i32,
     pub email: String,
     pub provider: MailProvider,
     pub refresh_token: Option<String>,
@@ -28,6 +51,7 @@ fn account_from_row(row: sqlx::postgres::PgRow) -> EmailAccount {
 
     EmailAccount {
         id: row.get("id"),
+        user_id: row.get("user_id"),
         email: row.try_get("email").unwrap_or_default(),
         provider,
         refresh_token: row.try_get("refresh_token").ok().flatten(),
@@ -40,8 +64,12 @@ pub async fn load_email_account_for_user(
     account_id: i32,
     user_id: i32,
 ) -> Result<Option<EmailAccount>> {
+    if let Some(account) = EMAIL_ACCOUNT_CACHE.get(&account_id).await {
+        return Ok((account.user_id == user_id).then_some(account));
+    }
+
     let row = sqlx::query(
-        "SELECT id, email, provider, refresh_token, last_sync
+        "SELECT id, user_id, email, provider, refresh_token, last_sync
          FROM email_accounts
          WHERE id = $1 AND user_id = $2",
     )
@@ -50,12 +78,19 @@ pub async fn load_email_account_for_user(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(account_from_row))
+    let account = row.map(account_from_row);
+    if let Some(account) = &account {
+        EMAIL_ACCOUNT_CACHE
+            .insert(account.id, account.clone())
+            .await;
+    }
+
+    Ok(account)
 }
 
 pub async fn load_syncable_email_accounts(pool: &PgPool) -> Result<Vec<EmailAccount>> {
     let rows = sqlx::query(
-        "SELECT id, email, provider, refresh_token, last_sync
+        "SELECT id, user_id, email, provider, refresh_token, last_sync
          FROM email_accounts
          WHERE access_token IS NOT NULL",
     )
@@ -71,7 +106,7 @@ pub async fn load_user_email_accounts_for_older_sync(
     account_id: Option<i32>,
 ) -> Result<Vec<EmailAccount>> {
     let mut qb = QueryBuilder::new(
-        "SELECT id, email, provider, refresh_token, last_sync
+        "SELECT id, user_id, email, provider, refresh_token, last_sync
          FROM email_accounts
          WHERE user_id = ",
     );
@@ -84,6 +119,38 @@ pub async fn load_user_email_accounts_for_older_sync(
 
     let rows = qb.build().fetch_all(pool).await?;
     Ok(rows.into_iter().map(account_from_row).collect())
+}
+
+pub async fn load_account_summaries_for_user(pool: &PgPool, user_id: i32) -> Result<Vec<Account>> {
+    if let Some(accounts) = USER_ACCOUNT_LIST_CACHE.get(&user_id).await {
+        return Ok(accounts);
+    }
+
+    let accounts = sqlx::query_as::<_, Account>(
+        r#"
+        SELECT id, email
+        FROM email_accounts
+        WHERE user_id = $1
+        ORDER BY id DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    USER_ACCOUNT_LIST_CACHE
+        .insert(user_id, accounts.clone())
+        .await;
+
+    Ok(accounts)
+}
+
+pub async fn invalidate_email_account_cache(account_id: i32) {
+    EMAIL_ACCOUNT_CACHE.invalidate(&account_id).await;
+}
+
+pub async fn invalidate_user_account_list_cache(user_id: i32) {
+    USER_ACCOUNT_LIST_CACHE.invalidate(&user_id).await;
 }
 
 pub struct ConnectedEmailAccount<'a> {
@@ -128,5 +195,9 @@ pub async fn upsert_connected_email_account(
     .fetch_one(pool)
     .await?;
 
-    Ok(row.get("id"))
+    let account_id = row.get("id");
+    invalidate_email_account_cache(account_id).await;
+    invalidate_user_account_list_cache(account.user_id).await;
+
+    Ok(account_id)
 }

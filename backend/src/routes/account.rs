@@ -1,4 +1,7 @@
-use crate::models::account::Account;
+use crate::email::account::{
+    invalidate_email_account_cache, invalidate_user_account_list_cache,
+    load_account_summaries_for_user,
+};
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
 use actix_web::delete;
@@ -12,17 +15,7 @@ pub(crate) async fn get_accounts(req: HttpRequest, pool: web::Data<PgPool>) -> i
         None => return HttpResponse::Unauthorized().body("Missing or invalid token"),
     };
 
-    let result = sqlx::query_as::<_, Account>(
-        r#"
-        SELECT id, email
-        FROM email_accounts
-        WHERE user_id = $1
-        ORDER BY id DESC
-        "#,
-    )
-    .bind(user_id)
-    .fetch_all(pool.get_ref())
-    .await;
+    let result = load_account_summaries_for_user(pool.get_ref(), user_id).await;
 
     match result {
         Ok(rows) => HttpResponse::Ok().json(rows),
@@ -56,6 +49,8 @@ pub async fn delete_account(
     match result {
         Ok(r) if r.rows_affected() == 0 => HttpResponse::NotFound().finish(),
         Ok(_) => {
+            invalidate_email_account_cache(id).await;
+            invalidate_user_account_list_cache(user_id).await;
             info!("Email account deleted: id={} user_id={}", id, user_id);
             HttpResponse::Ok().json(serde_json::json!({ "deleted": true }))
         }
