@@ -24,6 +24,9 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 
+#[global_allocator]
+static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 // ==============================
 // 🔹 USE INTERNAL MODULES
 // ==============================

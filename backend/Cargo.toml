@@ -61,6 +61,7 @@ dotenvy = "0.15.7"
 redis = { version = "0.25", features = ["tokio-comp"] }
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "tokio1", "tokio1-rustls-tls", "builder"] }
 moka = { version = "0.12", features = ["future"] }
+mimalloc = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 serial_test = "3"
