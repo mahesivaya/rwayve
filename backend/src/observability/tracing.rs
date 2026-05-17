@@ -100,7 +100,6 @@ impl SizeRotatingState {
 fn open_tracing_file() -> io::Result<File> {
     OpenOptions::new()
         .create(true)
-        .write(true)
         .append(true)
         .open(TRACING_LOG_PATH)
 }
