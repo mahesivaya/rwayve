@@ -1,9 +1,9 @@
 use crate::prelude::*;
 
-use crate::email::oauth::{HTTP_CLIENT, load_google_secrets, refresh_access_token};
-use crate::email::outlook::{
-    OUTLOOK_MAIL_SCOPE, outlook_credentials, refresh_outlook_token, sync_outlook_account,
-};
+use crate::email::account::load_syncable_email_accounts;
+use crate::email::oauth::HTTP_CLIENT;
+use crate::email::outlook::sync_outlook_account;
+use crate::email::provider::{MailProvider, MailProviderClients, refresh_and_persist_email_token};
 
 use serde_json::Value;
 use tracing::{debug, error, info, instrument, warn};
@@ -48,95 +48,54 @@ fn extract_gmail_timestamp(res: &Value) -> NaiveDateTime {
 
 #[instrument(target = "worker", skip(pool))]
 pub async fn sync_all(pool: &PgPool) -> Result<()> {
-    let rows = sqlx::query(
-        "SELECT id, provider, access_token, refresh_token, last_sync \
-         FROM email_accounts WHERE access_token IS NOT NULL",
-    )
-    .fetch_all(pool)
-    .await?;
+    let accounts = load_syncable_email_accounts(pool).await?;
 
-    info!(target: "worker", accounts = rows.len(), "sync_all start");
+    info!(target: "worker", accounts = accounts.len(), "sync_all start");
 
-    let secrets = load_google_secrets();
-    let google_client_id = secrets["web"]["client_id"]
-        .as_str()
-        .expect("client_id missing in google secrets")
-        .to_string();
-    let google_client_secret = secrets["web"]["client_secret"]
-        .as_str()
-        .expect("client_secret missing in google secrets")
-        .to_string();
-    let outlook_creds = outlook_credentials();
+    let clients =
+        MailProviderClients::for_providers(accounts.iter().map(|account| account.provider));
 
     let mut handles = vec![];
 
-    for r in rows {
+    for account in accounts {
         let pool = pool.clone();
-        let account_id: i32 = r.get("id");
-        let provider: String = r
-            .try_get("provider")
-            .unwrap_or_else(|_| "google".to_string());
-        let refresh_token: String = r.try_get("refresh_token").unwrap_or_default();
-        let last_sync: Option<i64> = r.try_get("last_sync").ok();
-
-        if provider == "microsoft" {
-            // Microsoft Graph path — refresh, then sync the mailbox inline.
-            let Some(creds) = outlook_creds.clone() else {
-                warn!(target: "worker", account_id, "outlook account skipped: OUTLOOK_* env not configured");
-                continue;
+        let clients = clients.clone();
+        handles.push(tokio::spawn(async move {
+            let Some(refresh_token) = account.usable_refresh_token() else {
+                warn!(target: "worker", account_id = account.id, "email account skipped: missing refresh token");
+                return;
             };
-            handles.push(tokio::spawn(async move {
-                let tokens =
-                    match refresh_outlook_token(&creds, &refresh_token, OUTLOOK_MAIL_SCOPE).await {
-                        Ok(t) => t,
-                        Err(e) => {
-                            warn!(target: "worker", account_id, error = ?e, "outlook token refresh failed; skipping account");
-                            return;
-                        }
-                    };
-                // Microsoft rotates refresh tokens — persist the new one.
-                let stored_refresh =
-                    tokens.refresh_token.as_deref().unwrap_or(&refresh_token);
-                let _ = sqlx::query(
-                    "UPDATE email_accounts SET access_token = $1, refresh_token = $2 WHERE id = $3",
-                )
-                .bind(&tokens.access_token)
-                .bind(stored_refresh)
-                .bind(account_id)
-                .execute(&pool)
-                .await;
 
-                if let Err(e) =
-                    sync_outlook_account(&pool, account_id, &tokens.access_token, last_sync).await
-                {
-                    error!(target: "worker", account_id, error = ?e, "outlook sync failed");
+            let token = match refresh_and_persist_email_token(
+                &pool,
+                account.id,
+                account.provider,
+                refresh_token,
+                clients,
+            )
+            .await
+            {
+                Ok(token) => token,
+                Err(e) => {
+                    warn!(target: "worker", account_id = account.id, provider = account.provider.as_db(), error = ?e, "token refresh failed; skipping account");
+                    return;
                 }
-            }));
-        } else {
-            // Gmail path.
-            let client_id = google_client_id.clone();
-            let client_secret = google_client_secret.clone();
-            handles.push(tokio::spawn(async move {
-                let token =
-                    match refresh_access_token(&client_id, &client_secret, &refresh_token).await {
-                        Ok(t) => t,
-                        Err(e) => {
-                            warn!(target: "worker", account_id, error = ?e, "token refresh failed; skipping account");
-                            return;
-                        }
-                    };
+            };
 
-                let _ = sqlx::query("UPDATE email_accounts SET access_token=$1 WHERE id=$2")
-                    .bind(&token)
-                    .bind(account_id)
-                    .execute(&pool)
-                    .await;
-
-                if let Err(e) = sync_account(&pool, account_id, &token, last_sync).await {
-                    error!(target: "worker", account_id, error = ?e, "sync_account failed");
+            let sync_result = match account.provider {
+                MailProvider::Google => {
+                    sync_account(&pool, account.id, &token.access_token, account.last_sync).await
                 }
-            }));
-        }
+                MailProvider::Microsoft => {
+                    sync_outlook_account(&pool, account.id, &token.access_token, account.last_sync)
+                        .await
+                }
+            };
+
+            if let Err(e) = sync_result {
+                error!(target: "worker", account_id = account.id, provider = account.provider.as_db(), error = ?e, "email sync failed");
+            }
+        }));
     }
 
     for h in handles {

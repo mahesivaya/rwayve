@@ -16,6 +16,15 @@ export function normalizeAccountType(accountType?: string | null): AccountType {
   return "personal";
 }
 
+/**
+ * Mirrors the backend slugify(): lowercase, ASCII-alphanumeric only.
+ */
+export const slugify = (value: string) => 
+  value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+export const getEmailDomain = (slug?: string | null) => 
+  slug ? `${slug}.com` : "wayve.com";
+
 export function homePathForAccount(accountType?: string | null) {
   const normalized = normalizeAccountType(accountType);
   if (normalized === "project_admin") return "/project-admin-home";

@@ -1,13 +1,10 @@
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createAdminUser, type AdminCreatedUser } from "../api/admin";
-import { normalizeAccountType } from "../auth/accountHome";
+import { normalizeAccountType, slugify, getEmailDomain } from "../auth/accountHome";
 import { useAuth } from "../auth/useAuth";
 import "../home/home.css";
 import "./businessAdmin.css";
-
-// Mirrors the backend slugify(): lowercase, ASCII-alphanumeric only.
-const slugify = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 export default function BusinessAdminHome() {
   const { user, logout } = useAuth();
@@ -29,11 +26,9 @@ export default function BusinessAdminHome() {
   // wayve.com for plain personal/project accounts.
   const emailDomain = isProjectAdmin
     ? accountType === "business_admin" && organizationName
-      ? `${slugify(organizationName)}.com`
-      : "wayve.com"
-    : user?.organization_slug
-      ? `${user.organization_slug}.com`
-      : "your-business.com";
+      ? getEmailDomain(slugify(organizationName))
+      : getEmailDomain(null)
+    : getEmailDomain(user?.organization_slug || "your-business");
 
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

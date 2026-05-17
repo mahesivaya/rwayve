@@ -1,0 +1,77 @@
+use crate::email::account::load_user_email_accounts_for_older_sync;
+use crate::email::outlook::sync_outlook_account_before;
+use crate::email::provider::{MailProvider, MailProviderClients, refresh_and_persist_email_token};
+use crate::email::sync::sync_account_before;
+use futures::future::{BoxFuture, FutureExt};
+use futures::stream::{FuturesUnordered, StreamExt};
+use sqlx::PgPool;
+
+/// Internal logic to sync older pages of emails. This is triggered on-demand
+/// by the UI when a user scrolls to the bottom of their inbox.
+pub async fn sync_older_page(
+    pool: &PgPool,
+    user_id: i32,
+    account_id: Option<i32>,
+    before_timestamp: i64,
+    limit: usize,
+) -> anyhow::Result<()> {
+    let accounts = load_user_email_accounts_for_older_sync(pool, user_id, account_id).await?;
+    if accounts.is_empty() {
+        return Ok(());
+    }
+
+    let clients =
+        MailProviderClients::for_providers(accounts.iter().map(|account| account.provider));
+    let mut sync_tasks: FuturesUnordered<BoxFuture<'static, anyhow::Result<()>>> =
+        FuturesUnordered::new();
+
+    for account in accounts {
+        let Some(refresh_token) = account.usable_refresh_token().map(str::to_string) else {
+            continue;
+        };
+        let pool = pool.clone();
+        let clients = clients.clone();
+        sync_tasks.push(
+            async move {
+                let token = refresh_and_persist_email_token(
+                    &pool,
+                    account.id,
+                    account.provider,
+                    &refresh_token,
+                    clients,
+                )
+                .await?;
+
+                match account.provider {
+                    MailProvider::Google => {
+                        sync_account_before(
+                            &pool,
+                            account.id,
+                            &token.access_token,
+                            before_timestamp,
+                            limit,
+                        )
+                        .await
+                    }
+                    MailProvider::Microsoft => {
+                        sync_outlook_account_before(
+                            &pool,
+                            account.id,
+                            &token.access_token,
+                            before_timestamp,
+                            limit,
+                        )
+                        .await
+                    }
+                }
+            }
+            .boxed(),
+        );
+    }
+
+    while let Some(res) = sync_tasks.next().await {
+        res?;
+    }
+
+    Ok(())
+}

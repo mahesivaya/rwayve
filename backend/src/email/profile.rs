@@ -35,10 +35,8 @@ pub async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder
             let email: String = row.get("email");
             let account_type: String = row.get("account_type");
             let organization_id: Option<i32> = row.try_get("organization_id").ok().flatten();
-            let organization_slug: Option<String> =
-                row.try_get("organization_slug").ok().flatten();
-            let organization_name: Option<String> =
-                row.try_get("organization_name").ok().flatten();
+            let organization_slug: Option<String> = row.try_get("organization_slug").ok().flatten();
+            let organization_name: Option<String> = row.try_get("organization_name").ok().flatten();
 
             HttpResponse::Ok().json(serde_json::json!({
                 "id": id,

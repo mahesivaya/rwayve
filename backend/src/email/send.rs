@@ -1,9 +1,9 @@
 use crate::prelude::*;
 
-use crate::email::oauth::{HTTP_CLIENT, refresh_access_token, try_load_google_secrets};
-use crate::email::outlook::{
-    OUTLOOK_MAIL_SCOPE, outlook_credentials, refresh_outlook_token, send_outlook_mail,
-};
+use crate::email::account::load_email_account_for_user;
+use crate::email::oauth::HTTP_CLIENT;
+use crate::email::outlook::send_outlook_mail;
+use crate::email::provider::{MailProvider, MailProviderClients, refresh_and_persist_email_token};
 use crate::models::email_request::SendEmailRequest;
 use crate::security::jwt::get_user_id_from_request;
 use actix_web::HttpResponse;
@@ -29,27 +29,17 @@ pub async fn send(
 
     info!(target: "gmail", user_id, account_id = data.account_id, "send email request");
 
-    let account = sqlx::query(
-        "SELECT email, refresh_token, provider FROM email_accounts
-        WHERE id = $1 AND user_id = $2",
-    )
-    .bind(data.account_id)
-    .bind(user_id)
-    .fetch_one(pool.get_ref())
-    .await;
-    let (from_email, refresh_token, provider) = match account {
-        Ok(row) => {
-            let email: String = row.get("email");
-            let refresh_token: Option<String> = row.get("refresh_token");
-            let provider: String = row
-                .try_get("provider")
-                .unwrap_or_else(|_| "google".to_string());
-            (email, refresh_token, provider)
+    let account = match load_email_account_for_user(pool.get_ref(), data.account_id, user_id).await
+    {
+        Ok(Some(account)) => account,
+        Ok(None) => return HttpResponse::Unauthorized().body("Email account not found"),
+        Err(e) => {
+            error!(target: "gmail", user_id, account_id = data.account_id, error = ?e, "email account lookup failed");
+            return HttpResponse::InternalServerError().body("Email account lookup failed");
         }
-        Err(_) => return HttpResponse::Unauthorized().body("Email account not found"),
     };
 
-    let refresh_token = match refresh_token.filter(|value| !value.trim().is_empty()) {
+    let refresh_token = match account.usable_refresh_token() {
         Some(value) => value,
         None => {
             return HttpResponse::Conflict().json(serde_json::json!({
@@ -58,40 +48,45 @@ pub async fn send(
         }
     };
 
-    // Outlook mailboxes send through Microsoft Graph; Gmail continues below.
-    if provider == "microsoft" {
-        return send_via_outlook(pool.get_ref(), data.account_id, &refresh_token, &data).await;
-    }
-
-    let secrets = match try_load_google_secrets() {
-        Ok(value) => value,
-        Err(e) => {
-            error!(target: "gmail", error = %e, "google secrets unavailable");
-            return HttpResponse::InternalServerError().body("Google OAuth is not configured");
-        }
-    };
-    let client_id = secrets["web"]["client_id"].as_str().unwrap_or("");
-    let client_secret = secrets["web"]["client_secret"].as_str().unwrap_or("");
-    let access_token = match refresh_access_token(client_id, client_secret, &refresh_token).await {
+    let token = match refresh_and_persist_email_token(
+        pool.get_ref(),
+        account.id,
+        account.provider,
+        refresh_token,
+        MailProviderClients::for_provider(account.provider),
+    )
+    .await
+    {
         Ok(token) => token,
         Err(e) => {
-            error!(
-                target: "gmail",
-                user_id,
-                account_id = data.account_id,
-                error = ?e,
-                "send token refresh failed"
-            );
-            return HttpResponse::BadGateway().body("Failed to refresh Gmail credentials");
+            error!(target: "gmail", user_id, account_id = account.id, provider = account.provider.as_db(), error = ?e, "send token refresh failed");
+            let provider_name = match account.provider {
+                MailProvider::Google => "Gmail",
+                MailProvider::Microsoft => "Outlook",
+            };
+            if e.to_string().contains("not configured") {
+                return HttpResponse::InternalServerError()
+                    .body(format!("{provider_name} OAuth is not configured"));
+            }
+            return HttpResponse::BadGateway()
+                .body(format!("Failed to refresh {provider_name} credentials"));
         }
     };
 
-    let _ = sqlx::query("UPDATE email_accounts SET access_token = $1 WHERE id = $2")
-        .bind(&access_token)
-        .bind(data.account_id)
-        .execute(pool.get_ref())
-        .await;
+    match account.provider {
+        MailProvider::Google => {
+            send_via_gmail(&token.access_token, &account.email, &data, user_id).await
+        }
+        MailProvider::Microsoft => send_via_outlook(&token.access_token, account.id, &data).await,
+    }
+}
 
+async fn send_via_gmail(
+    access_token: &str,
+    from_email: &str,
+    data: &SendEmailRequest,
+    user_id: i32,
+) -> HttpResponse {
     let raw_email = format!(
         "From: {}\r\n\
     To: {}\r\n\
@@ -111,7 +106,7 @@ pub async fn send(
 
     let res = HTTP_CLIENT
         .post(crate::external::gmail_send_url())
-        .bearer_auth(&access_token)
+        .bearer_auth(access_token)
         .json(&serde_json::json!({ "raw": encoded }))
         .send()
         .await;
@@ -140,43 +135,14 @@ pub async fn send(
     }
 }
 
-/// Sends from a connected Outlook mailbox: refresh the Microsoft token (and
-/// persist the rotated refresh token), then hand off to Graph `sendMail`.
+/// Sends from a connected Outlook mailbox through Graph `sendMail`.
 async fn send_via_outlook(
-    pool: &PgPool,
+    access_token: &str,
     account_id: i32,
-    refresh_token: &str,
     data: &SendEmailRequest,
 ) -> HttpResponse {
-    let creds = match outlook_credentials() {
-        Some(c) => c,
-        None => {
-            error!(target: "gmail", "Outlook OAuth is not configured");
-            return HttpResponse::InternalServerError().body("Outlook is not configured");
-        }
-    };
-
-    let tokens = match refresh_outlook_token(&creds, refresh_token, OUTLOOK_MAIL_SCOPE).await {
-        Ok(t) => t,
-        Err(e) => {
-            error!(target: "gmail", account_id, error = ?e, "outlook send token refresh failed");
-            return HttpResponse::BadGateway().body("Failed to refresh Outlook credentials");
-        }
-    };
-
-    // Microsoft rotates refresh tokens — persist the new one with the access token.
-    let stored_refresh = tokens.refresh_token.as_deref().unwrap_or(refresh_token);
-    let _ = sqlx::query(
-        "UPDATE email_accounts SET access_token = $1, refresh_token = $2 WHERE id = $3",
-    )
-    .bind(&tokens.access_token)
-    .bind(stored_refresh)
-    .bind(account_id)
-    .execute(pool)
-    .await;
-
     match send_outlook_mail(
-        &tokens.access_token,
+        access_token,
         data.to.trim(),
         data.subject.trim(),
         &data.body,

@@ -8,15 +8,15 @@
 
 use crate::prelude::*;
 
+use crate::email::account::{ConnectedEmailAccount, upsert_connected_email_account};
 use crate::email::outlook::{
     OUTLOOK_MAIL_SCOPE, OutlookCredentials, OutlookTokens, exchange_code, outlook_credentials,
     sync_outlook_account,
 };
+use crate::email::provider::MailProvider;
 use crate::security::jwt::{auth_cookie, create_jwt_for_account, get_user_id_from_request};
-use crate::security::oauth::{OAuthState, consume_state, store_state};
+use crate::security::oauth::{consume_state, create_oauth_state};
 use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use rand::RngCore;
 use sqlx::PgPool;
 use tracing::{error, info, instrument, warn};
 
@@ -51,12 +51,6 @@ fn require_credentials() -> std::result::Result<OutlookCredentials, HttpResponse
     })
 }
 
-fn random_oauth_state() -> String {
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
-}
-
 fn authorize_url(creds: &OutlookCredentials, scope: &str, state: &str) -> String {
     let endpoint = format!(
         "{}/oauth2/v2.0/authorize",
@@ -77,6 +71,26 @@ fn authorize_url(creds: &OutlookCredentials, scope: &str, state: &str) -> String
     url.to_string()
 }
 
+/// Shared boilerplate to start an OAuth flow. Returns the provider consent URL
+/// on success — the caller decides whether to 302 to it or return it as JSON.
+async fn start_oauth_flow(
+    pool: &PgPool,
+    user_id: Option<i32>,
+    flow_tag: &str,
+    creds: &OutlookCredentials,
+    scope: &str,
+) -> std::result::Result<String, HttpResponse> {
+    let state = create_oauth_state(user_id, flow_tag, pool)
+        .await
+        .map_err(|e| {
+            error!(target: "auth", error = %e, flow = flow_tag, "oauth state store failed");
+            HttpResponse::InternalServerError().body("Failed to start OAuth flow")
+        })?;
+
+    info!(target: "auth", flow = flow_tag, ?user_id, "oauth flow start");
+    Ok(authorize_url(creds, scope, &state))
+}
+
 /// `GET /outlook/login?mode=signup` — kicks off Microsoft sign-in.
 #[instrument(target = "auth", skip(query, pool))]
 pub async fn outlook_login(
@@ -87,22 +101,26 @@ pub async fn outlook_login(
         Ok(c) => c,
         Err(response) => return response,
     };
-
     if query.mode.as_deref() != Some("signup") {
         return HttpResponse::BadRequest()
             .body("Use POST /api/outlook/connect-url to connect a mailbox");
     }
 
-    let state = random_oauth_state();
-    if let Err(e) = store_state(&state, None, OUTLOOK_FLOW_SIGNUP, pool.get_ref()).await {
-        error!(target: "auth", error = %e, "outlook oauth state store failed");
-        return HttpResponse::InternalServerError().body("Failed to start OAuth flow");
+    // Sign-in is a browser navigation — 302 straight to the consent screen.
+    match start_oauth_flow(
+        pool.get_ref(),
+        None,
+        OUTLOOK_FLOW_SIGNUP,
+        &creds,
+        OUTLOOK_MAIL_SCOPE,
+    )
+    .await
+    {
+        Ok(url) => HttpResponse::Found()
+            .append_header(("Location", url))
+            .finish(),
+        Err(response) => response,
     }
-
-    info!(target: "auth", "outlook oauth sign-in flow start");
-    HttpResponse::Found()
-        .append_header(("Location", authorize_url(&creds, OUTLOOK_MAIL_SCOPE, &state)))
-        .finish()
 }
 
 /// `POST /api/outlook/connect-url` — returns the Microsoft consent URL for
@@ -123,18 +141,20 @@ pub async fn outlook_connect_url(req: HttpRequest, pool: web::Data<PgPool>) -> i
         Err(response) => return response,
     };
 
-    let state = random_oauth_state();
-    if let Err(e) =
-        store_state(&state, Some(user_id), OUTLOOK_FLOW_CONNECT, pool.get_ref()).await
+    // connect-url is fetched by the frontend — return the URL as JSON so it
+    // can `window.location.href` to it (a 302 would be followed by fetch()).
+    match start_oauth_flow(
+        pool.get_ref(),
+        Some(user_id),
+        OUTLOOK_FLOW_CONNECT,
+        &creds,
+        OUTLOOK_MAIL_SCOPE,
+    )
+    .await
     {
-        error!(target: "auth", error = %e, "outlook connect state store failed");
-        return HttpResponse::InternalServerError().body("Failed to start OAuth flow");
+        Ok(url) => HttpResponse::Ok().json(OutlookConnectUrlResponse { url }),
+        Err(response) => response,
     }
-
-    info!(target: "auth", user_id, "outlook mailbox connect flow start");
-    HttpResponse::Ok().json(OutlookConnectUrlResponse {
-        url: authorize_url(&creds, OUTLOOK_MAIL_SCOPE, &state),
-    })
 }
 
 /// `GET /oauth/outlook/callback` — shared callback for sign-in and mailbox
@@ -192,11 +212,134 @@ pub async fn outlook_callback(
 
     let frontend = std::env::var("FRONTEND_URL").unwrap_or_default();
 
-    if is_connect {
-        connect_mailbox(pool.get_ref(), &oauth_state, &email, &tokens, &frontend).await
-    } else {
-        sign_in(pool.get_ref(), &email, &tokens, &frontend).await
+    finalize_oauth_session(
+        pool.get_ref(),
+        OAuthCompletion {
+            session_user_id: oauth_state.user_id,
+            email: &email,
+            provider: "microsoft",
+            tokens: &tokens,
+            frontend: &frontend,
+        },
+    )
+    .await
+}
+
+/// Bundles the OAuth-completion inputs — keeps `finalize_oauth_session` under
+/// clippy's argument-count cap.
+struct OAuthCompletion<'a> {
+    session_user_id: Option<i32>,
+    email: &'a str,
+    provider: &'a str,
+    tokens: &'a OutlookTokens,
+    frontend: &'a str,
+}
+
+/// Unified finisher for OAuth callbacks.
+///
+/// If `session_user_id` is present, it links the mailbox to that user.
+/// Otherwise, it performs a sign-in/sign-up for the identified email.
+async fn finalize_oauth_session(pool: &PgPool, ctx: OAuthCompletion<'_>) -> HttpResponse {
+    let (user_id, account_type): (i32, String) = match ctx.session_user_id {
+        Some(id) => (id, "personal".to_string()),
+        None => match resolve_user_for_oauth(pool, ctx.email, ctx.provider, ctx.frontend).await {
+            Ok(result) => result,
+            Err(response) => return response,
+        },
+    };
+
+    match upsert_email_account(pool, user_id, ctx.email, ctx.tokens).await {
+        Ok(account_id) => {
+            info!(target: "auth", user_id, account_id, provider = ctx.provider, "mailbox linked");
+        }
+        Err(e) => {
+            error!(target: "auth", user_id, error = %e, provider = ctx.provider, "mailbox link failed");
+            if ctx.session_user_id.is_some() {
+                return HttpResponse::InternalServerError().body("Failed to save account");
+            }
+        }
     }
+
+    if ctx.session_user_id.is_some() {
+        HttpResponse::Found()
+            .append_header((
+                "Location",
+                format!("{}/emails#connected=true", ctx.frontend),
+            ))
+            .finish()
+    } else {
+        let token = create_jwt_for_account(user_id, ctx.email.to_string(), account_type.clone());
+        let landing = if matches!(
+            account_type.as_str(),
+            "business" | "business_admin" | "project_admin"
+        ) {
+            "business-home"
+        } else {
+            "home"
+        };
+        HttpResponse::Found()
+            .cookie(auth_cookie(token))
+            .append_header((
+                "Location",
+                format!("{}/{landing}#signup=true", ctx.frontend),
+            ))
+            .finish()
+    }
+}
+
+/// Resolves an OAuth identity to a local user ID.
+async fn resolve_user_for_oauth(
+    pool: &PgPool,
+    email: &str,
+    provider: &str,
+    frontend: &str,
+) -> std::result::Result<(i32, String), HttpResponse> {
+    let existing =
+        sqlx::query("SELECT id, auth_provider, account_type FROM users WHERE email = $1")
+            .bind(email)
+            .fetch_optional(pool)
+            .await;
+
+    let (user_id, account_type): (i32, String) = match existing {
+        Ok(Some(row)) => {
+            let provider: String = row.get("auth_provider");
+            if provider != "microsoft" && provider != "google" {
+                warn!(
+                    target: "auth",
+                    "OAuth sign-in blocked: {email} already registered with {provider}"
+                );
+                return Err(HttpResponse::Found()
+                    .append_header(("Location", format!("{frontend}/login?error=email_exists")))
+                    .finish());
+            }
+            (row.get("id"), row.get("account_type"))
+        }
+        Ok(None) => {
+            match sqlx::query(
+                "INSERT INTO users (username, email, password, auth_provider) \
+                 VALUES ($1, $2, NULL, $3) RETURNING id, account_type",
+            )
+            .bind(email)
+            .bind(email)
+            .bind(provider)
+            .fetch_one(pool)
+            .await
+            {
+                Ok(row) => (row.get("id"), row.get("account_type")),
+                Err(e) => {
+                    error!(target: "auth", error = %e, provider, "OAuth signup user insert failed");
+                    return Err(
+                        HttpResponse::InternalServerError().body("Failed to create account")
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            error!(target: "auth", error = %e, provider, "OAuth sign-in user lookup failed");
+            return Err(HttpResponse::InternalServerError().body("Database error"));
+        }
+    };
+    Ok((user_id, account_type))
 }
 
 /// Normalizes a Microsoft guest UPN (e.g. `user_gmail.com#ext#@tenant...`)
@@ -257,111 +400,11 @@ async fn graph_user_email(access_token: &str) -> std::result::Result<String, Htt
     let email = sanitize_microsoft_email(raw_email);
     if email.is_empty() {
         warn!(target: "auth", "outlook_callback: Microsoft did not return an email");
-        return Err(HttpResponse::BadRequest()
-            .body("Microsoft account did not expose an email address"));
+        return Err(
+            HttpResponse::BadRequest().body("Microsoft account did not expose an email address")
+        );
     }
     Ok(email)
-}
-
-/// Sign-in path: find or create the wayve account, link the mailbox, mint a
-/// session, redirect.
-async fn sign_in(
-    pool: &PgPool,
-    email: &str,
-    tokens: &OutlookTokens,
-    frontend: &str,
-) -> HttpResponse {
-    let existing =
-        sqlx::query("SELECT id, auth_provider, account_type FROM users WHERE email = $1")
-            .bind(email)
-            .fetch_optional(pool)
-            .await;
-
-    let (user_id, account_type): (i32, String) = match existing {
-        Ok(Some(row)) => {
-            let provider: String = row.get("auth_provider");
-            if provider != "microsoft" {
-                warn!(
-                    target: "auth",
-                    "Outlook sign-in blocked: {email} already registered with {provider}"
-                );
-                return HttpResponse::Found()
-                    .append_header(("Location", format!("{frontend}/login?error=email_exists")))
-                    .finish();
-            }
-            (row.get("id"), row.get("account_type"))
-        }
-        Ok(None) => {
-            match sqlx::query(
-                "INSERT INTO users (username, email, password, auth_provider) \
-                 VALUES ($1, $2, NULL, 'microsoft') RETURNING id, account_type",
-            )
-            .bind(email)
-            .bind(email)
-            .fetch_one(pool)
-            .await
-            {
-                Ok(row) => (row.get("id"), row.get("account_type")),
-                Err(e) => {
-                    error!(target: "auth", error = %e, "Outlook signup user insert failed");
-                    return HttpResponse::InternalServerError().body("Failed to create account");
-                }
-            }
-        }
-        Err(e) => {
-            error!(target: "auth", error = %e, "Outlook sign-in user lookup failed");
-            return HttpResponse::InternalServerError().body("Database error");
-        }
-    };
-
-    info!(target: "auth", user_id, "Outlook sign-in success");
-
-    // Link the mailbox so the inbox is available right after signing in.
-    if let Ok(account_id) = upsert_email_account(pool, user_id, email, tokens).await {
-        info!(target: "auth", user_id, account_id, "Outlook mailbox linked during sign-in");
-    }
-
-    let token = create_jwt_for_account(user_id, email.to_string(), account_type.clone());
-    let landing = if matches!(
-        account_type.as_str(),
-        "business" | "business_admin" | "project_admin"
-    ) {
-        "business-home"
-    } else {
-        "home"
-    };
-
-    HttpResponse::Found()
-        .cookie(auth_cookie(token))
-        .append_header(("Location", format!("{frontend}/{landing}#signup=true")))
-        .finish()
-}
-
-/// Connect path: link the mailbox tokens to the signed-in user.
-async fn connect_mailbox(
-    pool: &PgPool,
-    oauth_state: &OAuthState,
-    email: &str,
-    tokens: &OutlookTokens,
-    frontend: &str,
-) -> HttpResponse {
-    let Some(user_id) = oauth_state.user_id else {
-        warn!(target: "auth", "outlook connect rejected: state had no user");
-        return HttpResponse::Unauthorized().body("Invalid OAuth state");
-    };
-
-    match upsert_email_account(pool, user_id, email, tokens).await {
-        Ok(account_id) => {
-            info!(target: "auth", user_id, account_id, "Outlook mailbox connected");
-            HttpResponse::Found()
-                .append_header(("Location", format!("{frontend}/emails#connected=true")))
-                .finish()
-        }
-        Err(e) => {
-            error!(target: "auth", user_id, error = %e, "outlook account link failed");
-            HttpResponse::InternalServerError().body("Failed to save account")
-        }
-    }
 }
 
 /// Upserts the `email_accounts` row for an Outlook mailbox and primes an
@@ -373,35 +416,18 @@ async fn upsert_email_account(
     email: &str,
     tokens: &OutlookTokens,
 ) -> Result<i32> {
-    let expiry = (chrono::Utc::now() + chrono::Duration::seconds(tokens.expires_in)).naive_utc();
-    let refresh_token = tokens.refresh_token.as_deref().unwrap_or("");
-
-    let row = sqlx::query(
-        r#"
-        INSERT INTO email_accounts
-          (email, user_id, access_token, refresh_token, token_expiry, is_active, provider)
-        VALUES ($1, $2, $3, $4, $5, true, 'microsoft')
-        ON CONFLICT (user_id, email) DO UPDATE SET
-          access_token = EXCLUDED.access_token,
-          token_expiry = EXCLUDED.token_expiry,
-          provider = 'microsoft',
-          is_active = true,
-          refresh_token = COALESCE(
-            NULLIF(EXCLUDED.refresh_token, ''),
-            email_accounts.refresh_token
-          )
-        RETURNING id
-        "#,
+    let account_id = upsert_connected_email_account(
+        pool,
+        ConnectedEmailAccount {
+            email,
+            user_id,
+            provider: MailProvider::Microsoft,
+            access_token: &tokens.access_token,
+            refresh_token: tokens.refresh_token.as_deref(),
+            expires_in: tokens.expires_in,
+        },
     )
-    .bind(email)
-    .bind(user_id)
-    .bind(&tokens.access_token)
-    .bind(refresh_token)
-    .bind(expiry)
-    .fetch_one(pool)
     .await?;
-
-    let account_id: i32 = row.get("id");
 
     // Prime an initial sync without blocking the redirect.
     let pool = pool.clone();

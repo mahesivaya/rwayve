@@ -1,12 +1,12 @@
 use crate::prelude::*;
 
+use crate::email::account::{ConnectedEmailAccount, upsert_connected_email_account};
 use crate::email::oauth::{HTTP_CLIENT, try_load_google_secrets};
+use crate::email::provider::MailProvider;
 use crate::email::sync::sync_account_recent;
 use crate::security::jwt::{auth_cookie, create_jwt_for_account};
-use crate::security::oauth::{consume_state, store_state};
+use crate::security::oauth::{consume_state, create_oauth_state};
 use actix_web::{HttpResponse, Responder, web};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use rand::RngCore;
 use sqlx::PgPool;
 use tracing::{error, info, instrument, warn};
 
@@ -49,12 +49,6 @@ fn google_redirect_uri(req: &HttpRequest, secrets: &Value) -> String {
         .as_str()
         .unwrap_or_default()
         .to_string()
-}
-
-fn random_oauth_state() -> String {
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
 }
 
 fn google_oauth_url(client_id: &str, redirect_uri: &str, scope: &str, state: &str) -> String {
@@ -126,12 +120,13 @@ pub async fn gmail_connect_url(req: HttpRequest, pool: web::Data<PgPool>) -> imp
         Err(response) => return response,
     };
     let redirect_uri = google_redirect_uri(&req, &secrets);
-    let state = random_oauth_state();
-
-    if let Err(e) = store_state(&state, Some(user_id), OAUTH_FLOW_CONNECT, pool.get_ref()).await {
-        error!(target: "gmail", error = %e, "oauth state store failed");
-        return HttpResponse::InternalServerError().body("Failed to start OAuth flow");
-    }
+    let state = match create_oauth_state(Some(user_id), OAUTH_FLOW_CONNECT, pool.get_ref()).await {
+        Ok(state) => state,
+        Err(e) => {
+            error!(target: "gmail", error = %e, "oauth state store failed");
+            return HttpResponse::InternalServerError().body("Failed to start OAuth flow");
+        }
+    };
 
     info!(target: "gmail", user_id, "gmail oauth connect flow start");
     let url = google_oauth_url(client_id, &redirect_uri, gmail_scope(), &state);
@@ -154,7 +149,6 @@ pub async fn gmail_login(
     };
     let redirect_uri = google_redirect_uri(&req, &secrets);
     let is_signup = query.mode.as_deref() == Some("signup");
-    let state = random_oauth_state();
 
     let (user_id, flow) = if is_signup {
         (None, OAUTH_FLOW_SIGNUP)
@@ -170,10 +164,13 @@ pub async fn gmail_login(
         (Some(user_id), OAUTH_FLOW_CONNECT)
     };
 
-    if let Err(e) = store_state(&state, user_id, flow, pool.get_ref()).await {
-        error!(target: "gmail", error = %e, "oauth state store failed");
-        return HttpResponse::InternalServerError().body("Failed to start OAuth flow");
-    }
+    let state = match create_oauth_state(user_id, flow, pool.get_ref()).await {
+        Ok(state) => state,
+        Err(e) => {
+            error!(target: "gmail", error = %e, "oauth state store failed");
+            return HttpResponse::InternalServerError().body("Failed to start OAuth flow");
+        }
+    };
     info!(target: "gmail", signup = is_signup, "gmail oauth flow start");
 
     let url = google_oauth_url(client_id, &redirect_uri, gmail_scope(), &state);
@@ -271,7 +268,6 @@ pub async fn oauth_callback(
     let access_token = res["access_token"].as_str().unwrap_or("");
     let refresh_token = res["refresh_token"].as_str().unwrap_or("");
     let expires_in = res["expires_in"].as_i64().unwrap_or(3600);
-    let expiry = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
 
     let userinfo_response = match HTTP_CLIENT
         .get(crate::external::google_userinfo_url())
@@ -354,32 +350,20 @@ pub async fn oauth_callback(
         }
     }
 
-    let account_id: i32 = match sqlx::query(
-        r#"
-        INSERT INTO email_accounts
-        (email, user_id, access_token, refresh_token, token_expiry, is_active)
-        VALUES ($1,$2,$3,$4,$5,true)
-        ON CONFLICT (user_id, email)
-        DO UPDATE SET
-            access_token = EXCLUDED.access_token,
-            token_expiry = EXCLUDED.token_expiry,
-            refresh_token = COALESCE(
-                NULLIF(EXCLUDED.refresh_token, ''),
-                email_accounts.refresh_token
-            )
-        RETURNING id
-        "#,
+    let account_id = match upsert_connected_email_account(
+        pool.get_ref(),
+        ConnectedEmailAccount {
+            email,
+            user_id,
+            provider: MailProvider::Google,
+            access_token,
+            refresh_token: Some(refresh_token),
+            expires_in,
+        },
     )
-    .bind(email)
-    .bind(user_id)
-    .bind(access_token)
-    .bind(refresh_token)
-    .bind(expiry)
-    .fetch_one(pool.get_ref())
     .await
     {
-        Ok(row) => {
-            let id: i32 = row.get("id");
+        Ok(id) => {
             info!(
                 "Gmail account connected: {} (user_id={}, account_id={})",
                 email, user_id, id

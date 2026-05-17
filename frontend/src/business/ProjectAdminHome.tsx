@@ -6,10 +6,8 @@ import {
   type AdminOrganization,
 } from "../api/admin";
 import { useAuth } from "../auth/useAuth";
+import { slugify } from "../auth/accountHome";
 import "./projectAdmin.css";
-
-// Mirrors the backend slugify(): lowercase, ASCII-alphanumeric only.
-const slugify = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 export default function ProjectAdminHome() {
   const { user, logout } = useAuth();

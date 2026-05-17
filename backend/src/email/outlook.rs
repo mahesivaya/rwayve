@@ -12,6 +12,8 @@ use crate::email::attachments::save_email_attachments;
 use crate::email::oauth::HTTP_CLIENT;
 use crate::email::utils::AttachmentMeta;
 use crate::security::encryption::encrypt;
+use actix_web::HttpResponse;
+use actix_web::http::header;
 use tracing::{debug, instrument, warn};
 
 /// Microsoft Graph scopes requested for every Outlook flow — both sign-in and
@@ -55,8 +57,12 @@ pub struct OutlookTokens {
     pub expires_in: i64,
 }
 
+#[instrument(target = "auth", skip_all)]
 fn token_endpoint() -> String {
-    format!("{}/oauth2/v2.0/token", crate::external::microsoft_authority())
+    format!(
+        "{}/oauth2/v2.0/token",
+        crate::external::microsoft_authority()
+    )
 }
 
 fn parse_token_response(res: Value) -> Result<OutlookTokens> {
@@ -183,8 +189,7 @@ fn first_page_url(last_sync: Option<i64>) -> String {
         "{}/v1.0/me/messages",
         crate::external::microsoft_graph_base()
     );
-    let mut url =
-        reqwest::Url::parse(&base).unwrap_or_else(|e| panic!("valid Graph URL: {e}"));
+    let mut url = reqwest::Url::parse(&base).unwrap_or_else(|e| panic!("valid Graph URL: {e}"));
     {
         let mut q = url.query_pairs_mut();
         q.append_pair(
@@ -200,6 +205,29 @@ fn first_page_url(last_sync: Option<i64>) -> String {
                 .to_string();
             q.append_pair("$filter", &format!("receivedDateTime ge {since}"));
         }
+    }
+    url.to_string()
+}
+
+fn first_before_page_url(before_timestamp: i64, limit: usize) -> String {
+    let base = format!(
+        "{}/v1.0/me/messages",
+        crate::external::microsoft_graph_base()
+    );
+    let mut url = reqwest::Url::parse(&base).unwrap_or_else(|e| panic!("valid Graph URL: {e}"));
+    {
+        let before = chrono::DateTime::from_timestamp(before_timestamp, 0)
+            .unwrap_or_else(chrono::Utc::now)
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        let mut q = url.query_pairs_mut();
+        q.append_pair(
+            "$select",
+            "id,subject,from,toRecipients,receivedDateTime,hasAttachments,body",
+        );
+        q.append_pair("$orderby", "receivedDateTime desc");
+        q.append_pair("$top", &limit.min(OUTLOOK_PAGE_SIZE).to_string());
+        q.append_pair("$filter", &format!("receivedDateTime lt {before}"));
     }
     url.to_string()
 }
@@ -357,7 +385,9 @@ pub async fn sync_outlook_account(
             } else {
                 body.trim()
             };
-            return Err(anyhow::anyhow!("Graph /me/messages returned {status}: {detail}"));
+            return Err(anyhow::anyhow!(
+                "Graph /me/messages returned {status}: {detail}"
+            ));
         }
 
         let res: Value = resp.json().await?;
@@ -391,6 +421,63 @@ pub async fn sync_outlook_account(
         .await?;
 
     debug!(target: "worker", account_id, synced = total, "outlook sync done");
+    Ok(())
+}
+
+/// Pulls one older page for an Outlook mailbox. This mirrors Gmail's
+/// `sync_account_before` path and is triggered when the UI asks for another
+/// page before the oldest currently loaded message.
+#[instrument(target = "worker", skip(pool, access_token), fields(account_id))]
+pub async fn sync_outlook_account_before(
+    pool: &PgPool,
+    account_id: i32,
+    access_token: &str,
+    before_timestamp: i64,
+    limit: usize,
+) -> Result<()> {
+    let mut next = Some(first_before_page_url(before_timestamp, limit));
+    let mut total = 0usize;
+
+    while let Some(url) = next.take() {
+        let resp = HTTP_CLIENT
+            .get(&url)
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "Graph older /me/messages returned {status}: {}",
+                body.trim()
+            ));
+        }
+
+        let res: Value = resp.json().await?;
+        if let Some(err) = res.get("error") {
+            return Err(anyhow::anyhow!("Graph older messages error: {err}"));
+        }
+
+        let messages: Vec<OutlookMessage> = res["value"]
+            .as_array()
+            .map(|arr| arr.iter().filter_map(parse_message).collect())
+            .unwrap_or_default();
+
+        if messages.is_empty() {
+            break;
+        }
+
+        total += messages.len();
+        upsert_messages(pool, account_id, access_token, &messages).await?;
+
+        if total >= limit {
+            break;
+        }
+        next = res["@odata.nextLink"].as_str().map(str::to_string);
+    }
+
+    debug!(target: "worker", account_id, synced = total, before_timestamp, "older outlook sync done");
     Ok(())
 }
 
@@ -484,4 +571,43 @@ pub async fn fetch_outlook_attachment_bytes(
         .map_err(|e| anyhow::anyhow!("attachment base64 decode failed: {e}"))?;
     let content_type = res["contentType"].as_str().map(str::to_string);
     Ok((content_type, bytes))
+}
+
+/// A stored Outlook attachment to download — bundles the values clippy's
+/// argument-count cap would otherwise reject as a long parameter list.
+pub struct OutlookAttachmentRef<'a> {
+    pub message_id: &'a str,
+    pub attachment_id: &'a str,
+    pub filename: &'a str,
+    pub mime_type: Option<String>,
+}
+
+/// Downloads an Outlook attachment's bytes via Microsoft Graph. The caller
+/// refreshes and persists the mailbox token before calling this helper.
+pub async fn download_outlook_attachment(
+    access_token: &str,
+    att: OutlookAttachmentRef<'_>,
+) -> HttpResponse {
+    let (content_type, bytes) =
+        match fetch_outlook_attachment_bytes(access_token, att.message_id, att.attachment_id).await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                warn!(target: "worker", error = ?e, "outlook attachment download failed");
+                return HttpResponse::BadGateway().finish();
+            }
+        };
+
+    HttpResponse::Ok()
+        .insert_header((
+            header::CONTENT_TYPE,
+            att.mime_type
+                .or(content_type)
+                .unwrap_or_else(|| "application/octet-stream".to_string()),
+        ))
+        .insert_header((
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", att.filename.replace('"', "")),
+        ))
+        .body(bytes)
 }

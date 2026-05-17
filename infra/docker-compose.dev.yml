@@ -64,11 +64,12 @@ services:
       redis:
         condition: service_healthy
     env_file:
+      - ../.env.development
       - ../backend/.env.development
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: api
-      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_dev
+      DATABASE_URL: postgres://${POSTGRES_USER:-wayve_user}:${POSTGRES_PASSWORD:-wayve_password}@postgres_db:5432/${POSTGRES_DB:-wayve_dev}
       REDIS_URL: redis://redis:6379
       GOOGLE_CLIENT_SECRET_PATH: /app/client_secret.json
       SMTP_HOST: mailhog
@@ -98,11 +99,12 @@ services:
       backend:
         condition: service_started
     env_file:
+      - ../.env.development
       - ../backend/.env.development
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: email-sync-worker
-      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_dev
+      DATABASE_URL: postgres://${POSTGRES_USER:-wayve_user}:${POSTGRES_PASSWORD:-wayve_password}@postgres_db:5432/${POSTGRES_DB:-wayve_dev}
       REDIS_URL: redis://redis:6379
       GOOGLE_CLIENT_SECRET_PATH: /app/client_secret.json
       SMTP_HOST: mailhog
@@ -123,11 +125,12 @@ services:
       backend:
         condition: service_started
     env_file:
+      - ../.env.development
       - ../backend/.env.development
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: email-body-worker
-      DATABASE_URL: postgres://wayve_user:wayve_password@postgres_db:5432/wayve_dev
+      DATABASE_URL: postgres://${POSTGRES_USER:-wayve_user}:${POSTGRES_PASSWORD:-wayve_password}@postgres_db:5432/${POSTGRES_DB:-wayve_dev}
       REDIS_URL: redis://redis:6379
       GOOGLE_CLIENT_SECRET_PATH: /app/client_secret.json
       SMTP_HOST: mailhog

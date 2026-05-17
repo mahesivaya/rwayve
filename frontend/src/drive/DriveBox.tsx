@@ -47,8 +47,14 @@ export default function Drive() {
 
   useEffect(() => {
     if (user?.id) {
-      void fetchFiles();
+      const timer = window.setTimeout(() => {
+        void fetchFiles();
+      }, 0);
+
+      return () => window.clearTimeout(timer);
     }
+
+    return undefined;
   }, [fetchFiles, user?.id]);
 
   //

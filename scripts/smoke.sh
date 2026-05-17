@@ -36,9 +36,9 @@ fail() { printf "${RED}  ✗${NC} %s\n" "$*" >&2; exit 1; }
 
 # Pick the right compose subcommand for the host.
 if docker compose version >/dev/null 2>&1; then
-  COMPOSE=(docker compose -f "$COMPOSE_FILE")
+  COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 elif command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE=(docker-compose -f "$COMPOSE_FILE")
+  COMPOSE=(docker-compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 else
   fail "neither 'docker compose' nor 'docker-compose' available"
 fi
@@ -77,18 +77,18 @@ fi
 log "building + starting stack"
 "${COMPOSE[@]}" up -d --build
 
-log "waiting for backend to respond at $API_HOST (up to ${HEALTH_TIMEOUT_S}s)"
+log "waiting for backend + database to be ready at $API_HOST (up to ${HEALTH_TIMEOUT_S}s)"
 deadline=$(( $(date +%s) + HEALTH_TIMEOUT_S ))
 while :; do
-  status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$API_HOST/api/me" || echo "000")
-  if [[ "$status" == "401" ]]; then
-    ok "backend up (got expected 401 from /api/me)"
+  status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$API_HOST/api/ready" || echo "000")
+  if [[ "$status" == "200" ]]; then
+    ok "backend + database ready"
     break
   fi
   if (( $(date +%s) >= deadline )); then
     log "backend logs (last 100 lines):"
     "${COMPOSE[@]}" logs --tail=100 backend || true
-    fail "backend did not become healthy within ${HEALTH_TIMEOUT_S}s (last status=$status)"
+    fail "backend/database did not become ready within ${HEALTH_TIMEOUT_S}s (last status=$status)"
   fi
   sleep 2
 done
@@ -131,6 +131,16 @@ assert_status 200 "GET /api/ready returns 200 (Postgres + Redis reachable)" "$AP
 # Auth gating
 assert_status 401 "GET /api/me without token returns 401" "$API_HOST/api/me"
 
+# Security Probes: Administrative routes
+assert_status 401 "GET /api/admin/organizations without token returns 401" "$API_HOST/api/admin/organizations"
+assert_status 401 "GET /api/users/all without token returns 401" "$API_HOST/api/users/all"
+
+# Security Probes: Mailbox & Files
+assert_status 401 "GET /api/emails without token returns 401" "$API_HOST/api/emails"
+assert_status 401 "GET /api/files without token returns 401" "$API_HOST/api/files"
+assert_status 401 "GET /api/email-attachments/1/download (Outlook/Gmail) requires auth" "$API_HOST/api/email-attachments/1/download"
+assert_status 401 "POST /api/outlook/connect-url (Outlook) requires auth" -X POST "$API_HOST/api/outlook/connect-url"
+
 # Login with invalid creds
 assert_status 401 "POST /api/login with bad creds returns 401" \
   -X POST -H "Content-Type: application/json" \
@@ -148,6 +158,17 @@ assert_status 400 "POST /api/reset-password with bogus token returns 400" \
   -X POST -H "Content-Type: application/json" \
   --data '{"token":"no-such-token","new_password":"longenough"}' \
   "$API_HOST/api/reset-password"
+
+# Outlook OAuth Probes
+log "probing Outlook OAuth routes"
+# Probing public login redirects. This will return 302 if configured, or 500 if env vars are missing.
+# Either way, getting a response verifies the route is registered and responding.
+outlook_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$API_HOST/outlook/login?mode=signup" || echo "000")
+if [[ "$outlook_status" =~ ^(302|500)$ ]]; then
+  ok "GET /outlook/login?mode=signup is reachable (got $outlook_status)"
+else
+  fail "GET /outlook/login?mode=signup: expected 302 or 500, got $outlook_status"
+fi
 
 # Frontend through nginx
 if curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$WEB_HOST/" | grep -qE '^(200|301|302)$'; then

@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useLocation } from "react-router-dom";
-import { lazy, Suspense, useMemo } from "react";
+import { lazy, Suspense } from "react";
 
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -34,10 +34,7 @@ export default function App() {
   const { user } = useAuth();
   const location = useLocation();
 
-  const accountHome = useMemo(
-    () => homePathForUser(user).toLowerCase(),
-    [user?.account_type, user?.organization_id, user?.organization_slug]
-  );
+  const accountHome = homePathForUser(user).toLowerCase();
 
   const accountType = normalizeAccountType(user?.account_type);
 

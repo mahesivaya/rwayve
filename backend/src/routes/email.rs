@@ -1,6 +1,8 @@
 use crate::cache::Cache;
-use crate::email::oauth::{load_google_secrets, refresh_access_token};
-use crate::email::sync::sync_account_before;
+use crate::email::oauth::HTTP_CLIENT;
+use crate::email::outlook::{OutlookAttachmentRef, download_outlook_attachment};
+use crate::email::provider::{MailProvider, MailProviderClients, refresh_and_persist_email_token};
+use crate::email::sync_older::sync_older_page;
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
 
@@ -332,26 +334,44 @@ pub async fn download_email_attachment(
         Some(value) => value,
         None => {
             return HttpResponse::Conflict().json(serde_json::json!({
-                "error": "Reconnect Gmail account to download this attachment"
+                "error": "Reconnect your email account to download this attachment"
             }));
         }
     };
 
-    let provider: String = row
+    let provider = row
         .try_get("provider")
-        .unwrap_or_else(|_| "google".to_string());
+        .map(|value: String| MailProvider::from_db(&value))
+        .unwrap_or(MailProvider::Google);
     let gmail_id: String = row.get("gmail_id");
     let gmail_attachment_id: String = row.get("attachment_id");
     let filename: String = row.get("filename");
     let mime_type: Option<String> = row.get("mime_type");
 
+    let token = match refresh_and_persist_email_token(
+        pool.get_ref(),
+        account_id,
+        provider,
+        &refresh_token,
+        MailProviderClients::for_provider(provider),
+    )
+    .await
+    {
+        Ok(token) => token,
+        Err(e) => {
+            error!(target: "gmail", account_id, provider = provider.as_db(), error = ?e, "attachment token refresh failed");
+            if e.to_string().contains("not configured") {
+                return HttpResponse::InternalServerError().finish();
+            }
+            return HttpResponse::BadGateway().finish();
+        }
+    };
+
     // Outlook attachments come from Microsoft Graph; Gmail continues below.
-    if provider == "microsoft" {
+    if provider.is_microsoft() {
         return download_outlook_attachment(
-            pool.get_ref(),
+            &token.access_token,
             OutlookAttachmentRef {
-                account_id,
-                refresh_token: &refresh_token,
                 message_id: &gmail_id,
                 attachment_id: &gmail_attachment_id,
                 filename: &filename,
@@ -361,17 +381,6 @@ pub async fn download_email_attachment(
         .await;
     }
 
-    let secrets = load_google_secrets();
-    let client_id = secrets["web"]["client_id"].as_str().unwrap_or("");
-    let client_secret = secrets["web"]["client_secret"].as_str().unwrap_or("");
-    let token = match refresh_access_token(client_id, client_secret, &refresh_token).await {
-        Ok(token) => token,
-        Err(e) => {
-            error!(target: "gmail", account_id, error = ?e, "attachment token refresh failed");
-            return HttpResponse::BadGateway().finish();
-        }
-    };
-
     let url = format!(
         "{}/gmail/v1/users/me/messages/{}/attachments/{}",
         crate::external::gmail_api_base(),
@@ -379,9 +388,9 @@ pub async fn download_email_attachment(
         gmail_attachment_id
     );
 
-    let res: Value = match crate::email::oauth::HTTP_CLIENT
+    let res: Value = match HTTP_CLIENT
         .get(&url)
-        .bearer_auth(token)
+        .bearer_auth(&token.access_token)
         .send()
         .await
     {
@@ -417,122 +426,4 @@ pub async fn download_email_attachment(
             format!("attachment; filename=\"{}\"", filename.replace('"', "")),
         ))
         .body(bytes)
-}
-
-/// A stored Outlook attachment to download — bundles the values clippy's
-/// argument-count cap would otherwise reject as a long parameter list.
-struct OutlookAttachmentRef<'a> {
-    account_id: i32,
-    refresh_token: &'a str,
-    message_id: &'a str,
-    attachment_id: &'a str,
-    filename: &'a str,
-    mime_type: Option<String>,
-}
-
-/// Downloads an Outlook attachment's bytes via Microsoft Graph, refreshing the
-/// mailbox token first (and persisting the rotated refresh token).
-async fn download_outlook_attachment(
-    pool: &PgPool,
-    att: OutlookAttachmentRef<'_>,
-) -> HttpResponse {
-    let creds = match crate::email::outlook::outlook_credentials() {
-        Some(c) => c,
-        None => {
-            error!(target: "gmail", "Outlook OAuth is not configured");
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-
-    let tokens = match crate::email::outlook::refresh_outlook_token(
-        &creds,
-        att.refresh_token,
-        crate::email::outlook::OUTLOOK_MAIL_SCOPE,
-    )
-    .await
-    {
-        Ok(t) => t,
-        Err(e) => {
-            error!(target: "gmail", account_id = att.account_id, error = ?e, "outlook attachment token refresh failed");
-            return HttpResponse::BadGateway().finish();
-        }
-    };
-
-    let stored_refresh = tokens.refresh_token.as_deref().unwrap_or(att.refresh_token);
-    let _ = sqlx::query(
-        "UPDATE email_accounts SET access_token = $1, refresh_token = $2 WHERE id = $3",
-    )
-    .bind(&tokens.access_token)
-    .bind(stored_refresh)
-    .bind(att.account_id)
-    .execute(pool)
-    .await;
-
-    let (content_type, bytes) = match crate::email::outlook::fetch_outlook_attachment_bytes(
-        &tokens.access_token,
-        att.message_id,
-        att.attachment_id,
-    )
-    .await
-    {
-        Ok(result) => result,
-        Err(e) => {
-            error!(target: "gmail", account_id = att.account_id, error = ?e, "outlook attachment download failed");
-            return HttpResponse::BadGateway().finish();
-        }
-    };
-
-    HttpResponse::Ok()
-        .insert_header((
-            header::CONTENT_TYPE,
-            att.mime_type
-                .or(content_type)
-                .unwrap_or_else(|| "application/octet-stream".to_string()),
-        ))
-        .insert_header((
-            header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", att.filename.replace('"', "")),
-        ))
-        .body(bytes)
-}
-
-async fn sync_older_page(
-    pool: &PgPool,
-    user_id: i32,
-    account_id: Option<i32>,
-    before_timestamp: i64,
-    limit: usize,
-) -> anyhow::Result<()> {
-    let mut qb = QueryBuilder::new("SELECT id, refresh_token FROM email_accounts WHERE user_id = ");
-    qb.push_bind(user_id);
-
-    if let Some(account_id) = account_id {
-        qb.push(" AND id = ");
-        qb.push_bind(account_id);
-    }
-
-    let rows = qb.build().fetch_all(pool).await?;
-    if rows.is_empty() {
-        return Ok(());
-    }
-
-    let secrets = load_google_secrets();
-    let client_id = secrets["web"]["client_id"].as_str().unwrap_or("");
-    let client_secret = secrets["web"]["client_secret"].as_str().unwrap_or("");
-
-    for row in rows {
-        let account_id: i32 = row.get("id");
-        let refresh_token: String = row.get("refresh_token");
-        let token = refresh_access_token(client_id, client_secret, &refresh_token).await?;
-
-        let _ = sqlx::query("UPDATE email_accounts SET access_token = $1 WHERE id = $2")
-            .bind(&token)
-            .bind(account_id)
-            .execute(pool)
-            .await;
-
-        sync_account_before(pool, account_id, &token, before_timestamp, limit).await?;
-    }
-
-    Ok(())
 }

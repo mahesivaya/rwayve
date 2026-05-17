@@ -1,3 +1,4 @@
+pub mod account;
 pub mod attachments;
 mod body_handlers;
 pub mod body_worker;
@@ -7,9 +8,11 @@ mod oauth_flow;
 pub mod outlook;
 mod outlook_oauth;
 mod profile;
+pub mod provider;
 mod send;
 pub mod sender;
 pub mod sync;
+pub mod sync_older;
 pub mod utils;
 
 use actix_web::web;
@@ -31,7 +34,10 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
 pub fn public_routes(cfg: &mut web::ServiceConfig) {
     cfg.route("/gmail/login", web::get().to(handler::gmail_login))
         .route("/oauth/callback", web::get().to(handler::oauth_callback))
-        .route("/outlook/login", web::get().to(outlook_oauth::outlook_login))
+        .route(
+            "/outlook/login",
+            web::get().to(outlook_oauth::outlook_login),
+        )
         .route(
             "/oauth/outlook/callback",
             web::get().to(outlook_oauth::outlook_callback),

@@ -1,106 +1,24 @@
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { SearchContext } from "../search/SearchContext";
+import { Suspense, useState } from "react";
+import SearchProvider from "../search/SearchProvider";
+import SearchBar from "../search/SearchBar";
+import ProfileMenu from "./ProfileMenu";
+import { SPLIT_APPS, type AppKey } from "./LayoutConfig";
 import "./Layout.css";
 
-// Lazy-loaded so the split pane doesn't bloat the initial bundle and only
-// pays for what the user actually opens in the secondary tab.
-const HomeView = lazy(() => import("../home/Home"));
-const EmailsView = lazy(() => import("../emails/Emails"));
-const ChatView = lazy(() => import("../chat/Chat"));
-const CallView = lazy(() => import("../call/Call"));
-const SchedulerView = lazy(() => import("../scheduler/Scheduler"));
-const DriveView = lazy(() => import("../drive/DriveBox"));
-const NotesView = lazy(() => import("../notes/Notes"));
-const TasksView = lazy(() => import("../tasks/Tasks"));
-const AIChatView = lazy(() => import("../aichat/AIChat"));
-
-type AppKey =
-  | "home"
-  | "emails"
-  | "chat"
-  | "call"
-  | "scheduler"
-  | "drive"
-  | "notes"
-  | "tasks"
-  | "aichat";
-
-const SPLIT_APPS = [
-  { key: "home" as AppKey, label: "Home", path: "/", icon: "🏠", Comp: HomeView },
-  { key: "emails" as AppKey, label: "Emails", path: "/emails", icon: "📧", Comp: EmailsView },
-  { key: "chat" as AppKey, label: "Chat", path: "/chat", icon: "💬", Comp: ChatView },
-  { key: "call" as AppKey, label: "Call", path: "/call", icon: "📞", Comp: CallView },
-  { key: "scheduler" as AppKey, label: "Scheduler", path: "/scheduler", icon: "📅", Comp: SchedulerView },
-  { key: "drive" as AppKey, label: "Files", path: "/drive", icon: "📁", Comp: DriveView },
-  { key: "notes" as AppKey, label: "Notes", path: "/notes", icon: "📝", Comp: NotesView },
-  { key: "tasks" as AppKey, label: "Tasks", path: "/tasks", icon: "☑", Comp: TasksView },
-  { key: "aichat" as AppKey, label: "AI Chat", path: "/aichat", icon: "✨", Comp: AIChatView },
-];
-
-const SEARCH_LABELS: Record<string, string> = {
-  "/home": "home",
-  "/emails": "all emails",
-  "/email-files": "email files",
-  "/chat": "users and messages",
-  "/call": "calls",
-  "/scheduler": "meetings",
-  "/drive": "files",
-  "/notes": "notes",
-  "/tasks": "tasks",
-  "/aichat": "AI chat",
-  "/profile": "profile",
-  "/settings": "settings",
-};
-
-const HIDE_SEARCH_PATHS = ["/scheduler"];
-
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Max 2 panes: the URL-driven main pane (left) plus one optional split.
-  const [splitOpen, setSplitOpen] = useState(false);
-  // Right pane starts empty — the user picks an app from the top header,
-  // and the click is intercepted to fill this pane instead of navigating.
-  const [splitView, setSplitView] = useState<AppKey | null>(null);
-  // When split is open, this decides which pane the next header-link click
-  // affects. "left" → normal URL navigation (Outlet updates). "right" →
-  // preventDefault and set splitView. Default to "right" so opening split
-  // and clicking an app feels like adding a second view.
-  const [splitTarget, setSplitTarget] = useState<"left" | "right">("right");
-  const [searchQuery, setSearchQuery] = useState("");
-
-  // Profile dropdown (replaces the standalone Logout button).
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close the dropdown on any click outside its container.
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDocClick = (e: MouseEvent) => {
-      const target = e.target;
-      if (
-        menuRef.current &&
-        target instanceof Node &&
-        !menuRef.current.contains(target)
-      ) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [menuOpen]);
-
-  // Hooks must run on every render in a stable order — keep useMemo above
-  // the `!user` early return.
-  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
-  const searchValue = useMemo(
-    () => ({ searchQuery, normalizedSearchQuery, setSearchQuery }),
-    [searchQuery, normalizedSearchQuery]
-  );
+  // Three-pane state management
+  const [middleView, setMiddleView] = useState<AppKey | null>(null);
+  const [rightView, setRightView] = useState<AppKey | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  
+  // Decides where the next header-link click lands
+  const [splitTarget, setSplitTarget] = useState<"left" | "middle" | "right">("middle");
 
   if (!user) {
     return (
@@ -108,31 +26,35 @@ export default function Layout() {
     );
   }
 
-  const splitApp = SPLIT_APPS.find((a) => a.key === splitView) ?? null;
-  const SplitComp = splitApp?.Comp ?? null;
-  const splitLabel = splitApp?.label ?? null;
-  const searchLabel = SEARCH_LABELS[location.pathname] ?? "this page";
+  const middleApp = SPLIT_APPS.find((a) => a.key === middleView) ?? null;
+  const MiddleComp = middleApp?.Comp ?? null;
+  const middleLabel = middleApp?.label ?? null;
+
+  const rightApp = SPLIT_APPS.find((a) => a.key === rightView) ?? null;
+  const RightComp = rightApp?.Comp ?? null;
+  const rightLabel = rightApp?.label ?? null;
 
   // When the split is open, header link clicks target the right pane instead
   // of navigating the URL. When closed, the link behaves normally.
   const navItem = (path: string, app: AppKey, label: string) => {
     const isLeftActive = location.pathname === path;
-    const isRightActive = splitOpen && splitView === app;
+    const isMiddleActive = middleView === app;
+    const isRightActive = rightView === app;
+
     return (
       <Link
         to={path}
         className={[
           isLeftActive ? "active" : "",
-          isRightActive ? "active-split" : "",
+          isMiddleActive || isRightActive ? "active-split" : "",
         ].filter(Boolean).join(" ")}
         onClick={(e: { preventDefault: () => void }) => {
-          // Split open + target=right → load into right pane (no URL change).
-          // Split open + target=left  → fall through to normal Link nav so
-          // the URL updates and Outlet re-renders the left pane.
-          // Split closed → normal Link nav.
-          if (splitOpen && splitTarget === "right") {
+          if (splitTarget === "middle") {
             e.preventDefault();
-            setSplitView(app);
+            setMiddleView(app);
+          } else if (splitTarget === "right") {
+            e.preventDefault();
+            setRightView(app);
           }
         }}
       >
@@ -141,30 +63,23 @@ export default function Layout() {
     );
   };
 
-  const splitToggleButton = (
-    <button
-      type="button"
-      className={`split-toggle-btn ${splitOpen ? "active" : ""}`}
-      onClick={() => {
-        setSplitOpen((s) => !s);
-        if (splitOpen) setSplitView(null);
-      }}
-      title={splitOpen ? "Close split view" : "Open split view"}
-      aria-label={splitOpen ? "Close split view" : "Open split view"}
-    >
-      <span className="split-btn-icon" aria-hidden="true">
-        <span className="split-btn-pane" />
-        <span className="split-btn-divider">◫</span>
-        <span className="split-btn-pane" />
-      </span>
-    </button>
-  );
-
   return (
-    <div className="app">
+    <div className={`app ${!sidebarOpen ? "sidebar-collapsed" : ""}`}>
       {/* 🔝 HEADER */}
       <div className="header">
-        <div className="logo" onClick={() => navigate("/")}>Wayve 🚀</div>
+        <div className="header-brand">
+          {!sidebarOpen && (
+            <button
+              className="header-sidebar-toggle"
+              onClick={() => setSidebarOpen(true)}
+              title="Expand sidebar"
+              aria-label="Expand sidebar"
+            >
+              »
+            </button>
+          )}
+          <div className="logo" onClick={() => navigate("/")}>Wayve 🚀</div>
+        </div>
 
         <div className="nav">
           {navItem("/", "home", "Home")}
@@ -179,126 +94,57 @@ export default function Layout() {
         </div>
 
         <div className="actions">
-          {splitOpen && (
-            <div className="split-target" role="group" aria-label="Header click target">
-              <button
-                type="button"
-                className={`split-target-btn ${splitTarget === "left" ? "active" : ""}`}
-                onClick={() => setSplitTarget("left")}
-                title="Next click loads into the LEFT pane (URL)"
-              >
-                ← Left
-              </button>
-              <button
-                type="button"
-                className={`split-target-btn ${splitTarget === "right" ? "active" : ""}`}
-                onClick={() => setSplitTarget("right")}
-                title="Next click loads into the RIGHT pane"
-              >
-                Right →
-              </button>
-            </div>
-          )}
-          {splitOpen && splitView && (
-            <span className="split-hint" title={`Right pane: ${splitLabel}`}>
-              ↗ {splitLabel}
-            </span>
-          )}
-
-          {splitToggleButton}
-
-          <div className="profile-menu" ref={menuRef}>
+          <div className="split-target" role="group" aria-label="Header click target">
             <button
-              className="profile-trigger"
-              onClick={() => setMenuOpen((o: boolean) => !o)}
-              aria-haspopup="true"
-              aria-expanded={menuOpen}
-              title={user.email}
+              type="button"
+              className={`split-target-btn ${splitTarget === "left" ? "active" : ""}`}
+              onClick={() => setSplitTarget("left")}
+              title="Target: URL (Left)"
             >
-              <span className="profile-avatar">
-                {(user.email?.[0] ?? "?").toUpperCase()}
-              </span>
-              <span className="profile-trigger-caret">▾</span>
+              L
             </button>
-
-            {menuOpen && (
-              <div className="profile-dropdown" role="menu">
-                <div className="profile-dropdown-header">
-                  <div className="profile-dropdown-name">{user.email}</div>
-                </div>
-
-                <button
-                  className="profile-dropdown-item"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate("/profile");
-                  }}
-                >
-                  <span className="profile-dropdown-icon">👤</span>
-                  My Profile
-                </button>
-
-                <button
-                  className="profile-dropdown-item"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate("/settings");
-                  }}
-                >
-                  <span className="profile-dropdown-icon">⚙️</span>
-                  Settings & Privacy
-                </button>
-
-                <div className="profile-dropdown-divider" />
-
-                <button
-                  className="profile-dropdown-item profile-dropdown-logout"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    logout();
-                    navigate("/login");
-                  }}
-                >
-                  <span className="profile-dropdown-icon">⏻</span>
-                  Log out
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              className={`split-target-btn ${splitTarget === "middle" ? "active" : ""}`}
+              onClick={() => setSplitTarget("middle")}
+              title="Target: Middle Pane"
+            >
+              M
+            </button>
+            <button
+              type="button"
+              className={`split-target-btn ${splitTarget === "right" ? "active" : ""}`}
+              onClick={() => setSplitTarget("right")}
+              title="Target: Right Pane"
+            >
+              R
+            </button>
           </div>
+
+          <div className="split-status">
+            {middleView && <span className="split-hint">M: {middleLabel}</span>}
+            {rightView && <span className="split-hint">R: {rightLabel}</span>}
+          </div>
+
+          <ProfileMenu />
         </div>
       </div>
 
-      <SearchContext.Provider value={searchValue}>
-      {!HIDE_SEARCH_PATHS.includes(location.pathname) && (
-        <div className="global-search-row">
-          <div className="global-search-box">
-            <span className="global-search-icon" aria-hidden="true">⌕</span>
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={`Search ${searchLabel}`}
-              aria-label={`Search ${searchLabel}`}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                className="global-search-clear"
-                onClick={() => setSearchQuery("")}
-                title="Clear search"
-                aria-label="Clear search"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <SearchProvider>
+        <SearchBar />
 
       {/* 🔥 BODY */}
       <div className="body">
         {/* LEFT ICON BAR */}
         <div className="icon-sidebar">
+          <button
+            className="sidebar-collapse-btn"
+            onClick={() => setSidebarOpen(false)}
+            title="Collapse sidebar"
+            aria-label="Collapse sidebar"
+          >
+            «
+          </button>
           <Link to="/emails">📧</Link>
           <Link to="/chat">💬</Link>
           <Link to="/call">📞</Link>
@@ -309,69 +155,48 @@ export default function Layout() {
           <Link to="/aichat">✨</Link>
 
           <div className="icon-sidebar-spacer" />
-
-          <button
-            className={`icon-split-btn ${splitOpen ? "active" : ""}`}
-            onClick={() => {
-              setSplitOpen((s) => !s);
-              if (splitOpen) setSplitView(null);
-            }}
-            title={splitOpen ? "Close split view" : "Open split view"}
-            aria-label={splitOpen ? "Close split view" : "Open split view"}
-          >
-            <span className="split-btn-icon" aria-hidden="true">
-              <span className="split-btn-pane" />
-              <span className="split-btn-divider">◫</span>
-              <span className="split-btn-pane" />
-            </span>
-          </button>
         </div>
 
         {/* MAIN CONTENT */}
-        <div className={`content ${splitOpen ? "split" : ""}`}>
+        <div className={`content`}>
           <div className="split-pane left">
             <Outlet />
           </div>
 
-          {splitOpen && (
+          {middleView && (
+            <div className="split-pane center">
+              <div className="split-pane-toolbar">
+                <span className="split-pane-title">{middleLabel}</span>
+                <button className="split-close-btn" onClick={() => setMiddleView(null)}>✕</button>
+              </div>
+              <div className="split-pane-body">
+                {MiddleComp && (
+                  <Suspense fallback={<div className="split-loading">Loading…</div>}>
+                    <MiddleComp />
+                  </Suspense>
+                )}
+              </div>
+            </div>
+          )}
+
+          {rightView && (
             <div className="split-pane right">
               <div className="split-pane-toolbar">
-                <span className="split-pane-title">
-                  {splitLabel ? `${splitLabel} tab` : "Split tab"}
-                </span>
-                <button
-                  className="split-close-btn"
-                  onClick={() => {
-                    setSplitOpen(false);
-                    setSplitView(null);
-                  }}
-                  title="Close extra tab"
-                  aria-label="Close extra tab"
-                >
-                  ✕ Close tab
-                </button>
+                <span className="split-pane-title">{rightLabel}</span>
+                <button className="split-close-btn" onClick={() => setRightView(null)}>✕</button>
               </div>
-
               <div className="split-pane-body">
-                {SplitComp ? (
+                {RightComp && (
                   <Suspense fallback={<div className="split-loading">Loading…</div>}>
-                    <SplitComp />
+                    <RightComp />
                   </Suspense>
-                ) : (
-                  <div className="split-empty">
-                    <div className="split-empty-icon">◫</div>
-                    <div className="split-empty-title">Split view ready</div>
-                    <div className="split-empty-hint">
-                      Pick an app from the top header to load it here.
-                    </div>
-                  </div>
                 )}
               </div>
             </div>
           )}
         </div>
       </div>
-      </SearchContext.Provider>
+      </SearchProvider>
     </div>
   );
 }

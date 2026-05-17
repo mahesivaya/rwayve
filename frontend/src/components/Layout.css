@@ -28,6 +28,11 @@
   border-bottom: 1px solid #e5e7eb;
 }
 
+.header-brand {
+  display: flex;
+  align-items: center;
+}
+
 /* =============================
    🧠 LOGO
 ============================== */
@@ -81,6 +86,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* Container for the active split labels (e.g. M: Chat, R: Emails) */
+.split-status {
+  display: flex;
+  gap: 8px;
 }
 
 .split-hint {
@@ -174,6 +185,24 @@
 
 .logout-btn:hover {
   background: #dc2626;
+}
+
+.header-sidebar-toggle {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  font-size: 18px;
+  cursor: pointer;
+  margin-right: 12px;
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.header-sidebar-toggle:hover {
+  background: #e2e8f0;
 }
 
 /* =============================
@@ -371,10 +400,41 @@
 
   padding-top: 12px;
   padding-bottom: 12px;
+
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sidebar-collapsed .icon-sidebar {
+  width: 0;
+  border-right-color: transparent;
+}
+
+.sidebar-collapse-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  color: #64748b;
+  cursor: pointer;
+  padding: 6px;
+  margin-bottom: 5px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-collapse-btn:hover {
+  background: #e2e8f0;
+  color: #2563eb;
 }
 
 .icon-sidebar-spacer {
   flex: 1;
+}
+
+.sidebar-collapsed .global-search-row {
+  padding-left: 20px;
 }
 
 .icon-split-btn {
@@ -481,8 +541,9 @@
   position: relative;
 }
 
-.content.split .split-pane.left {
-  border-right: 1px solid #e5e7eb;
+/* Automatically add vertical borders between any adjacent active panes */
+.split-pane + .split-pane {
+  border-left: 1px solid #e5e7eb;
 }
 
 /* Body holds the rendered app — it must fill so the embedded page (Emails,

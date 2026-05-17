@@ -13,6 +13,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT;
 -- Google signup support: password is NULL for users who registered via OAuth.
 ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'local';
+
 ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'personal';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
 
