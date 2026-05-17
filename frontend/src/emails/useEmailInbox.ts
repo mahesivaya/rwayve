@@ -5,7 +5,8 @@ import {
   getEmail, 
   getEmailAttachments, 
   getEmailBody, 
-  getAllEmailAttachments 
+  getAllEmailAttachments,
+  deleteEmail as deleteEmailRequest,
 } from "../api/email";
 import { decryptWayveBodyIfNeeded, emailBodyErrorMessage } from "./bodyUtils";
 import { EmailAccount, EmailItem, EmailAttachment } from "./types";
@@ -136,6 +137,13 @@ export function useEmailInbox(user_id: number | undefined, normalizedSearchQuery
     }
   };
 
+  const deleteEmail = async (emailId: number) => {
+    await deleteEmailRequest(emailId);
+    delete emailCache.current[emailId];
+    setEmails((prev) => prev.filter((email) => email.id !== emailId));
+    setSelectedEmail((cur) => (cur?.id === emailId ? null : cur));
+  };
+
   return {
     accounts,
     emails,
@@ -157,5 +165,6 @@ export function useEmailInbox(user_id: number | undefined, normalizedSearchQuery
     loadMore,
     openFiles,
     openEmail,
+    deleteEmail,
   };
 }

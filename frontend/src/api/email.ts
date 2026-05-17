@@ -116,6 +116,12 @@ export const getEmail = async <T = unknown>(id: number) => {
   return res.json() as Promise<T>;
 };
 
+export const deleteEmail = async (id: number) => {
+  await apiFetch(`/api/emails/${id}`, {
+    method: "DELETE",
+  });
+};
+
 export const getEmailBody = async (id: number) => {
   const res = await apiFetch(`/api/emails/${id}/body`);
   return res.json() as Promise<{ body?: string }>;

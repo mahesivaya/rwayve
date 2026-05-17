@@ -22,7 +22,7 @@ export default function Emails() {
     accounts, emails, selectedEmail, setSelectedEmail, activeAccount, 
     setActiveAccount, activeFolder, setActiveFolder, hasMore, loadingMore,
     viewMode, setViewMode, files, filesLoading, filesError, 
-    fetchAccounts, setRefreshTick, loadMore, openFiles, openEmail
+    fetchAccounts, setRefreshTick, loadMore, openFiles, openEmail, deleteEmail
   } = useEmailInbox(user?.id, normalizedSearchQuery);
 
   const [composeOpen, setComposeOpen] = useState(false);
@@ -239,6 +239,7 @@ export default function Emails() {
           viewMode={viewMode}
           isNarrow={useSingleColumn || emailViewLayout === "list"}
           onBack={() => { setViewMode("email"); setSelectedEmail(null); }}
+          onDeleteEmail={deleteEmail}
           files={files}
           filesLoading={filesLoading}
           filesError={filesError}

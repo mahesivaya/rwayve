@@ -19,7 +19,7 @@ use tracing::{debug, instrument, warn};
 /// Microsoft Graph scopes requested for every Outlook flow — both sign-in and
 /// mailbox connect — so a signed-in account can read and send mail right away.
 pub const OUTLOOK_MAIL_SCOPE: &str =
-    "openid profile email offline_access User.Read Mail.Read Mail.Send";
+    "openid profile email offline_access User.Read Mail.Read Mail.ReadWrite Mail.Send";
 
 /// Upper bound on messages pulled in a single sync pass. A first sync grabs
 /// the most recent mail up to this cap; later syncs are incremental (only

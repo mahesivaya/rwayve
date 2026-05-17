@@ -7,7 +7,7 @@ use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
 
 use actix_web::http::header;
-use actix_web::{HttpRequest, HttpResponse, Responder, get, web};
+use actix_web::{HttpRequest, HttpResponse, Responder, delete, get, web};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde_json::Value;
@@ -25,6 +25,11 @@ pub struct EmailQuery {
 
 #[derive(Deserialize)]
 pub struct EmailAttachmentPath {
+    pub id: i32,
+}
+
+#[derive(Deserialize)]
+pub struct EmailDeletePath {
     pub id: i32,
 }
 
@@ -167,6 +172,134 @@ pub async fn get_emails(
         Err(e) => {
             error!(target: "db", user_id, error = ?e, "get_emails query failed");
             HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+#[delete("/emails/{id}")]
+#[instrument(target = "http", skip(req, pool, path))]
+pub async fn delete_email(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    path: web::Path<EmailDeletePath>,
+) -> impl Responder {
+    let user_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let email_id = path.id;
+    let row = match sqlx::query(
+        r#"
+        SELECT e.gmail_id, a.id AS account_id, a.refresh_token, a.provider
+        FROM emails e
+        JOIN email_accounts a ON e.account_id = a.id
+        WHERE e.id = $1 AND a.user_id = $2
+        "#,
+    )
+    .bind(email_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Email not found"
+            }));
+        }
+        Err(e) => {
+            error!(target: "db", user_id, email_id, error = ?e, "delete email lookup failed");
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to find email"
+            }));
+        }
+    };
+
+    let gmail_id: String = row.get("gmail_id");
+    let account_id: i32 = row.get("account_id");
+    let provider = row
+        .try_get::<String, _>("provider")
+        .map(|value| MailProvider::from_db(&value))
+        .unwrap_or(MailProvider::Google);
+    let refresh_token: Option<String> = row.get("refresh_token");
+
+    let Some(refresh_token) = refresh_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return HttpResponse::Unauthorized().json(serde_json::json!({
+            "error": "Reconnect your email account to delete this email"
+        }));
+    };
+
+    let token = match refresh_and_persist_email_token(
+        pool.get_ref(),
+        account_id,
+        provider,
+        refresh_token,
+        MailProviderClients::for_provider(provider),
+    )
+    .await
+    {
+        Ok(token) => token.access_token,
+        Err(e) => {
+            error!(target: "gmail", user_id, account_id, provider = provider.as_db(), error = ?e, "delete email token refresh failed");
+            return HttpResponse::BadGateway().json(serde_json::json!({
+                "error": "Failed to refresh email account credentials"
+            }));
+        }
+    };
+
+    let remote_delete = if provider.is_microsoft() {
+        let mut url = reqwest::Url::parse(&format!(
+            "{}/v1.0/me/messages",
+            crate::external::microsoft_graph_base()
+        ))
+        .unwrap_or_else(|e| panic!("valid Graph URL: {e}"));
+        url.path_segments_mut()
+            .unwrap_or_else(|_| panic!("Graph base must be a base URL"))
+            .push(&gmail_id);
+        HTTP_CLIENT.delete(url).bearer_auth(&token).send().await
+    } else {
+        let url = format!(
+            "{}/gmail/v1/users/me/messages/{}",
+            crate::external::gmail_api_base(),
+            gmail_id
+        );
+        HTTP_CLIENT.delete(url).bearer_auth(&token).send().await
+    };
+
+    match remote_delete {
+        Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 404 => {}
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            error!(target: "gmail", user_id, account_id, provider = provider.as_db(), email_id, %status, body = %body, "remote email delete failed");
+            return HttpResponse::BadGateway().json(serde_json::json!({
+                "error": "Email provider rejected the delete request"
+            }));
+        }
+        Err(e) => {
+            error!(target: "gmail", user_id, account_id, provider = provider.as_db(), email_id, error = ?e, "remote email delete request failed");
+            return HttpResponse::BadGateway().json(serde_json::json!({
+                "error": "Failed to reach email provider"
+            }));
+        }
+    }
+
+    match sqlx::query("DELETE FROM emails WHERE id = $1")
+        .bind(email_id)
+        .execute(pool.get_ref())
+        .await
+    {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "deleted": true })),
+        Err(e) => {
+            error!(target: "db", user_id, email_id, error = ?e, "local email delete failed");
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Deleted remotely, but failed to remove local email"
+            }))
         }
     }
 }

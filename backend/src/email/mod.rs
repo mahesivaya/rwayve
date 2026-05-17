@@ -19,6 +19,7 @@ use actix_web::web;
 
 pub fn routes(cfg: &mut web::ServiceConfig) {
     cfg.service(crate::routes::email::get_emails)
+        .service(crate::routes::email::delete_email)
         .service(crate::routes::email::get_all_email_attachments)
         .service(crate::routes::email::get_email_attachments)
         .service(crate::routes::email::download_email_attachment)
