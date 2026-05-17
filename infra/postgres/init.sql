@@ -302,4 +302,4 @@ CREATE INDEX IF NOT EXISTS idx_meeting_participants_meeting_id
 ON meeting_participants(meeting_id);
 
 CREATE INDEX IF NOT EXISTS idx_email_accounts_user_id
-ON em
+ON email_accounts(user_id);
