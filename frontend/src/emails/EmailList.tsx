@@ -27,7 +27,7 @@ export const EmailList: React.FC<EmailListProps> = ({
           onClick={() => onOpenEmail(email)}
         >
           <div className="email-top">
-            <span className="email-sender">{email.sender}</span>
+            <span className="email-subject">{email.subject || "(No Subject)"}</span>
             <span className="email-row-meta">
               {email.has_attachments && <span className="email-attachment-pin" title="Has attachments">📎</span>}
               <span className="email-time">
@@ -35,8 +35,6 @@ export const EmailList: React.FC<EmailListProps> = ({
               </span>
             </span>
           </div>
-          <div className="email-subject">{email.subject}</div>
-          <div className="email-preview">{email.preview || ""}</div>
         </div>
       ))}
 

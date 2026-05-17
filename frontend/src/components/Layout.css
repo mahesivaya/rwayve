@@ -336,7 +336,7 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 8px 20px 8px 80px;
+  /* padding: 8px 20px 8px 80px; */
   background: #eef4fb;
   border-bottom: 1px solid #dbe3ee;
 }

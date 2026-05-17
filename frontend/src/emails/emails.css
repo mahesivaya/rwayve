@@ -132,12 +132,14 @@ body {
 
 /* ================= EMAIL ITEM ================= */
 .email-item {
-  min-height: 58px;
-  padding: 8px 12px;
+  min-height: 42px;
+  padding: 0 7px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.7);
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s;
   overflow: hidden;
+  display: flex;
+  align-items: center;
 }
 
 /* Hover */
@@ -148,7 +150,9 @@ body {
 /* Active */
 .email-item.active {
   background: #eff6ff;
-  box-shadow: inset 4px 0 0 #1a73e8;
+  min-height: 42px;
+  padding: 0 7px;
+  box-shadow: inset 3px 0 0 #1a73e8;
 }
 
 /* Top row */
@@ -158,18 +162,7 @@ body {
   align-items: center;
   gap: 10px;
   min-width: 0;
-}
-
-/* Sender */
-.email-sender {
-  min-width: 0;
-  flex: 1;
-  font-size: 13px;
-  font-weight: 700;
-  color: #111827;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  width: 100%;
 }
 
 /* Time */
@@ -189,8 +182,10 @@ body {
 
 /* Subject */
 .email-subject {
+  min-width: 0;
+  flex: 1;
   font-size: 13px;
-  margin-top: 5px;
+  font-weight: 700;
   color: #111827;
   overflow: hidden;
   text-overflow: ellipsis;
