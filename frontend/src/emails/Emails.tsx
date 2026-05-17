@@ -16,7 +16,7 @@ const ACCOUNT_NAME_STORAGE_KEY = "rwayve.emailAccountNames";
 
 export default function Emails() {
   const { user } = useAuth();
-  const { normalizedSearchQuery } = useGlobalSearch();
+  const { normalizedSearchQuery, emailViewLayout } = useGlobalSearch();
   
   const {
     accounts, emails, selectedEmail, setSelectedEmail, activeAccount, 
@@ -94,10 +94,17 @@ export default function Emails() {
     document.body.style.userSelect = "none";
   }
 
+  const useSingleColumn = isNarrow;
   const showList =
-    !isNarrow || (selectedEmail === null && viewMode === "email");
+    viewMode === "email" &&
+    (
+      (emailViewLayout === "list" && selectedEmail === null) ||
+      (emailViewLayout === "split" && (!useSingleColumn || selectedEmail === null))
+    );
   const showDetail =
-    !isNarrow || selectedEmail !== null || viewMode === "files";
+    viewMode === "files" ||
+    (emailViewLayout === "list" && selectedEmail !== null) ||
+    (emailViewLayout === "split" && (!useSingleColumn || selectedEmail !== null));
 
   const composeAccountId =
     activeAccount ?? accounts.find((account) => account?.id !== undefined)?.id ?? null;
@@ -169,7 +176,14 @@ export default function Emails() {
 
   // ================= UI =================
   return (
-    <div ref={mainRef} className={`main ${isNarrow ? "narrow" : ""}`}>
+    <div
+      ref={mainRef}
+      className={[
+        "main",
+        isNarrow ? "narrow" : "",
+        emailViewLayout === "list" ? "email-list-view" : "email-split-view",
+      ].filter(Boolean).join(" ")}
+    >
       <EmailSidebar
         accounts={displayedAccounts}
         activeAccount={activeAccount}
@@ -223,7 +237,7 @@ export default function Emails() {
         <EmailDetail
           selectedEmail={selectedEmail}
           viewMode={viewMode}
-          isNarrow={isNarrow}
+          isNarrow={useSingleColumn || emailViewLayout === "list"}
           onBack={() => { setViewMode("email"); setSelectedEmail(null); }}
           files={files}
           filesLoading={filesLoading}

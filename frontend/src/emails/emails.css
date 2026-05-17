@@ -264,6 +264,8 @@ body {
   transition: background 0.12s, border-color 0.12s;
   overflow: hidden;
   display: flex;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
 }
 
@@ -305,21 +307,40 @@ body {
   min-width: 0;
 }
 
-/* Subject */
-.email-subject {
+.email-primary {
   min-width: 0;
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 22px;
   font-size: 13px;
   font-weight: 700;
   color: #111827;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.email-sender-name,
+.email-list-subject {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.email-sender-name {
+  flex: 0 1 auto;
+}
+
+.email-list-subject {
+  display: none;
+  flex: 1;
+  font-weight: 600;
+}
+
 /* Preview (🔥 ADD THIS) */
 .email-preview {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 4px;
   font-size: 12px;
@@ -328,6 +349,44 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.main.email-list-view .email-list {
+  width: auto;
+  flex: 1;
+  border-right: none;
+}
+
+.main.email-list-view .email-item {
+  min-height: 42px;
+  align-items: stretch;
+  padding: 4px 7px;
+}
+
+.main.email-list-view .email-item.active {
+  min-height: 42px;
+  padding: 4px 7px;
+}
+
+.main.email-list-view .email-top {
+  align-items: center;
+}
+
+.main.email-list-view .email-primary {
+  text-align: left;
+  font-size: 13px;
+}
+
+.main.email-list-view .email-list-subject {
+  display: inline-block;
+}
+
+.main.email-list-view .email-preview {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding-right: 56px;
+  font-size: 11px;
 }
 
 .email-attachment-pin {

@@ -336,6 +336,7 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  gap: 10px;
   /* padding: 8px 20px 8px 80px; */
   background: #eef4fb;
   border-bottom: 1px solid #dbe3ee;
@@ -384,6 +385,48 @@
 
 .global-search-clear:hover {
   background: #cbd5e1;
+}
+
+.email-layout-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 12px;
+}
+
+.email-layout-btn {
+  width: 36px;
+  height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.15s;
+}
+
+.email-layout-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.email-layout-btn.active {
+  background: #dbeafe;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.email-layout-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* =============================

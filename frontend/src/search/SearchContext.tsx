@@ -4,6 +4,8 @@ export type SearchContextValue = {
   searchQuery: string;
   normalizedSearchQuery: string;
   setSearchQuery: (value: string) => void;
+  emailViewLayout: "list" | "split";
+  setEmailViewLayout: (value: "list" | "split") => void;
 };
 
 export const SearchContext = createContext<SearchContextValue | null>(null);
@@ -16,6 +18,8 @@ export function useGlobalSearch() {
       searchQuery: "",
       normalizedSearchQuery: "",
       setSearchQuery: () => {},
+      emailViewLayout: "split",
+      setEmailViewLayout: () => {},
     };
   }
 
