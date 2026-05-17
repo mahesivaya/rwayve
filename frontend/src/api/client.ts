@@ -127,7 +127,7 @@ export async function apiFetch(
 
   if (!response.ok) {
     let message =
-      "Request failed";
+      `Request failed (${response.status} ${response.statusText || "HTTP error"})`;
 
     try {
       const data =

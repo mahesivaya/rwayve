@@ -3,6 +3,7 @@ import { type EmailAttachment } from "../api/email";
 export type EmailAccount = {
   id: number;
   email: string;
+  display_name?: string | null;
   unread_count?: number;
 };
 

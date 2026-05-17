@@ -132,6 +132,7 @@ pub async fn load_account_summaries_for_user(pool: &PgPool, user_id: i32) -> Res
         SELECT
           a.id,
           a.email,
+          a.display_name,
           COUNT(e.id) FILTER (
             WHERE e.is_read = false
               AND e.receiver LIKE '%' || a.email || '%'

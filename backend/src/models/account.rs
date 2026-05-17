@@ -4,5 +4,6 @@ use crate::prelude::*;
 pub struct Account {
     id: i32,
     email: String,
+    display_name: Option<String>,
     unread_count: i64,
 }

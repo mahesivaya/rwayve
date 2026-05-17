@@ -73,6 +73,7 @@ ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NUL
 CREATE TABLE IF NOT EXISTS email_accounts (
     id SERIAL PRIMARY KEY,
     email TEXT NOT NULL,
+    display_name TEXT,
     user_id INTEGER NOT NULL,
     access_token TEXT,
     refresh_token TEXT,
@@ -91,6 +92,7 @@ CREATE TABLE IF NOT EXISTS email_accounts (
 -- Mail provider for a connected mailbox: 'google' (Gmail API) or 'microsoft'
 -- (Outlook / Microsoft Graph). The sync worker branches on this column.
 ALTER TABLE email_accounts ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'google';
+ALTER TABLE email_accounts ADD COLUMN IF NOT EXISTS display_name TEXT;
 
 
 CREATE TABLE IF NOT EXISTS emails (

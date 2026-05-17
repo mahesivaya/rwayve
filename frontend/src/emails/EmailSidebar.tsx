@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { EmailAccount } from "./types";
 
 interface EmailSidebarProps {
@@ -13,6 +13,8 @@ interface EmailSidebarProps {
   onAddOutlook: () => void;
   onCompose: () => void;
   composeDisabled: boolean;
+  width: number;
+  onRenameAccount: (id: number, displayName: string | null) => Promise<void>;
 }
 
 export const EmailSidebar: React.FC<EmailSidebarProps> = ({
@@ -27,9 +29,37 @@ export const EmailSidebar: React.FC<EmailSidebarProps> = ({
   onAddOutlook,
   onCompose,
   composeDisabled,
+  width,
+  onRenameAccount,
 }) => {
+  const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [savingAccountId, setSavingAccountId] = useState<number | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  const startEditing = (account: EmailAccount) => {
+    setEditingAccountId(account.id);
+    setDraftName(account.display_name || account.email);
+    setRenameError(null);
+  };
+
+  const saveName = async (account: EmailAccount) => {
+    const trimmed = draftName.trim();
+    const displayName = trimmed && trimmed !== account.email ? trimmed : null;
+    setSavingAccountId(account.id);
+    setRenameError(null);
+    try {
+      await onRenameAccount(account.id, displayName);
+      setEditingAccountId(null);
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : "Could not save account name");
+    } finally {
+      setSavingAccountId(null);
+    }
+  };
+
   return (
-    <div className="sidebar">
+    <div className="sidebar" style={{ width }}>
       <button
         className="compose-btn"
         onClick={onCompose}
@@ -48,21 +78,82 @@ export const EmailSidebar: React.FC<EmailSidebarProps> = ({
         🌐 All Accounts
       </button>
 
-      {accounts.map((acc) => (
-        <button
-          key={acc.id}
-          className={`filter-btn ${activeAccount === acc.id ? "active" : ""}`}
-          onClick={() => setActiveAccount(acc.id)}
-        >
-          <span className="account-filter-label">{acc.email}</span>
-          <span
-            className="account-unread-count"
-            aria-label={`${acc.unread_count ?? 0} unread emails`}
+      {accounts.map((acc) => {
+        const isEditing = editingAccountId === acc.id;
+        const displayName = acc.display_name?.trim() || acc.email;
+
+        return (
+          <div
+            key={acc.id}
+            className={`account-filter ${activeAccount === acc.id ? "active" : ""}`}
           >
-            {acc.unread_count ?? 0}
-          </span>
-        </button>
-      ))}
+            {isEditing ? (
+              <div className="account-edit-row">
+                <input
+                  className="account-name-input"
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void saveName(acc);
+                    }
+                    if (e.key === "Escape") {
+                      setEditingAccountId(null);
+                    }
+                  }}
+                  aria-label={`Edit name for ${acc.email}`}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="account-icon-btn"
+                  onClick={() => void saveName(acc)}
+                  disabled={savingAccountId === acc.id}
+                  title="Save name"
+                  aria-label="Save name"
+                >
+                  ✓
+                </button>
+                <button
+                  type="button"
+                  className="account-icon-btn"
+                  onClick={() => setEditingAccountId(null)}
+                  title="Cancel"
+                  aria-label="Cancel"
+                >
+                  ×
+                </button>
+                {renameError && <span className="account-rename-error">{renameError}</span>}
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="account-filter-main"
+                  onClick={() => setActiveAccount(acc.id)}
+                >
+                  <span className="account-filter-label">{displayName}</span>
+                  <span
+                    className="account-unread-count"
+                    aria-label={`${acc.unread_count ?? 0} unread emails`}
+                  >
+                    {acc.unread_count ?? 0}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="account-icon-btn"
+                  onClick={() => startEditing(acc)}
+                  title="Edit account name"
+                  aria-label={`Edit name for ${acc.email}`}
+                >
+                  ✎
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })}
 
       <button className="add-email-btn" onClick={onAddGmail}>➕ Add Gmail</button>
       <button className="add-email-btn" onClick={onAddOutlook}>➕ Add Outlook</button>

@@ -16,12 +16,28 @@ body {
 
 /* ================= SIDEBAR ================= */
 .sidebar {
-  /* width: 240px; */
   background:lightsteelblue;
   padding: 16px;
-  border-right: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
+  min-width: 180px;
+  max-width: 360px;
+  overflow: hidden;
+}
+
+.email-sidebar-resizer {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  background: lightsteelblue;
+  border-left: 1px solid #d8e0eb;
+  border-right: 1px solid #e5e7eb;
+  transition: background 0.15s;
+}
+
+.email-sidebar-resizer:hover,
+.email-sidebar-resizer:active {
+  background: #9fb4cd;
 }
 
 /* ================= BUTTONS ================= */
@@ -40,6 +56,7 @@ body {
 }
 
 .add-email-btn {
+  width: 100%;
   padding: 10px;
   border-radius: 8px;
   background: lightslategray;
@@ -47,6 +64,8 @@ body {
   border: 1px solid #e5e7eb;
   margin-bottom: 16px;
   cursor: pointer;
+  font-size: 14px;
+  text-align: center;
 }
 
 .add-email-btn:hover {
@@ -106,6 +125,11 @@ body {
   color: white;
 }
 
+.account-filter.active .account-unread-count {
+  background: #111827;
+  color: white;
+}
+
 /* Hover */
 .filter-btn:hover {
   background: lightslategray;
@@ -116,6 +140,107 @@ body {
   background: lightslategray;
   color: black;
   font-weight: 600;
+}
+
+.account-filter {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid transparent;
+  margin: 6px 0;
+  color: #111827;
+  font-size: 14px;
+  transition: 0.15s;
+  overflow: hidden;
+}
+
+.account-filter:hover {
+  background: lightslategray;
+}
+
+.account-filter.active {
+  background: lightslategray;
+  color: black;
+  font-weight: 600;
+}
+
+.account-filter-main {
+  min-width: 0;
+  flex: 1;
+  align-self: stretch;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 4px 10px 12px;
+  font: inherit;
+  text-align: left;
+}
+
+.account-icon-btn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #374151;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.account-icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.65);
+  border-color: #d1d5db;
+}
+
+.account-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.account-edit-row {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 4px 6px 12px;
+}
+
+.account-name-input {
+  min-width: 0;
+  flex: 1;
+  height: 30px;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: white;
+  color: #111827;
+  font: inherit;
+}
+
+.account-rename-error {
+  flex: 1 0 100%;
+  color: #b91c1c;
+  font-size: 11px;
+  line-height: 1.2;
+  padding-left: 2px;
 }
 
 /* ================= EMAIL LIST (MIDDLE PANEL) ================= */

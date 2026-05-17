@@ -73,6 +73,16 @@ export const deleteAccount = async (id: number) => {
   });
 };
 
+export const updateAccountDisplayName = async (
+  id: number,
+  displayName: string | null
+) => {
+  await apiFetch(`/api/accounts/${id}/display-name`, {
+    method: "PUT",
+    body: JSON.stringify({ display_name: displayName }),
+  });
+};
+
 export const getGmailConnectUrl = async () => {
   const res = await apiFetch("/api/gmail/connect-url", {
     method: "POST",

@@ -4,7 +4,8 @@ use crate::email::account::{
 };
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
-use actix_web::delete;
+use actix_web::{delete, put};
+use serde::Deserialize;
 use tracing::{error, info, instrument};
 
 #[get("/accounts")]
@@ -22,6 +23,61 @@ pub(crate) async fn get_accounts(req: HttpRequest, pool: web::Data<PgPool>) -> i
         Err(e) => {
             error!(target: "db", user_id, error = ?e, "get_accounts failed");
             HttpResponse::InternalServerError().body("error")
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UpdateAccountNameBody {
+    display_name: Option<String>,
+}
+
+#[put("/accounts/{id}/display-name")]
+#[instrument(target = "http", skip(req, pool, body))]
+pub async fn update_account_display_name(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    path: web::Path<i32>,
+    body: web::Json<UpdateAccountNameBody>,
+) -> impl Responder {
+    let user_id = match get_user_id_from_request(&req) {
+        Some(id) => id,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let id = path.into_inner();
+    let display_name = body
+        .display_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    let result = sqlx::query(
+        r#"
+        UPDATE email_accounts
+        SET display_name = $1
+        WHERE id = $2 AND user_id = $3
+        "#,
+    )
+    .bind(display_name)
+    .bind(id)
+    .bind(user_id)
+    .execute(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(r) if r.rows_affected() == 0 => HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Email account not found"
+        })),
+        Ok(_) => {
+            invalidate_user_account_list_cache(user_id).await;
+            HttpResponse::Ok().json(serde_json::json!({ "updated": true }))
+        }
+        Err(e) => {
+            error!(target: "db", user_id, account_id = id, error = ?e, "update_account_display_name failed");
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to update email account name"
+            }))
         }
     }
 }
