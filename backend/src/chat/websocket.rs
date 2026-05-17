@@ -12,7 +12,7 @@ use lazy_static::lazy_static;
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, instrument};
 
 const CHAT_E2E_PREFIX: &str = "WAYVE_CHAT_E2E_V1\n";
 
@@ -32,6 +32,7 @@ pub struct ChatSession {
     pub cache: Option<Cache>,
 }
 
+#[instrument(target = "ws", skip(req, stream, pool, cache, query))]
 pub async fn chat_ws(
     req: HttpRequest,
     stream: web::Payload,

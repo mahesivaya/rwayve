@@ -30,7 +30,6 @@ static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 // ==============================
 // 🔹 USE INTERNAL MODULES
 // ==============================
-use crate::observability::devlog::init_devlog;
 use crate::observability::tracing::init_tracing;
 // 🚧 use crate::observability::tracing_root::AppRootSpanBuilder; // disabled
 
@@ -77,7 +76,6 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     init_tracing();
-    init_devlog();
     load_env_files();
     crate::security::jwt::jwt_secret();
     info!("Server starting...");

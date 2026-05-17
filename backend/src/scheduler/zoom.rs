@@ -37,6 +37,7 @@ pub enum ZoomError {
     MeetingParse(#[source] reqwest::Error),
 }
 
+#[instrument(target = "scheduler")]
 async fn fetch_access_token() -> Result<String, ZoomError> {
     let account_id =
         env::var("ZOOM_ACCOUNT_ID").map_err(|_| ZoomError::MissingEnv("ZOOM_ACCOUNT_ID"))?;

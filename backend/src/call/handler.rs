@@ -5,7 +5,7 @@ use actix_web_actors::ws;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, instrument, warn};
 
 use crate::models::callmodel::SignalMessage;
 
@@ -88,6 +88,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for CallSession {
     }
 }
 
+#[instrument(target = "ws", skip(req, stream, query))]
 pub async fn call_ws(
     req: HttpRequest,
     stream: web::Payload,

@@ -1,6 +1,7 @@
 use crate::prelude::*;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::RngCore;
+use tracing::instrument;
 
 #[derive(Debug)]
 pub struct OAuthState {
@@ -14,12 +15,14 @@ pub fn random_oauth_state() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
+#[instrument(target = "auth", skip(pool), fields(user_id, flow))]
 pub async fn create_oauth_state(user_id: Option<i32>, flow: &str, pool: &PgPool) -> Result<String> {
     let state = random_oauth_state();
     store_state(&state, user_id, flow, pool).await?;
     Ok(state)
 }
 
+#[instrument(target = "auth", skip(state, pool), fields(user_id, flow))]
 pub async fn store_state(
     state: &str,
     user_id: Option<i32>,
@@ -41,6 +44,7 @@ pub async fn store_state(
     Ok(())
 }
 
+#[instrument(target = "auth", skip(state, pool))]
 pub async fn consume_state(state: &str, pool: &PgPool) -> Result<Option<OAuthState>> {
     let row = sqlx::query(
         r#"

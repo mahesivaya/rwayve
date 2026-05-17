@@ -4,7 +4,7 @@ use chrono::{NaiveDate, NaiveTime};
 use serde_json::json;
 use sqlx::{PgPool, Row};
 use thiserror::Error;
-use tracing::info;
+use tracing::{info, instrument};
 
 #[derive(Clone, Copy)]
 pub enum MeetingEmailKind {
@@ -42,6 +42,11 @@ pub enum MeetingEmailError {
     GmailStatus(String),
 }
 
+#[instrument(
+    target = "scheduler",
+    skip(pool, req),
+    fields(user_id = req.user_id, participant_count = req.participants.len())
+)]
 pub async fn send_meeting_emails(
     pool: &PgPool,
     req: MeetingEmailRequest,

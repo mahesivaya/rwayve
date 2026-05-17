@@ -4,6 +4,7 @@ use crate::email::outlook::{
     OUTLOOK_MAIL_SCOPE, OutlookCredentials, outlook_credentials, refresh_outlook_token,
 };
 use crate::prelude::*;
+use tracing::instrument;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MailProvider {
@@ -41,6 +42,7 @@ pub struct GoogleOAuthClient {
     pub client_secret: String,
 }
 
+#[instrument(target = "auth")]
 pub fn google_oauth_client() -> Result<GoogleOAuthClient> {
     let secrets = try_load_google_secrets()?;
     let client_id = secrets["web"]["client_id"]
@@ -100,6 +102,7 @@ pub struct RefreshedEmailToken {
     pub refresh_token: Option<String>,
 }
 
+#[instrument(target = "auth", skip(refresh_token, clients), fields(provider = provider.as_db()))]
 pub async fn refresh_email_token(
     provider: MailProvider,
     refresh_token: &str,
@@ -131,6 +134,7 @@ pub async fn refresh_email_token(
     }
 }
 
+#[instrument(target = "db", skip(pool, token), fields(account_id))]
 pub async fn persist_refreshed_token(
     pool: &PgPool,
     account_id: i32,
@@ -153,6 +157,11 @@ pub async fn persist_refreshed_token(
     Ok(())
 }
 
+#[instrument(
+    target = "auth",
+    skip(pool, refresh_token, clients),
+    fields(account_id, provider = provider.as_db())
+)]
 pub async fn refresh_and_persist_email_token(
     pool: &PgPool,
     account_id: i32,

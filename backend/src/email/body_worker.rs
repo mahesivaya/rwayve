@@ -7,7 +7,7 @@ use crate::security::encryption::encrypt;
 
 use serde_json::Value;
 use tokio::time::{Duration, sleep};
-use tracing::{debug, error, info};
+use tracing::{Instrument, debug, error, info, instrument};
 
 type FetchTask = std::pin::Pin<Box<dyn std::future::Future<Output = Result<FetchedBody>> + Send>>;
 
@@ -28,21 +28,30 @@ const ERROR_SLEEP_SECS: u64 = 10;
 pub async fn run_body_worker(pool: PgPool) -> ! {
     info!(target: "worker", "body_worker started");
     loop {
-        match run_iteration(&pool).await {
-            Ok(0) => {
-                sleep(Duration::from_secs(IDLE_SLEEP_SECS)).await;
+        let span = tracing::info_span!(target: "worker", "body_worker_cycle");
+        let sleep_after = async {
+            match run_iteration(&pool).await {
+                Ok(0) => Some(Duration::from_secs(IDLE_SLEEP_SECS)),
+                Ok(n) => {
+                    debug!(target: "worker", count = n, "body_worker iteration done");
+                    None
+                }
+                Err(e) => {
+                    error!(target: "worker", error = ?e, "body_worker iteration failed");
+                    Some(Duration::from_secs(ERROR_SLEEP_SECS))
+                }
             }
-            Ok(n) => {
-                debug!(target: "worker", count = n, "body_worker iteration done");
-            }
-            Err(e) => {
-                error!(target: "worker", error = ?e, "body_worker iteration failed");
-                sleep(Duration::from_secs(ERROR_SLEEP_SECS)).await;
-            }
+        }
+        .instrument(span)
+        .await;
+
+        if let Some(duration) = sleep_after {
+            sleep(duration).await;
         }
     }
 }
 
+#[instrument(target = "worker", skip(pool))]
 async fn run_iteration(pool: &PgPool) -> Result<usize> {
     let accounts = sqlx::query(
         r#"
@@ -105,6 +114,11 @@ async fn run_iteration(pool: &PgPool) -> Result<usize> {
     Ok(total)
 }
 
+#[instrument(
+    target = "worker",
+    skip(pool, client_id, client_secret, refresh_token),
+    fields(account_id)
+)]
 pub(crate) async fn process_account(
     pool: &PgPool,
     account_id: i32,
@@ -191,6 +205,7 @@ pub(crate) async fn process_account(
     Ok(count)
 }
 
+#[instrument(target = "worker", skip(token, gmail_id), fields(account_id, email_id = id))]
 async fn fetch_one(token: &str, account_id: i32, id: i32, gmail_id: &str) -> Result<FetchedBody> {
     let url = format!(
         "{}/gmail/v1/users/me/messages/{}?format=full",
@@ -219,6 +234,7 @@ async fn fetch_one(token: &str, account_id: i32, id: i32, gmail_id: &str) -> Res
     })
 }
 
+#[instrument(target = "db", skip(pool, body), fields(email_id = id))]
 async fn update_body(pool: &PgPool, id: i32, body: &str) -> Result<()> {
     let (iv, encrypted) = encrypt(body)?;
 

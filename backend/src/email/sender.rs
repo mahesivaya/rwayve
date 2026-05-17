@@ -3,7 +3,7 @@ use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use std::env;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 
 pub(crate) fn clean_mailbox(value: &str) -> String {
     value
@@ -32,6 +32,7 @@ pub enum MailError {
     Send(#[source] lettre::transport::smtp::Error),
 }
 
+#[instrument(target = "smtp", skip(body), fields(to, subject))]
 pub async fn send_mail(to: &str, subject: &str, body: &str) -> Result<(), MailError> {
     let host = env::var("SMTP_HOST").map_err(|_| MailError::MissingEnv("SMTP_HOST"))?;
     let port: u16 = env::var("SMTP_PORT")

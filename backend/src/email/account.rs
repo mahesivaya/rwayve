@@ -4,6 +4,7 @@ use crate::prelude::*;
 use moka::future::Cache as MokaCache;
 use sqlx::QueryBuilder;
 use std::time::Duration;
+use tracing::instrument;
 
 const EMAIL_ACCOUNT_CACHE_TTL_SECS: u64 = 60;
 const EMAIL_ACCOUNT_CACHE_MAX_CAPACITY: u64 = 10_000;
@@ -59,6 +60,7 @@ fn account_from_row(row: sqlx::postgres::PgRow) -> EmailAccount {
     }
 }
 
+#[instrument(target = "db", skip(pool), fields(account_id, user_id))]
 pub async fn load_email_account_for_user(
     pool: &PgPool,
     account_id: i32,
@@ -88,6 +90,7 @@ pub async fn load_email_account_for_user(
     Ok(account)
 }
 
+#[instrument(target = "db", skip(pool))]
 pub async fn load_syncable_email_accounts(pool: &PgPool) -> Result<Vec<EmailAccount>> {
     let rows = sqlx::query(
         "SELECT id, user_id, email, provider, refresh_token, last_sync
@@ -100,6 +103,7 @@ pub async fn load_syncable_email_accounts(pool: &PgPool) -> Result<Vec<EmailAcco
     Ok(rows.into_iter().map(account_from_row).collect())
 }
 
+#[instrument(target = "db", skip(pool), fields(user_id, account_id))]
 pub async fn load_user_email_accounts_for_older_sync(
     pool: &PgPool,
     user_id: i32,
@@ -121,6 +125,7 @@ pub async fn load_user_email_accounts_for_older_sync(
     Ok(rows.into_iter().map(account_from_row).collect())
 }
 
+#[instrument(target = "db", skip(pool), fields(user_id))]
 pub async fn load_account_summaries_for_user(pool: &PgPool, user_id: i32) -> Result<Vec<Account>> {
     if let Some(accounts) = USER_ACCOUNT_LIST_CACHE.get(&user_id).await {
         return Ok(accounts);
@@ -145,10 +150,12 @@ pub async fn load_account_summaries_for_user(pool: &PgPool, user_id: i32) -> Res
     Ok(accounts)
 }
 
+#[instrument(target = "cache", fields(account_id))]
 pub async fn invalidate_email_account_cache(account_id: i32) {
     EMAIL_ACCOUNT_CACHE.invalidate(&account_id).await;
 }
 
+#[instrument(target = "cache", fields(user_id))]
 pub async fn invalidate_user_account_list_cache(user_id: i32) {
     USER_ACCOUNT_LIST_CACHE.invalidate(&user_id).await;
 }
@@ -162,6 +169,11 @@ pub struct ConnectedEmailAccount<'a> {
     pub expires_in: i64,
 }
 
+#[instrument(
+    target = "db",
+    skip(pool, account),
+    fields(user_id = account.user_id, provider = account.provider.as_db(), email = account.email)
+)]
 pub async fn upsert_connected_email_account(
     pool: &PgPool,
     account: ConnectedEmailAccount<'_>,

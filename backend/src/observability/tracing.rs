@@ -1,73 +1,85 @@
-use std::fs::{File, OpenOptions, create_dir_all};
+use std::fs::{File, OpenOptions, create_dir_all, metadata, remove_file, rename};
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chrono::Local;
 use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 const TRACING_LOG_DIR: &str = "logs";
 const TRACING_LOG_PATH: &str = "logs/tracing.log";
+const TRACING_LOG_MAX_BYTES: u64 = 30 * 1024 * 1024;
+const TRACING_LOG_DEFAULT_ARCHIVES: usize = 5;
 
 #[derive(Clone)]
-struct HourlyResetFileWriter {
-    state: Arc<Mutex<HourlyResetState>>,
+struct SizeRotatingFileWriter {
+    state: Arc<Mutex<SizeRotatingState>>,
 }
 
-struct HourlyResetState {
-    current_hour: String,
+struct SizeRotatingState {
     file: File,
+    bytes_written: u64,
+    max_bytes: u64,
+    max_archives: usize,
 }
 
-struct HourlyResetGuard<'a> {
-    state: MutexGuard<'a, HourlyResetState>,
+struct SizeRotatingGuard<'a> {
+    state: MutexGuard<'a, SizeRotatingState>,
 }
 
-impl HourlyResetFileWriter {
+impl SizeRotatingFileWriter {
     fn new() -> io::Result<Self> {
         create_dir_all(TRACING_LOG_DIR)?;
-        let current_hour = current_hour_key();
-        let file = reset_tracing_file()?;
+        let file = open_tracing_file()?;
+        let bytes_written = metadata(TRACING_LOG_PATH)
+            .map(|meta| meta.len())
+            .unwrap_or(0);
 
         Ok(Self {
-            state: Arc::new(Mutex::new(HourlyResetState { current_hour, file })),
+            state: Arc::new(Mutex::new(SizeRotatingState {
+                file,
+                bytes_written,
+                max_bytes: tracing_log_max_bytes(),
+                max_archives: tracing_log_max_archives(),
+            })),
         })
     }
 
     fn fallback() -> io::Result<Self> {
         let file = tempfile_file()?;
         Ok(Self {
-            state: Arc::new(Mutex::new(HourlyResetState {
-                current_hour: current_hour_key(),
+            state: Arc::new(Mutex::new(SizeRotatingState {
                 file,
+                bytes_written: 0,
+                max_bytes: tracing_log_max_bytes(),
+                max_archives: tracing_log_max_archives(),
             })),
         })
     }
 }
 
-impl<'a> MakeWriter<'a> for HourlyResetFileWriter {
-    type Writer = HourlyResetGuard<'a>;
+impl<'a> MakeWriter<'a> for SizeRotatingFileWriter {
+    type Writer = SizeRotatingGuard<'a>;
 
     fn make_writer(&'a self) -> Self::Writer {
         // Recover the guard if the mutex was poisoned instead of panicking —
         // a poisoned tracing writer must not bring down the whole process.
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let hour = current_hour_key();
-
-        if state.current_hour != hour
-            && let Ok(file) = reset_tracing_file()
-        {
-            state.file = file;
-            state.current_hour = hour;
-        }
-
-        HourlyResetGuard { state }
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        SizeRotatingGuard { state }
     }
 }
 
-impl Write for HourlyResetGuard<'_> {
+impl Write for SizeRotatingGuard<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.state.file.write(buf)
+        if self.state.bytes_written > 0
+            && self.state.bytes_written + buf.len() as u64 > self.state.max_bytes
+        {
+            self.state.rotate()?;
+        }
+
+        let written = self.state.file.write(buf)?;
+        self.state.bytes_written += written as u64;
+        Ok(written)
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -75,17 +87,72 @@ impl Write for HourlyResetGuard<'_> {
     }
 }
 
-fn current_hour_key() -> String {
-    Local::now().format("%Y-%m-%d-%H").to_string()
+impl SizeRotatingState {
+    fn rotate(&mut self) -> io::Result<()> {
+        self.file.flush()?;
+        rotate_tracing_files(self.max_archives)?;
+        self.file = open_tracing_file()?;
+        self.bytes_written = 0;
+        Ok(())
+    }
 }
 
-fn reset_tracing_file() -> io::Result<File> {
-    // `truncate` wipes the file each hour; no `append` so it can't conflict.
+fn open_tracing_file() -> io::Result<File> {
     OpenOptions::new()
         .create(true)
         .write(true)
-        .truncate(true)
+        .append(true)
         .open(TRACING_LOG_PATH)
+}
+
+fn rotate_tracing_files(max_archives: usize) -> io::Result<()> {
+    if max_archives == 0 {
+        remove_if_exists(TRACING_LOG_PATH)?;
+        return Ok(());
+    }
+
+    remove_if_exists(&archive_path(max_archives))?;
+
+    for index in (1..max_archives).rev() {
+        let from = archive_path(index);
+        let to = archive_path(index + 1);
+        if metadata(&from).is_ok() {
+            rename(from, to)?;
+        }
+    }
+
+    if metadata(TRACING_LOG_PATH).is_ok() {
+        rename(TRACING_LOG_PATH, archive_path(1))?;
+    }
+
+    Ok(())
+}
+
+fn remove_if_exists(path: &str) -> io::Result<()> {
+    match remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+fn archive_path(index: usize) -> String {
+    format!("{TRACING_LOG_PATH}.{index}")
+}
+
+fn tracing_log_max_bytes() -> u64 {
+    std::env::var("TRACING_LOG_MAX_BYTES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(TRACING_LOG_MAX_BYTES)
+}
+
+fn tracing_log_max_archives() -> usize {
+    std::env::var("TRACING_LOG_MAX_ARCHIVES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(TRACING_LOG_DEFAULT_ARCHIVES)
 }
 
 fn tempfile_file() -> io::Result<File> {
@@ -97,11 +164,11 @@ fn tempfile_file() -> io::Result<File> {
 }
 
 pub fn init_tracing() {
-    // Keep one active tracing file and truncate it each hour so it never grows
-    // across long-running local/dev sessions.
-    let file_writer = HourlyResetFileWriter::new().or_else(|e| {
+    // Keep one active tracing file and rotate it at 30MB by default. Archives
+    // are numbered newest-to-oldest: tracing.log.1, tracing.log.2, ...
+    let file_writer = SizeRotatingFileWriter::new().or_else(|e| {
         eprintln!("tracing: failed to open {TRACING_LOG_PATH}: {e}");
-        HourlyResetFileWriter::fallback()
+        SizeRotatingFileWriter::fallback()
     });
 
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -126,7 +193,18 @@ pub fn init_tracing() {
     // ✅ File logs — disabled gracefully if no writer could be opened.
     match file_writer {
         Ok(writer) => {
-            let file_layer = fmt::layer().with_writer(writer).with_ansi(false);
+            let file_layer = fmt::layer()
+                .json()
+                .with_writer(writer)
+                .with_ansi(false)
+                .with_current_span(true)
+                .with_span_list(true)
+                .with_target(true)
+                .with_thread_ids(true)
+                .with_thread_names(true)
+                .with_file(true)
+                .with_line_number(true)
+                .with_span_events(FmtSpan::CLOSE);
             tracing_subscriber::registry()
                 .with(env_filter)
                 .with(stdout_layer)

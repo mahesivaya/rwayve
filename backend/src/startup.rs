@@ -1,16 +1,17 @@
-use sqlx::postgres::{PgPool, PgPoolOptions};
-use std::time::Duration;
-use tracing::{info, warn};
-use actix_web::web;
-use crate::routes;
-use crate::email;
-use crate::chat;
-use crate::scheduler;
-use crate::drive;
-use crate::notes;
 use crate::ai;
 use crate::call;
+use crate::chat;
+use crate::drive;
+use crate::email;
+use crate::notes;
+use crate::routes;
+use crate::scheduler;
+use actix_web::web;
+use sqlx::postgres::{PgPool, PgPoolOptions};
+use std::time::Duration;
+use tracing::{info, instrument, warn};
 
+#[instrument(target = "startup", skip(db_url), fields(max_conns))]
 pub async fn establish_db_connection(db_url: &str, max_conns: u32) -> PgPool {
     let mut attempts: u32 = 0;
     loop {
@@ -40,6 +41,7 @@ pub async fn establish_db_connection(db_url: &str, max_conns: u32) -> PgPool {
     }
 }
 
+#[instrument(target = "startup", skip(cfg))]
 pub fn configure_app(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")
