@@ -9,6 +9,7 @@ export type EmailAccount = {
 
 export interface EmailItem {
   id: number;
+  account_id?: number | null;
   subject?: string | null;
   sender?: string | null;
   receiver?: string | null;

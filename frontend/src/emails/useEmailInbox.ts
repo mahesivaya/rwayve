@@ -102,35 +102,42 @@ export function useEmailInbox(user_id: number | undefined, normalizedSearchQuery
 
   const openEmail = async (email: EmailItem) => {
     setViewMode("email");
+    const openedEmail = { ...email, is_read: true };
+    setEmails((prev) =>
+      prev.map((item) => (item.id === email.id ? { ...item, is_read: true } : item))
+    );
     if (emailCache.current[email.id]) {
-      setSelectedEmail(emailCache.current[email.id]);
+      const cached = { ...emailCache.current[email.id], is_read: true };
+      emailCache.current[email.id] = cached;
+      setSelectedEmail(cached);
       return;
     }
 
     try {
       const data = await getEmail<EmailItem>(email.id);
+      const emailWithListFields = { ...openedEmail, ...data, is_read: true };
       if (data.body) {
-        const decryptedBody = await decryptWayveBodyIfNeeded(data.body, user_id);
+        const decryptedBody = await decryptWayveBodyIfNeeded(emailWithListFields.body || "", user_id);
         let attachments = await getEmailAttachments(email.id);
         if (!data.attachments_checked) {
           await getEmailBody(email.id);
           attachments = await getEmailAttachments(email.id);
         }
-        const full = { ...data, body: decryptedBody, attachments };
+        const full = { ...emailWithListFields, body: decryptedBody, attachments };
         emailCache.current[email.id] = full;
         setSelectedEmail(full);
       } else {
-        setSelectedEmail({ ...data, _bodyLoading: true });
+        setSelectedEmail({ ...emailWithListFields, _bodyLoading: true });
         const { body } = await getEmailBody(email.id);
         const decryptedBody = await decryptWayveBodyIfNeeded(body || "", user_id);
         const attachments = await getEmailAttachments(email.id);
-        const merged = { ...data, body: decryptedBody, attachments, _bodyLoading: false };
+        const merged = { ...emailWithListFields, body: decryptedBody, attachments, _bodyLoading: false };
         emailCache.current[email.id] = merged;
         setSelectedEmail((cur) => (cur?.id === email.id ? merged : cur));
       }
     } catch (err) {
       setSelectedEmail({
-        ...email,
+        ...openedEmail,
         body: "",
         _bodyError: emailBodyErrorMessage(err),
       });

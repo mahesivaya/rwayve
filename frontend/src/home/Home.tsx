@@ -6,7 +6,7 @@ import { SERVICES } from "../services/serviceData";
 import "./home.css";
 
 export default function Home() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { normalizedSearchQuery } = useGlobalSearch();
   const navigate = useNavigate();
   const [servicesOpen, setServicesOpen] = useState(true);

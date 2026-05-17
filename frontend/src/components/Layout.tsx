@@ -1,6 +1,6 @@
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
-import { Suspense, useState } from "react";
+import { Suspense, useState, useCallback } from "react";
 import SearchProvider from "../search/SearchProvider";
 import SearchBar from "../search/SearchBar";
 import ProfileMenu from "./ProfileMenu";
@@ -52,19 +52,17 @@ export default function Layout() {
 
   // When the split is open, header link clicks target the right pane instead
   // of navigating the URL. When closed, the link behaves normally.
-  const navItem = (path: string, app: AppKey, label: string) => {
+  const renderNavItem = useCallback((path: string, app: AppKey, label: string) => {
     const isLeftActive = location.pathname === path;
     const isMiddleActive = middleView === app;
     const isRightActive = rightView === app;
 
     return (
       <Link
+        key={app}
         to={path}
-        className={[
-          isLeftActive ? "active" : "",
-          isMiddleActive || isRightActive ? "active-split" : "",
-        ].filter(Boolean).join(" ")}
-        onClick={(e: { preventDefault: () => void }) => {
+        className={`${isLeftActive ? "active" : ""} ${isMiddleActive || isRightActive ? "active-split" : ""}`.trim()}
+        onClick={(e) => {
           if (splitTarget === "right") {
             e.preventDefault();
             setRightView(app);
@@ -74,7 +72,7 @@ export default function Layout() {
         {label}
       </Link>
     );
-  };
+  }, [location.pathname, middleView, rightView, splitTarget]);
 
   return (
     <div className={`app ${!sidebarOpen ? "sidebar-collapsed" : ""}`}>
@@ -95,15 +93,15 @@ export default function Layout() {
         </div>
 
         <div className="nav">
-          {navItem("/", "home", "Home")}
-          {navItem("/emails", "emails", "Emails")}
-          {navItem("/chat", "chat", "Chat")}
-          {navItem("/call", "call", "Call")}
-          {navItem("/scheduler", "scheduler", "Scheduler")}
-          {navItem("/drive", "drive", "Files")}
-          {navItem("/notes", "notes", "Notes")}
-          {navItem("/tasks", "tasks", "Tasks")}
-          {navItem("/aichat", "aichat", "AI Chat")}
+          {renderNavItem("/", "home", "Home")}
+          {renderNavItem("/emails", "emails", "Emails")}
+          {renderNavItem("/chat", "chat", "Chat")}
+          {renderNavItem("/call", "call", "Call")}
+          {renderNavItem("/scheduler", "scheduler", "Scheduler")}
+          {renderNavItem("/drive", "drive", "Files")}
+          {renderNavItem("/notes", "notes", "Notes")}
+          {renderNavItem("/tasks", "tasks", "Tasks")}
+          {renderNavItem("/aichat", "aichat", "AI Chat")}
         </div>
 
         <div className="actions">

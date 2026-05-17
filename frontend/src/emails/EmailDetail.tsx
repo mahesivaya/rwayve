@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { downloadEmailAttachment } from "../api/email";
+import { downloadEmailAttachment, sendEmail } from "../api/email";
 import { formatFileSize, renderEmailBody } from "./renderUtils";
 import { EmailItem, EmailAttachment } from "./types";
 
@@ -28,6 +28,10 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({
 }) => {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyBody, setReplyBody] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   const visibleFiles = normalizedSearchQuery
     ? files.filter((file) =>
@@ -97,10 +101,62 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({
     }
   };
 
+  const replyTo = emailAddress(selectedEmail.sender);
+  const handleReply = async () => {
+    const body = replyBody.trim();
+
+    if (!selectedEmail.account_id) {
+      setReplyError("Missing sender account for this email.");
+      return;
+    }
+
+    if (!replyTo) {
+      setReplyError("Missing recipient for reply.");
+      return;
+    }
+
+    if (!body) {
+      setReplyError("Enter a reply before sending.");
+      return;
+    }
+
+    setReplySending(true);
+    setReplyError(null);
+    try {
+      const subject = selectedEmail.subject?.trim() || "(No Subject)";
+      await sendEmail({
+        account_id: selectedEmail.account_id,
+        to: replyTo,
+        subject: subject.toLowerCase().startsWith("re:") ? subject : `Re: ${subject}`,
+        body,
+      });
+      setReplyBody("");
+      setReplyOpen(false);
+    } catch (err) {
+      setReplyError(err instanceof Error ? err.message : "Failed to send reply");
+    } finally {
+      setReplySending(false);
+    }
+  };
+
   return (
     <div className="email-detail">
       {isNarrow && (
         <div className="email-detail-actions">
+          <button
+            className="email-detail-reply"
+            onClick={() => {
+              setReplyOpen((open) => !open);
+              setReplyError(null);
+            }}
+            title="Reply"
+            aria-label="Reply"
+          >
+            <svg className="email-detail-reply-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 8 5 13l5 5" />
+              <path d="M5 13h9a5 5 0 0 1 5 5v1" />
+            </svg>
+          </button>
           <button
             className="email-detail-delete"
             onClick={() => void handleDelete()}
@@ -127,6 +183,38 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({
       {deleteError && <p className="email-body-error">{deleteError}</p>}
       <p><b>From:</b> {selectedEmail.sender}</p>
       <p><b>To:</b> {selectedEmail.receiver}</p>
+
+      {replyOpen && (
+        <div className="email-reply-box">
+          <textarea
+            value={replyBody}
+            onChange={(e) => setReplyBody(e.target.value)}
+            placeholder={`Reply to ${replyTo || "sender"}`}
+            aria-label="Reply body"
+          />
+          {replyError && <p className="email-body-error">{replyError}</p>}
+          <div className="email-reply-actions">
+            <button
+              type="button"
+              className="email-reply-send"
+              onClick={() => void handleReply()}
+              disabled={replySending}
+            >
+              {replySending ? "Sending..." : "Send"}
+            </button>
+            <button
+              type="button"
+              className="email-reply-cancel"
+              onClick={() => {
+                setReplyOpen(false);
+                setReplyError(null);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="email-body">
         {selectedEmail._bodyLoading ? (
@@ -164,3 +252,9 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({
     </div>
   );
 };
+
+function emailAddress(value?: string | null) {
+  const text = value?.trim() || "";
+  const match = text.match(/<([^>]+)>/);
+  return (match?.[1] || text).trim();
+}

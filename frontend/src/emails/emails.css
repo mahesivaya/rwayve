@@ -274,6 +274,14 @@ body {
   background: #e8f0fe;
 }
 
+.email-item.unread {
+  background: white;
+}
+
+.email-item.unread:hover {
+  background: #f8fafc;
+}
+
 /* Active */
 .email-item.active {
   background: #eff6ff;
@@ -430,7 +438,8 @@ body {
 }
 
 .email-detail-back,
-.email-detail-delete {
+.email-detail-delete,
+.email-detail-reply {
   height: 26px;
   border: 1px solid #e5e7eb;
   background: white;
@@ -457,7 +466,14 @@ body {
   font-size: 15px;
 }
 
-.email-detail-delete-icon {
+.email-detail-reply {
+  width: 26px;
+  padding: 0;
+  color: #2563eb;
+}
+
+.email-detail-delete-icon,
+.email-detail-reply-icon {
   width: 15px;
   height: 15px;
   fill: none;
@@ -478,9 +494,68 @@ body {
   border-color: #fecaca;
 }
 
+.email-detail-reply:hover {
+  background: #dbeafe;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
 .email-detail-delete:disabled {
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+.email-reply-box {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid #d8e0eb;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.email-reply-box textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px;
+  background: white;
+  color: #111827;
+  font: inherit;
+}
+
+.email-reply-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.email-reply-send,
+.email-reply-cancel {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  font: inherit;
+}
+
+.email-reply-send {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+
+.email-reply-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.email-reply-cancel {
+  background: white;
+  color: #334155;
 }
 
 /* BODY */

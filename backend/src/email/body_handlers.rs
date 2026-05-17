@@ -37,7 +37,7 @@ pub async fn get_email_by_id(
 
     let result = sqlx::query(
         r#"
-        SELECT e.id, e.subject, e.sender, e.receiver, e.body_encrypted, e.body_iv,
+        SELECT e.id, e.account_id, e.subject, e.sender, e.receiver, e.body_encrypted, e.body_iv,
                e.attachments_checked
         FROM emails e
         JOIN email_accounts a ON e.account_id = a.id
@@ -81,6 +81,7 @@ pub async fn get_email_by_id(
 
             HttpResponse::Ok().json(serde_json::json!({
                 "id": row.get::<i32, _>("id"),
+                "account_id": row.get::<Option<i32>, _>("account_id"),
                 "subject": row.get::<Option<String>, _>("subject").unwrap_or_default(),
                 "sender": row.get::<Option<String>, _>("sender").unwrap_or_default(),
                 "receiver": row.get::<Option<String>, _>("receiver").unwrap_or_default(),

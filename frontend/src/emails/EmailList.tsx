@@ -37,7 +37,11 @@ export const EmailList: React.FC<EmailListProps> = ({
       {emails.map((email) => (
         <div
           key={email.id}
-          className={`email-item ${selectedEmailId === email.id ? "active" : ""}`}
+          className={[
+            "email-item",
+            email.is_read === false ? "unread" : "read",
+            selectedEmailId === email.id ? "active" : "",
+          ].filter(Boolean).join(" ")}
           onClick={() => onOpenEmail(email)}
         >
           <div className="email-top">

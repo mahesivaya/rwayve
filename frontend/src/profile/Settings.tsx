@@ -11,6 +11,10 @@ type Account = {
   email: string;
 };
 
+const BYTES_IN_MB = 1024 ** 2;
+const BYTES_IN_GB = 1024 ** 3;
+const DEFAULT_MEMORY_LIMIT = 10 * BYTES_IN_GB;
+
 export default function Settings() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<(ProfileData & {
@@ -102,8 +106,8 @@ export default function Settings() {
             <span>Memory Used</span>
             <strong>
               {profile?.memory_used_bytes !== undefined 
-                ? `${(profile.memory_used_bytes / (1024 ** 3)).toFixed(1)} GB / 
-                   ${((profile.memory_limit_bytes ?? 10737418240) / (1024 ** 3)).toFixed(0)} GB` 
+                ? `${(profile.memory_used_bytes / BYTES_IN_GB).toFixed(1)} GB / 
+                   ${((profile.memory_limit_bytes ?? DEFAULT_MEMORY_LIMIT) / BYTES_IN_GB).toFixed(0)} GB` 
                 : "Loading…"}
             </strong>
           </div>
@@ -115,11 +119,11 @@ export default function Settings() {
           </div>
           <div className="settings-usage-row">
             <span>Email Storage</span>
-            <strong>{profile?.email_storage_bytes !== undefined ? `${(profile.email_storage_bytes / (1024 ** 2)).toFixed(1)} MB` : "Loading…"}</strong>
+            <strong>{profile?.email_storage_bytes !== undefined ? `${(profile.email_storage_bytes / BYTES_IN_MB).toFixed(1)} MB` : "Loading…"}</strong>
           </div>
           <div className="settings-usage-row">
             <span>Drive Storage</span>
-            <strong>{profile?.drive_storage_bytes !== undefined ? `${(profile.drive_storage_bytes / (1024 ** 2)).toFixed(1)} MB` : "Loading…"}</strong>
+            <strong>{profile?.drive_storage_bytes !== undefined ? `${(profile.drive_storage_bytes / BYTES_IN_MB).toFixed(1)} MB` : "Loading…"}</strong>
           </div>
           <div className="settings-usage-row">
             <span>Connected Accounts</span>

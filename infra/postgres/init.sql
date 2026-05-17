@@ -107,12 +107,12 @@ CREATE TABLE IF NOT EXISTS emails (
     body_iv TEXT,
     body_cached TEXT,
     body_cached_at TIMESTAMP,
-    is_read BOOLEAN DEFAULT TRUE,
+    is_read BOOLEAN DEFAULT FALSE,
     attachments_checked BOOLEAN DEFAULT FALSE,
     UNIQUE(account_id, gmail_id)
 );
 
-ALTER TABLE emails ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT TRUE;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS email_attachments (
     id SERIAL PRIMARY KEY,
@@ -302,10 +302,4 @@ CREATE INDEX IF NOT EXISTS idx_meeting_participants_meeting_id
 ON meeting_participants(meeting_id);
 
 CREATE INDEX IF NOT EXISTS idx_email_accounts_user_id
-ON email_accounts(user_id);
-
-CREATE UNIQUE INDEX IF NOT EXISTS unique_user_email_idx
-ON email_accounts (user_id, LOWER(email));
-
-CREATE INDEX IF NOT EXISTS idx_files_user
-ON files (user_id, created_at DESC);
+ON em
