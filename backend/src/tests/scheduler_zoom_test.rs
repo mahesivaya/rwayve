@@ -72,7 +72,7 @@ mod tests {
             .await;
 
         let res = create_zoom_meeting("Standup", Utc::now() + chrono::Duration::hours(1), 30).await;
-        let err = res.unwrap_err();
+        let err = res.unwrap_err().to_string();
         assert!(err.contains("Zoom token error"), "got: {err}");
     }
 
@@ -103,7 +103,7 @@ mod tests {
             .await;
 
         let res = create_zoom_meeting("Standup", Utc::now() + chrono::Duration::hours(1), 30).await;
-        let err = res.unwrap_err();
+        let err = res.unwrap_err().to_string();
         assert!(err.contains("Zoom create error"), "got: {err}");
     }
 }

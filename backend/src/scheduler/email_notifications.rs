@@ -3,6 +3,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{NaiveDate, NaiveTime};
 use serde_json::json;
 use sqlx::{PgPool, Row};
+use thiserror::Error;
 use tracing::info;
 
 #[derive(Clone, Copy)]
@@ -23,7 +24,28 @@ pub struct MeetingEmailRequest {
     pub zoom_join_url: Option<String>,
 }
 
-pub async fn send_meeting_emails(pool: &PgPool, req: MeetingEmailRequest) -> Result<(), String> {
+#[derive(Debug, Error)]
+pub enum MeetingEmailError {
+    #[error("DB error: {0}")]
+    Db(#[from] sqlx::Error),
+    #[error("No active Gmail account found")]
+    NoActiveAccount,
+    #[error("Missing access token")]
+    MissingAccessToken,
+    #[error("No valid participants")]
+    NoValidParticipants,
+    #[error("HTTP client error: {0}")]
+    HttpClient(#[source] reqwest::Error),
+    #[error("HTTP send error: {0}")]
+    SendRequest(#[source] reqwest::Error),
+    #[error("Gmail failed: {0}")]
+    GmailStatus(String),
+}
+
+pub async fn send_meeting_emails(
+    pool: &PgPool,
+    req: MeetingEmailRequest,
+) -> Result<(), MeetingEmailError> {
     let MeetingEmailRequest {
         user_id,
         participants,
@@ -41,19 +63,18 @@ pub async fn send_meeting_emails(pool: &PgPool, req: MeetingEmailRequest) -> Res
     )
     .bind(user_id)
     .fetch_optional(pool)
-    .await
-    .map_err(|e| format!("DB error: {:?}", e))?;
+    .await?;
 
     let row = match row {
         Some(r) => r,
-        None => return Err("No active Gmail account found".into()),
+        None => return Err(MeetingEmailError::NoActiveAccount),
     };
 
     let access_token: String = row.get("access_token");
     let sender_email: String = row.get("email");
 
     if access_token.is_empty() {
-        return Err("Missing access token".into());
+        return Err(MeetingEmailError::MissingAccessToken);
     }
 
     let valid_participants: Vec<String> = participants
@@ -63,7 +84,7 @@ pub async fn send_meeting_emails(pool: &PgPool, req: MeetingEmailRequest) -> Res
         .collect();
 
     if valid_participants.is_empty() {
-        return Err("No valid participants".into());
+        return Err(MeetingEmailError::NoValidParticipants);
     }
 
     let start_str = start.format("%H:%M").to_string();
@@ -100,7 +121,7 @@ Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}",
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .map_err(|e| format!("HTTP client error: {:?}", e))?;
+        .map_err(MeetingEmailError::HttpClient)?;
 
     let res = client
         .post(crate::external::gmail_send_url())
@@ -108,11 +129,11 @@ Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}",
         .json(&json!({ "raw": encoded }))
         .send()
         .await
-        .map_err(|e| format!("HTTP send error: {:?}", e))?;
+        .map_err(MeetingEmailError::SendRequest)?;
 
     if !res.status().is_success() {
         let text = res.text().await.unwrap_or_default();
-        return Err(format!("Gmail failed: {}", text));
+        return Err(MeetingEmailError::GmailStatus(text));
     }
 
     info!(target: "scheduler", user_id, "meeting emails sent");

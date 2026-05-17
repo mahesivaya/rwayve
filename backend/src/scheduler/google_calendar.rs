@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use chrono_tz::America::New_York;
 use serde_json::Value;
 use sqlx::PgPool;
+use thiserror::Error;
 use tracing::{instrument, warn};
 
 fn cal_url() -> String {
@@ -10,13 +11,25 @@ fn cal_url() -> String {
     })
 }
 
+#[derive(Debug, Error)]
+pub enum CalendarImportError {
+    #[error("HTTP client error: {0}")]
+    HttpClient(#[source] reqwest::Error),
+    #[error("Calendar request failed: {0}")]
+    Request(#[source] reqwest::Error),
+    #[error("Calendar API error: {0}")]
+    ApiStatus(String),
+    #[error("Calendar parse error: {0}")]
+    Parse(#[source] reqwest::Error),
+}
+
 #[instrument(target = "scheduler", skip(pool, access_token))]
 pub async fn import_upcoming_events(
     pool: &PgPool,
     user_id: i32,
     account_id: i32,
     access_token: &str,
-) -> Result<usize, String> {
+) -> Result<usize, CalendarImportError> {
     let now = Utc::now();
     let time_min = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let time_max = (now + chrono::Duration::days(60))
@@ -26,7 +39,7 @@ pub async fn import_upcoming_events(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
-        .map_err(|e| format!("HTTP client error: {:?}", e))?;
+        .map_err(CalendarImportError::HttpClient)?;
 
     let res = client
         .get(cal_url())
@@ -40,17 +53,14 @@ pub async fn import_upcoming_events(
         ])
         .send()
         .await
-        .map_err(|e| format!("Calendar request failed: {:?}", e))?;
+        .map_err(CalendarImportError::Request)?;
 
     if !res.status().is_success() {
         let text = res.text().await.unwrap_or_default();
-        return Err(format!("Calendar API error: {}", text));
+        return Err(CalendarImportError::ApiStatus(text));
     }
 
-    let body: Value = res
-        .json()
-        .await
-        .map_err(|e| format!("Calendar parse error: {:?}", e))?;
+    let body: Value = res.json().await.map_err(CalendarImportError::Parse)?;
 
     let items = body
         .get("items")

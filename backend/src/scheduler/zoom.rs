@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
+use thiserror::Error;
 use tracing::instrument;
 
 #[derive(Deserialize)]
@@ -16,19 +17,40 @@ struct MeetingResp {
     join_url: String,
 }
 
-async fn fetch_access_token() -> Result<String, String> {
+#[derive(Debug, Error)]
+pub enum ZoomError {
+    #[error("{0} not set")]
+    MissingEnv(&'static str),
+    #[error("HTTP client error: {0}")]
+    HttpClient(#[source] reqwest::Error),
+    #[error("Zoom token request failed: {0}")]
+    TokenRequest(#[source] reqwest::Error),
+    #[error("Zoom token error: {0}")]
+    TokenStatus(String),
+    #[error("Zoom token parse error: {0}")]
+    TokenParse(#[source] reqwest::Error),
+    #[error("Zoom create request failed: {0}")]
+    CreateRequest(#[source] reqwest::Error),
+    #[error("Zoom create error: {0}")]
+    CreateStatus(String),
+    #[error("Zoom meeting parse error: {0}")]
+    MeetingParse(#[source] reqwest::Error),
+}
+
+async fn fetch_access_token() -> Result<String, ZoomError> {
     let account_id =
-        env::var("ZOOM_ACCOUNT_ID").map_err(|_| "ZOOM_ACCOUNT_ID not set".to_string())?;
-    let client_id = env::var("ZOOM_CLIENT_ID").map_err(|_| "ZOOM_CLIENT_ID not set".to_string())?;
+        env::var("ZOOM_ACCOUNT_ID").map_err(|_| ZoomError::MissingEnv("ZOOM_ACCOUNT_ID"))?;
+    let client_id =
+        env::var("ZOOM_CLIENT_ID").map_err(|_| ZoomError::MissingEnv("ZOOM_CLIENT_ID"))?;
     let client_secret =
-        env::var("ZOOM_CLIENT_SECRET").map_err(|_| "ZOOM_CLIENT_SECRET not set".to_string())?;
+        env::var("ZOOM_CLIENT_SECRET").map_err(|_| ZoomError::MissingEnv("ZOOM_CLIENT_SECRET"))?;
 
     let basic = STANDARD.encode(format!("{}:{}", client_id, client_secret));
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .map_err(|e| format!("HTTP client error: {:?}", e))?;
+        .map_err(ZoomError::HttpClient)?;
 
     let res = client
         .post(crate::external::zoom_oauth_token_url())
@@ -39,17 +61,14 @@ async fn fetch_access_token() -> Result<String, String> {
         ])
         .send()
         .await
-        .map_err(|e| format!("Zoom token request failed: {:?}", e))?;
+        .map_err(ZoomError::TokenRequest)?;
 
     if !res.status().is_success() {
         let text = res.text().await.unwrap_or_default();
-        return Err(format!("Zoom token error: {}", text));
+        return Err(ZoomError::TokenStatus(text));
     }
 
-    let tok: TokenResp = res
-        .json()
-        .await
-        .map_err(|e| format!("Zoom token parse error: {:?}", e))?;
+    let tok: TokenResp = res.json().await.map_err(ZoomError::TokenParse)?;
     Ok(tok.access_token)
 }
 
@@ -58,7 +77,7 @@ pub async fn create_zoom_meeting(
     topic: &str,
     start_utc: DateTime<Utc>,
     duration_min: i64,
-) -> Result<String, String> {
+) -> Result<String, ZoomError> {
     let token = fetch_access_token().await?;
 
     let body = json!({
@@ -77,7 +96,7 @@ pub async fn create_zoom_meeting(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .map_err(|e| format!("HTTP client error: {:?}", e))?;
+        .map_err(ZoomError::HttpClient)?;
 
     let res = client
         .post(format!(
@@ -88,16 +107,13 @@ pub async fn create_zoom_meeting(
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("Zoom create request failed: {:?}", e))?;
+        .map_err(ZoomError::CreateRequest)?;
 
     if !res.status().is_success() {
         let text = res.text().await.unwrap_or_default();
-        return Err(format!("Zoom create error: {}", text));
+        return Err(ZoomError::CreateStatus(text));
     }
 
-    let m: MeetingResp = res
-        .json()
-        .await
-        .map_err(|e| format!("Zoom meeting parse error: {:?}", e))?;
+    let m: MeetingResp = res.json().await.map_err(ZoomError::MeetingParse)?;
     Ok(m.join_url)
 }

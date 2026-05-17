@@ -2,6 +2,7 @@ use lettre::message::header::ContentType;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use std::env;
+use thiserror::Error;
 use tracing::{error, info};
 
 pub(crate) fn clean_mailbox(value: &str) -> String {
@@ -12,22 +13,47 @@ pub(crate) fn clean_mailbox(value: &str) -> String {
         .to_string()
 }
 
-pub async fn send_mail(to: &str, subject: &str, body: &str) -> Result<(), String> {
-    let host = env::var("SMTP_HOST").map_err(|_| "SMTP_HOST missing".to_string())?;
+#[derive(Debug, Error)]
+pub enum MailError {
+    #[error("{0} missing")]
+    MissingEnv(&'static str),
+    #[error("SMTP_PORT invalid")]
+    InvalidPort(#[source] std::num::ParseIntError),
+    #[error("{field} invalid: {source}")]
+    InvalidMailbox {
+        field: &'static str,
+        source: lettre::address::AddressError,
+    },
+    #[error("message build failed: {0}")]
+    MessageBuild(#[source] lettre::error::Error),
+    #[error("transport build failed: {0}")]
+    TransportBuild(#[source] lettre::transport::smtp::Error),
+    #[error("send failed: {0}")]
+    Send(#[source] lettre::transport::smtp::Error),
+}
+
+pub async fn send_mail(to: &str, subject: &str, body: &str) -> Result<(), MailError> {
+    let host = env::var("SMTP_HOST").map_err(|_| MailError::MissingEnv("SMTP_HOST"))?;
     let port: u16 = env::var("SMTP_PORT")
         .unwrap_or_else(|_| "587".to_string())
         .parse()
-        .map_err(|_| "SMTP_PORT invalid".to_string())?;
-    let user = env::var("SMTP_USER").map_err(|_| "SMTP_USER missing".to_string())?;
-    let pass = env::var("SMTP_PASS").map_err(|_| "SMTP_PASS missing".to_string())?;
+        .map_err(MailError::InvalidPort)?;
+    let user = env::var("SMTP_USER").map_err(|_| MailError::MissingEnv("SMTP_USER"))?;
+    let pass = env::var("SMTP_PASS").map_err(|_| MailError::MissingEnv("SMTP_PASS"))?;
     let from = env::var("SMTP_FROM").unwrap_or_else(|_| user.clone());
 
     let from_parsed = clean_mailbox(&from)
         .parse()
-        .map_err(|e| format!("SMTP_FROM invalid: {e:?}"))?;
+        .map_err(|source| MailError::InvalidMailbox {
+            field: "SMTP_FROM",
+            source,
+        })?;
     let to_parsed = clean_mailbox(to)
         .parse()
-        .map_err(|e| format!("recipient invalid: {e:?}"))?;
+        .map_err(|source| MailError::InvalidMailbox {
+            field: "recipient",
+            source,
+        })?;
 
     let email = Message::builder()
         .from(from_parsed)
@@ -35,12 +61,12 @@ pub async fn send_mail(to: &str, subject: &str, body: &str) -> Result<(), String
         .subject(subject)
         .header(ContentType::TEXT_PLAIN)
         .body(body.to_string())
-        .map_err(|e| format!("message build failed: {e:?}"))?;
+        .map_err(MailError::MessageBuild)?;
 
     let creds = Credentials::new(user, pass);
     let mailer: AsyncSmtpTransport<Tokio1Executor> =
         AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&host)
-            .map_err(|e| format!("transport build failed: {e:?}"))?
+            .map_err(MailError::TransportBuild)?
             .port(port)
             .credentials(creds)
             .build();
@@ -52,7 +78,7 @@ pub async fn send_mail(to: &str, subject: &str, body: &str) -> Result<(), String
         }
         Err(e) => {
             error!(target: "smtp", to, error = %e, "mail send failed");
-            Err(format!("send failed: {e:?}"))
+            Err(MailError::Send(e))
         }
     }
 }

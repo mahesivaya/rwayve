@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use anyhow::{Context, anyhow};
 use tracing::{instrument, warn};
 
 pub fn try_load_google_secrets() -> Result<serde_json::Value> {
@@ -6,10 +7,9 @@ pub fn try_load_google_secrets() -> Result<serde_json::Value> {
     // override the path. Defaults to the production location.
     let path = std::env::var("GOOGLE_CLIENT_SECRET_PATH")
         .unwrap_or_else(|_| "client_secret.json".to_string());
-    let data =
-        fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("Failed to read {path}: {e}"))?;
+    let data = fs::read_to_string(&path).with_context(|| format!("Failed to read {path}"))?;
 
-    serde_json::from_str(&data).map_err(|e| anyhow::anyhow!("Failed to parse {path}: {e}"))
+    serde_json::from_str(&data).with_context(|| format!("Failed to parse {path}"))
 }
 
 pub fn load_google_secrets() -> serde_json::Value {
@@ -31,13 +31,15 @@ pub async fn refresh_access_token(
             ("grant_type", "refresh_token"),
         ])
         .send()
-        .await?
+        .await
+        .context("Google token refresh request failed")?
         .json()
-        .await?;
+        .await
+        .context("Google token refresh response parse failed")?;
 
     if let Some(err) = res.get("error") {
         warn!(target: "gmail", error = %err, "google token refresh returned error");
-        return Err(anyhow::anyhow!("Token refresh failed"));
+        return Err(anyhow!("Token refresh failed: {err}"));
     }
 
     Ok(res["access_token"].as_str().unwrap_or("").to_string())
