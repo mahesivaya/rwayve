@@ -4,6 +4,7 @@ type Props = {
   title: string;
   selectedChannel: ChatChannel | null;
   settingsOpen: boolean;
+  onBack: () => void;
   onToggleSettings: () => void;
   onJoinChannel: (channel: ChatChannel) => void;
 };
@@ -12,12 +13,21 @@ export default function ChatHeader({
   title,
   selectedChannel,
   settingsOpen,
+  onBack,
   onToggleSettings,
   onJoinChannel,
 }: Props) {
   return (
     <div className="chat-header">
       <div className="chat-header-main">
+        <button
+          type="button"
+          className="chat-back-btn"
+          onClick={onBack}
+          aria-label="Back to conversations"
+        >
+          ‹
+        </button>
         <div className="chat-header-copy">
           <h3>{title}</h3>
           {selectedChannel && (

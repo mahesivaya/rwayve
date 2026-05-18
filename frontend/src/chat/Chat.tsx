@@ -48,6 +48,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [input, setInput] = useState("");
+  const [isNarrow, setIsNarrow] = useState(false);
 
   const [creatingChannel, setCreatingChannel] = useState(false);
   const [channelName, setChannelName] = useState("");
@@ -63,6 +64,7 @@ export default function Chat() {
   const [addUserEmails, setAddUserEmails] = useState("");
 
   const selectedRef = useRef<Conversation | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const selectedChannel =
     selectedConversation?.type === "channel" ? selectedConversation.channel : null;
@@ -76,6 +78,22 @@ export default function Chat() {
   useEffect(() => {
     selectedRef.current = selectedConversation;
   }, [selectedConversation]);
+
+  // Collapse to a single pane (list OR conversation) when the chat area is too
+  // narrow for both. Width is observed on the container, not the window, since
+  // chat can render inside a split pane.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const narrow = entry.contentRect.width < 760;
+        setIsNarrow((prev) => (prev !== narrow ? narrow : prev));
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const appendRealtimeMessage = useCallback(async (msg: ChatMessage) => {
     if (!user) return;
@@ -346,7 +364,12 @@ export default function Chat() {
     : messages;
 
   return (
-    <div className="chat-container">
+    <div
+      ref={containerRef}
+      className={`chat-container${isNarrow ? " narrow" : ""}${
+        selectedConversation ? " has-active" : ""
+      }`}
+    >
       <ConversationSidebar
         users={filteredUsers}
         channels={filteredChannels}
@@ -372,11 +395,16 @@ export default function Chat() {
           title={selectedTitle}
           selectedChannel={selectedChannel}
           settingsOpen={channelSettingsOpen}
+          onBack={() => setSelectedConversation(null)}
           onToggleSettings={() => setChannelSettingsOpen((open) => !open)}
           onJoinChannel={joinChannel}
         />
 
-        <div className="chat-content-row">
+        <div
+          className={`chat-content-row${
+            channelSettingsOpen ? " settings-open" : ""
+          }`}
+        >
           <MessageThread
             messages={filteredMessages}
             selectedChannel={selectedChannel}

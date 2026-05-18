@@ -25,12 +25,18 @@
   padding: 0 20px;
   flex-shrink: 0;
 
+  position: relative;
   border-bottom: 1px solid #e5e7eb;
 }
 
 .header-brand {
   display: flex;
   align-items: center;
+}
+
+/* Hamburger toggle — hidden on wide screens, shown when the nav collapses. */
+.nav-toggle {
+  display: none;
 }
 
 /* =============================
@@ -77,6 +83,64 @@
   background: #ede9fe;
   color: #4c1d95;
   box-shadow: inset 0 -2px 0 #7c3aed;
+}
+
+/* =============================
+   📱 RESPONSIVE HEADER NAV
+   Below 1100px the 11-item nav no longer fits, so it collapses into a
+   dropdown opened by the hamburger toggle.
+============================== */
+@media (max-width: 1100px) {
+  .nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 30px;
+    margin-left: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #1f2937;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .nav-toggle:hover {
+    background: #e2e8f0;
+  }
+
+  /* Collapsed: hidden until the toggle opens it. */
+  .nav {
+    display: none;
+  }
+
+  /* Open: a dropdown panel anchored under the header. */
+  .nav.open {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 4px;
+
+    position: absolute;
+    top: 100%;
+    left: 16px;
+    min-width: 210px;
+
+    padding: 8px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+    z-index: 200;
+  }
+
+  .nav.open a {
+    padding: 9px 12px;
+  }
 }
 
 /* =============================

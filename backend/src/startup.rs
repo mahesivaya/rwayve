@@ -47,6 +47,17 @@ pub async fn ensure_email_schema(pool: &PgPool) {
     let statements = [
         "ALTER TABLE emails ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT TRUE",
         "ALTER TABLE email_accounts ADD COLUMN IF NOT EXISTS display_name TEXT",
+        "ALTER TABLE notes ADD COLUMN IF NOT EXISTS title_encrypted TEXT",
+        "ALTER TABLE notes ADD COLUMN IF NOT EXISTS title_iv TEXT",
+        "ALTER TABLE notes ADD COLUMN IF NOT EXISTS content_encrypted TEXT",
+        "ALTER TABLE notes ADD COLUMN IF NOT EXISTS content_iv TEXT",
+        "ALTER TABLE files ADD COLUMN IF NOT EXISTS file_iv TEXT",
+        "ALTER TABLE meetings ADD COLUMN IF NOT EXISTS title_encrypted TEXT",
+        "ALTER TABLE meetings ADD COLUMN IF NOT EXISTS title_iv TEXT",
+        "ALTER TABLE meetings ADD COLUMN IF NOT EXISTS zoom_join_url_encrypted TEXT",
+        "ALTER TABLE meetings ADD COLUMN IF NOT EXISTS zoom_join_url_iv TEXT",
+        "ALTER TABLE meeting_participants ADD COLUMN IF NOT EXISTS email_encrypted TEXT",
+        "ALTER TABLE meeting_participants ADD COLUMN IF NOT EXISTS email_iv TEXT",
     ];
 
     for statement in statements {

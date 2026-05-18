@@ -155,6 +155,10 @@ CREATE TABLE IF NOT EXISTS meetings (
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     zoom_join_url TEXT,
+    title_encrypted TEXT,
+    title_iv TEXT,
+    zoom_join_url_encrypted TEXT,
+    zoom_join_url_iv TEXT,
 
     CONSTRAINT fk_user_meetings
     FOREIGN KEY (user_id)
@@ -163,6 +167,10 @@ CREATE TABLE IF NOT EXISTS meetings (
 );
 
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS zoom_join_url TEXT;
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS title_encrypted TEXT;
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS title_iv TEXT;
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS zoom_join_url_encrypted TEXT;
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS zoom_join_url_iv TEXT;
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'wayve';
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS google_event_id TEXT;
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS account_id INTEGER;
@@ -173,9 +181,14 @@ CREATE TABLE meeting_participants (
     id SERIAL PRIMARY KEY,
     meeting_id INT REFERENCES meetings(id) ON DELETE CASCADE,
     email TEXT NOT NULL,
+    email_encrypted TEXT,
+    email_iv TEXT,
     user_id INT NULL,   -- if exists in your system
     status TEXT DEFAULT 'pending'
 );
+
+ALTER TABLE meeting_participants ADD COLUMN IF NOT EXISTS email_encrypted TEXT;
+ALTER TABLE meeting_participants ADD COLUMN IF NOT EXISTS email_iv TEXT;
 
 
 DO $$ BEGIN
@@ -254,6 +267,7 @@ CREATE TABLE IF NOT EXISTS files (
     name TEXT NOT NULL,
     file_type TEXT,
     file_path TEXT NOT NULL,
+    file_iv TEXT,
     size BIGINT DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
@@ -266,15 +280,26 @@ CREATE TABLE IF NOT EXISTS files (
         ON DELETE CASCADE
 );
 
+ALTER TABLE files ADD COLUMN IF NOT EXISTS file_iv TEXT;
+
 -- Notes
 CREATE TABLE IF NOT EXISTS notes (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     title TEXT,
     content TEXT,
+    title_encrypted TEXT,
+    title_iv TEXT,
+    content_encrypted TEXT,
+    content_iv TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS title_encrypted TEXT;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS title_iv TEXT;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS content_encrypted TEXT;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS content_iv TEXT;
 
 
 -- 🔥 INDEXES
@@ -314,3 +339,143 @@ ON meeting_participants(meeting_id);
 
 CREATE INDEX IF NOT EXISTS idx_email_accounts_user_id
 ON email_accounts(user_id);
+
+-- ============================================================
+-- 💳 BILLING (Stripe)
+-- ------------------------------------------------------------
+-- A "billing owner" is polymorphic: exactly one of user_id /
+-- organization_id is set. Personal accounts are billed as a user;
+-- organizations are billed as a whole (paid by the org admin).
+-- Membership is NOT a separate table — it is users.organization_id.
+-- Local subscription/invoice rows are a projection of Stripe state
+-- kept in sync by webhooks; Stripe remains the source of truth.
+-- ============================================================
+
+-- Stripe customer mapping, one per billing owner.
+CREATE TABLE IF NOT EXISTS billing_customers (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    stripe_customer_id TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT billing_customers_owner_chk CHECK (
+        (user_id IS NOT NULL AND organization_id IS NULL) OR
+        (user_id IS NULL AND organization_id IS NOT NULL)
+    )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS billing_customers_user_idx
+    ON billing_customers(user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS billing_customers_org_idx
+    ON billing_customers(organization_id) WHERE organization_id IS NOT NULL;
+
+-- Plan catalog. Managed by platform admins. Amounts are integer minor units
+-- (e.g. cents). audience constrains which owner type may subscribe.
+CREATE TABLE IF NOT EXISTS plans (
+    id SERIAL PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+    audience TEXT NOT NULL DEFAULT 'personal',
+    stripe_price_id TEXT,
+    amount_cents BIGINT NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'usd',
+    billing_interval TEXT NOT NULL DEFAULT 'month',
+    storage_limit_bytes BIGINT NOT NULL DEFAULT 0,
+    seat_limit INTEGER NOT NULL DEFAULT 1,
+    features JSONB NOT NULL DEFAULT '{}'::jsonb,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Baseline catalog. stripe_price_id is filled in by a platform admin once the
+-- matching Stripe Price exists. ON CONFLICT keeps init.sql idempotent.
+INSERT INTO plans (code, name, description, audience, amount_cents, billing_interval, storage_limit_bytes, seat_limit)
+VALUES
+    ('personal_free', 'Personal Free', 'Free tier for individual accounts.', 'personal', 0, 'month', 1073741824, 1),
+    ('personal_pro', 'Personal Pro', 'More storage and features for individuals.', 'personal', 900, 'month', 10737418240, 1),
+    ('org_team', 'Organization Team', 'Shared workspace billing for organizations.', 'organization', 1900, 'month', 107374182400, 25)
+ON CONFLICT (code) DO NOTHING;
+
+-- Subscriptions: local projection of Stripe subscription state.
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    plan_id INTEGER REFERENCES plans(id) ON DELETE SET NULL,
+    stripe_subscription_id TEXT UNIQUE,
+    stripe_customer_id TEXT,
+    status TEXT NOT NULL DEFAULT 'incomplete',
+    current_period_end TIMESTAMPTZ,
+    cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT subscriptions_owner_chk CHECK (
+        (user_id IS NOT NULL AND organization_id IS NULL) OR
+        (user_id IS NULL AND organization_id IS NOT NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS subscriptions_org_idx ON subscriptions(organization_id);
+
+-- Invoices: local projection of Stripe invoices.
+CREATE TABLE IF NOT EXISTS invoices (
+    id SERIAL PRIMARY KEY,
+    stripe_invoice_id TEXT NOT NULL UNIQUE,
+    stripe_customer_id TEXT,
+    subscription_id INTEGER REFERENCES subscriptions(id) ON DELETE SET NULL,
+    amount_due_cents BIGINT NOT NULL DEFAULT 0,
+    amount_paid_cents BIGINT NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'usd',
+    status TEXT NOT NULL DEFAULT 'draft',
+    hosted_invoice_url TEXT,
+    invoice_pdf TEXT,
+    period_start TIMESTAMPTZ,
+    period_end TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS invoices_customer_idx ON invoices(stripe_customer_id);
+
+-- Raw usage events for metered billing and the Usage UI.
+CREATE TABLE IF NOT EXISTS usage_events (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    metric TEXT NOT NULL,
+    quantity BIGINT NOT NULL DEFAULT 0,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS usage_events_user_idx
+    ON usage_events(user_id, metric, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS usage_events_org_idx
+    ON usage_events(organization_id, metric, recorded_at DESC);
+
+-- Materialized effective entitlements per billing owner. Refreshed whenever
+-- the owner's subscription changes (checkout completion / webhook).
+CREATE TABLE IF NOT EXISTS entitlements (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    plan_code TEXT,
+    storage_limit_bytes BIGINT NOT NULL DEFAULT 0,
+    seat_limit INTEGER NOT NULL DEFAULT 1,
+    features JSONB NOT NULL DEFAULT '{}'::jsonb,
+    active BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT entitlements_owner_chk CHECK (
+        (user_id IS NOT NULL AND organization_id IS NULL) OR
+        (user_id IS NULL AND organization_id IS NOT NULL)
+    )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS entitlements_user_idx
+    ON entitlements(user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS entitlements_org_idx
+    ON entitlements(organization_id) WHERE organization_id IS NOT NULL;
+
+-- Webhook idempotency log. A repeated delivery of the same Stripe event id
+-- is a no-op (INSERT ... ON CONFLICT DO NOTHING).
+CREATE TABLE IF NOT EXISTS webhook_events (
+    id SERIAL PRIMARY KEY,
+    stripe_event_id TEXT NOT NULL UNIQUE,
+    event_type TEXT NOT NULL,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

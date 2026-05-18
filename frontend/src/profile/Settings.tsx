@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 
 import "./profile.css";
 
@@ -17,6 +18,7 @@ const DEFAULT_MEMORY_LIMIT = 10 * BYTES_IN_GB;
 
 export default function Settings() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<(ProfileData & {
     total_emails?: number;
     email_storage_bytes?: number;
@@ -135,6 +137,22 @@ export default function Settings() {
             <strong>
               {loaded ? `${accounts.length} ${accounts.length === 1 ? "account" : "accounts"}` : "Loading…"}
             </strong>
+          </div>
+        </div>
+
+        <div className="settings-section-title">
+          Billing &amp; Plans
+        </div>
+
+        <div className="settings-usage-section">
+          <div className="settings-usage-row">
+            <span>Subscription &amp; invoices</span>
+            <button
+              className="settings-billing-link"
+              onClick={() => navigate("/billing")}
+            >
+              Manage billing
+            </button>
           </div>
         </div>
 

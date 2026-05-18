@@ -13,6 +13,11 @@ const HKDF_INFO: &[u8] = b"rwayve:v1:aes-256-gcm:messages-email-bodies";
 const DEFAULT_HKDF_SALT: &[u8] = b"rwayve:v1:hkdf-sha512";
 
 pub fn encrypt(text: &str) -> Result<(String, String)> {
+    let (nonce, ciphertext) = encrypt_binary(text.as_bytes())?;
+    Ok((nonce, general_purpose::STANDARD.encode(ciphertext)))
+}
+
+pub fn encrypt_binary(bytes: &[u8]) -> Result<(String, Vec<u8>)> {
     let key_bytes = get_key().map_err(anyhow::Error::msg)?;
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     let cipher = Aes256Gcm::new(key);
@@ -23,13 +28,30 @@ pub fn encrypt(text: &str) -> Result<(String, String)> {
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = cipher
-        .encrypt(nonce, text.as_bytes())
+        .encrypt(nonce, bytes)
         .map_err(|e| anyhow::anyhow!("encryption failed: {:?}", e))?;
 
-    Ok((
-        general_purpose::STANDARD.encode(nonce_bytes),
-        general_purpose::STANDARD.encode(ciphertext),
-    ))
+    Ok((general_purpose::STANDARD.encode(nonce_bytes), ciphertext))
+}
+
+pub fn decrypt_binary(nonce_b64: &str, ciphertext: &[u8]) -> Result<Vec<u8>, String> {
+    let key_bytes = get_key()?;
+    let nonce = general_purpose::STANDARD
+        .decode(nonce_b64)
+        .map_err(|e| format!("Nonce decode error: {:?}", e))?;
+
+    if nonce.len() != 12 {
+        return Err(format!(
+            "Invalid nonce length: expected 12, got {}",
+            nonce.len()
+        ));
+    }
+
+    if ciphertext.is_empty() {
+        return Err("Empty ciphertext".to_string());
+    }
+
+    decrypt_with_legacy_fallback(&key_bytes, &nonce, ciphertext)
 }
 
 pub fn decrypt(nonce_b64: &str, cipher_b64: &str) -> Result<String, String> {
@@ -59,20 +81,28 @@ pub fn decrypt(nonce_b64: &str, cipher_b64: &str) -> Result<String, String> {
         return Err("Empty ciphertext".to_string());
     }
 
-    let decrypted = decrypt_bytes(&key_bytes, &nonce, &ciphertext).or_else(|hkdf_error| {
-        let legacy_key = get_key_material()?;
-
-        if legacy_key == key_bytes {
-            return Err(hkdf_error);
-        }
-
-        decrypt_bytes(&legacy_key, &nonce, &ciphertext).map_err(|_| hkdf_error)
-    })?;
+    let decrypted = decrypt_with_legacy_fallback(&key_bytes, &nonce, &ciphertext)?;
 
     // utf8 conversion
     let text = String::from_utf8(decrypted).map_err(|e| format!("UTF8 error: {:?}", e))?;
 
     Ok(text)
+}
+
+fn decrypt_with_legacy_fallback(
+    key_bytes: &[u8; 32],
+    nonce: &[u8],
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, String> {
+    decrypt_bytes(key_bytes, nonce, ciphertext).or_else(|hkdf_error| {
+        let legacy_key = get_key_material()?;
+
+        if legacy_key == *key_bytes {
+            return Err(hkdf_error);
+        }
+
+        decrypt_bytes(&legacy_key, nonce, ciphertext).map_err(|_| hkdf_error)
+    })
 }
 
 fn get_key() -> Result<[u8; 32], String> {

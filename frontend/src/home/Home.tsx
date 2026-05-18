@@ -14,6 +14,7 @@ const HOME_CARDS = [
   { path: "/notes", title: "📝 Notes", description: "Store and manage notes" },
   { path: "/tasks", title: "☑ Tasks", description: "Create and track tasks" },
   { path: "/aichat", title: "✨ AI Chat", description: "Chat with AI" },
+  { path: "/about", title: "ⓘ About", description: "Learn how Wayve fits together" },
 ];
 
 export default function Home() {

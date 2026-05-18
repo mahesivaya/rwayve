@@ -2,6 +2,7 @@
 // 🔹 INTERNAL MODULES (declare first)
 // ==============================
 mod ai;
+mod billing;
 mod cache;
 mod call;
 mod chat;
@@ -34,7 +35,7 @@ static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use crate::observability::tracing::init_tracing;
 // 🚧 use crate::observability::tracing_root::AppRootSpanBuilder; // disabled
 
-use crate::config::{RuntimeRole, db_max_connections, listen_port, load_env_files};
+use crate::config::{RuntimeRole, database_url, db_max_connections, listen_port, load_env_files};
 use crate::email::body_worker::run_body_worker;
 use crate::middleware::rate_limit::RateLimitMiddleware;
 use crate::workers::run_sync_worker;
@@ -62,10 +63,13 @@ fn app_routes(cfg: &mut web::ServiceConfig) {
                 .configure(scheduler::routes)
                 .configure(drive::routes)
                 .configure(notes::routes)
-                .configure(ai::routes),
+                .configure(ai::routes)
+                .configure(billing::routes),
         )
         // 🔥 AUTH / GOOGLE
         .configure(email::public_routes)
+        // 🔥 STRIPE WEBHOOK (unauthenticated, signature-verified)
+        .configure(billing::public_routes)
         // 🔥 WEBSOCKETS
         .configure(chat::ws_routes)
         .configure(call::routes);
@@ -84,7 +88,9 @@ async fn main() -> std::io::Result<()> {
     let role = RuntimeRole::from_env();
     info!(?role, "Runtime role selected");
 
-    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| panic!("DATABASE_URL missing"));
+    // Explicit DATABASE_URL wins; otherwise derived from the POSTGRES_* parts
+    // so the credentials are single-sourced in .env.secrets.
+    let db_url = database_url();
     let max_db_connections = db_max_connections(role);
     info!(max_db_connections, "Database pool size selected");
     // Log the first failure verbosely; subsequent identical failures get a
@@ -131,6 +137,10 @@ async fn main() -> std::io::Result<()> {
             let body_pool = pool.clone();
             tokio::spawn(async move {
                 run_body_worker(body_pool).await;
+            });
+            let billing_pool = pool.clone();
+            tokio::spawn(async move {
+                billing::spawn_billing_worker(billing_pool).await;
             });
         }
         RuntimeRole::Api => {}

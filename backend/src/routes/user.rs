@@ -1,15 +1,15 @@
 use crate::email::profile::invalidate_me_cache;
-use crate::prelude::*;
 use crate::models::auth::ChangePasswordInput;
 use crate::models::email_request::UserResponse;
+use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
 use actix_web::{HttpRequest, HttpResponse, Responder, get, post, put, web};
 use bcrypt::{DEFAULT_COST, hash, verify};
+use moka::future::Cache as MokaCache;
 use serde::Deserialize;
 use sqlx::PgPool;
-use tracing::{error, info, instrument, warn};
-use moka::future::Cache as MokaCache;
 use std::time::Duration;
+use tracing::{error, info, instrument, warn};
 
 const PROFILE_CACHE_TTL_SECS: u64 = 30;
 const PROFILE_CACHE_MAX_CAPACITY: u64 = 5000;
@@ -131,8 +131,9 @@ async fn require_platform_admin(req: &HttpRequest, pool: &PgPool) -> Result<i32,
         };
 
     if normalized_account_type(account_type.as_deref().unwrap_or("personal")) != "platform_admin" {
-        return Err(HttpResponse::Forbidden()
-            .json(serde_json::json!({ "message": "Only platform admins can manage organizations" })));
+        return Err(HttpResponse::Forbidden().json(
+            serde_json::json!({ "message": "Only platform admins can manage organizations" }),
+        ));
     }
 
     Ok(admin_id)
@@ -248,8 +249,8 @@ pub async fn admin_create_organization(
                 }
                 _ => {
                     return HttpResponse::BadRequest().json(serde_json::json!({
-                        "message": "Organization admin username, email, and password are all required"
-                    }));
+                    "message": "Organization admin username, email, and password are all required"
+                }));
                 }
             }
         } else {
@@ -551,7 +552,7 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
             (SELECT COALESCE(SUM(octet_length(body_encrypted)), 0)::BIGINT FROM emails e JOIN email_accounts ea ON e.account_id = ea.id WHERE ea.user_id = u.id) as email_storage_bytes,
             (SELECT COALESCE(SUM(size), 0)::BIGINT FROM files f WHERE f.user_id = u.id) as drive_storage_bytes,
             (SELECT COALESCE(SUM(octet_length(content_encrypted)), 0)::BIGINT FROM messages m WHERE m.sender_id = u.id) as chat_storage_bytes,
-            (SELECT COALESCE(SUM(octet_length(content)), 0)::BIGINT FROM notes n WHERE n.user_id = u.id) as notes_storage_bytes
+            (SELECT COALESCE(SUM(octet_length(coalesce(content_encrypted, content, ''))), 0)::BIGINT FROM notes n WHERE n.user_id = u.id) as notes_storage_bytes
         FROM users u 
         LEFT JOIN organizations o ON o.id = u.organization_id
         WHERE u.id = $1
@@ -578,7 +579,10 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
             let drive_storage_bytes: i64 = row.get("drive_storage_bytes");
             let chat_storage_bytes: i64 = row.get("chat_storage_bytes");
             let notes_storage_bytes: i64 = row.get("notes_storage_bytes");
-            let total_used = email_storage_bytes + drive_storage_bytes + chat_storage_bytes + notes_storage_bytes;
+            let total_used = email_storage_bytes
+                + drive_storage_bytes
+                + chat_storage_bytes
+                + notes_storage_bytes;
 
             // Requirement: For personal accounts, organization name is the email address.
             let organization_id: Option<i32> = row.try_get("organization_id").ok().flatten();

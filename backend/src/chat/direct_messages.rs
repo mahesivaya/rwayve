@@ -1,4 +1,4 @@
-use crate::cache::{Cache, chat_history_key};
+use crate::cache::Cache;
 use crate::models::message::Message;
 use crate::prelude::*;
 use crate::security::encryption::decrypt;
@@ -7,14 +7,14 @@ use crate::security::jwt::get_user_id_from_request;
 use super::dto::QueryParams;
 
 use sqlx::Row;
-use tracing::{debug, error, instrument, warn};
+use tracing::{error, instrument, warn};
 
 #[get("/messages")]
-#[instrument(target = "http", skip(req, pool, cache, query), fields(user1 = query.user1, user2 = query.user2))]
+#[instrument(target = "http", skip(req, pool, _cache, query), fields(user1 = query.user1, user2 = query.user2))]
 pub async fn get_messages(
     req: HttpRequest,
     pool: web::Data<PgPool>,
-    cache: web::Data<Option<Cache>>,
+    _cache: web::Data<Option<Cache>>,
     query: web::Query<QueryParams>,
 ) -> impl Responder {
     // Auth: require a valid JWT and confirm the caller is one of the two
@@ -34,26 +34,6 @@ pub async fn get_messages(
             "get_messages rejected: caller is not a conversation participant"
         );
         return HttpResponse::Forbidden().finish();
-    }
-
-    let cache_key = chat_history_key(query.user1, query.user2);
-
-    if let Some(c) = cache.get_ref().as_ref()
-        && let Some(cached) = c.get_json::<Vec<Message>>(&cache_key).await
-    {
-        debug!(target: "cache", key = %cache_key, "messages cache hit");
-        // Still flip unread → read on every fetch so the sender sees the
-        // status change even on cache hits.
-        let _ = sqlx::query(
-            "UPDATE messages
-             SET status = 'read'
-             WHERE receiver_id = $1 AND sender_id = $2 AND status <> 'read'",
-        )
-        .bind(query.user1)
-        .bind(query.user2)
-        .execute(pool.get_ref())
-        .await;
-        return HttpResponse::Ok().json(cached);
     }
 
     // Two ordered scans (each index-served by idx_messages_conversation /
@@ -135,10 +115,6 @@ pub async fn get_messages(
                 .collect();
 
             messages.reverse();
-
-            if let Some(c) = cache.get_ref().as_ref() {
-                c.set_json_with_ttl(&cache_key, &messages, 60).await;
-            }
 
             HttpResponse::Ok().json(messages)
         }

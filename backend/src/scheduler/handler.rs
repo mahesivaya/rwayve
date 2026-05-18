@@ -6,27 +6,64 @@ use crate::scheduler::email_notifications::{
 };
 use crate::scheduler::time::minutes_to_time;
 use crate::scheduler::zoom::create_zoom_meeting;
+use crate::security::encryption::{decrypt, encrypt};
 use actix_web::{HttpRequest, HttpResponse, delete, post, put, web};
 use chrono::{TimeZone, Utc};
 use chrono_tz::Tz;
-use moka::future::Cache as MokaCache;
 use serde_json::json;
+use std::collections::HashMap;
 use std::str::FromStr;
-use std::time::Duration;
 use tracing::{error, info, instrument, warn};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use sqlx::{PgPool, Row};
 
-const MEETINGS_CACHE_TTL_SECS: u64 = 60;
-const MEETINGS_CACHE_MAX_CAPACITY: u64 = 10_000;
+fn decrypt_text_field(
+    iv: Option<String>,
+    encrypted: Option<String>,
+    legacy_plaintext: Option<String>,
+) -> String {
+    match (iv, encrypted) {
+        (Some(iv), Some(encrypted)) if !iv.is_empty() && !encrypted.is_empty() => {
+            decrypt(&iv, &encrypted).unwrap_or_else(|_| "[decryption failed]".to_string())
+        }
+        _ => legacy_plaintext.unwrap_or_default(),
+    }
+}
 
-static MEETINGS_CACHE: Lazy<MokaCache<i32, Vec<Meeting>>> = Lazy::new(|| {
-    MokaCache::builder()
-        .max_capacity(MEETINGS_CACHE_MAX_CAPACITY)
-        .time_to_live(Duration::from_secs(MEETINGS_CACHE_TTL_SECS))
-        .build()
-});
+fn decrypt_optional_text_field(
+    iv: Option<String>,
+    encrypted: Option<String>,
+    legacy_plaintext: Option<String>,
+) -> Option<String> {
+    match (iv, encrypted) {
+        (Some(iv), Some(encrypted)) if !iv.is_empty() && !encrypted.is_empty() => {
+            Some(decrypt(&iv, &encrypted).unwrap_or_else(|_| "[decryption failed]".to_string()))
+        }
+        _ => legacy_plaintext.filter(|value| !value.is_empty()),
+    }
+}
+
+fn encrypt_required_field(value: &str) -> Result<(String, String), HttpResponse> {
+    encrypt(value).map_err(|e| {
+        error!(target: "scheduler", error = %e, "scheduler field encrypt failed");
+        HttpResponse::InternalServerError().finish()
+    })
+}
+
+fn encrypt_optional_field(
+    value: Option<&str>,
+) -> Result<(Option<String>, Option<String>), HttpResponse> {
+    match value.filter(|value| !value.is_empty()) {
+        Some(value) => encrypt(value)
+            .map(|(iv, encrypted)| (Some(iv), Some(encrypted)))
+            .map_err(|e| {
+                error!(target: "scheduler", error = %e, "scheduler optional field encrypt failed");
+                HttpResponse::InternalServerError().finish()
+            }),
+        None => Ok((None, None)),
+    }
+}
 
 // ================= CREATE MEETING =================
 
@@ -118,6 +155,32 @@ pub async fn create_meeting(
         }
     };
 
+    let (title_iv, title_encrypted) = match encrypt_required_field(&data.title) {
+        Ok(value) => value,
+        Err(resp) => return resp,
+    };
+    let (zoom_join_url_iv, zoom_join_url_encrypted) =
+        match encrypt_optional_field(zoom_join_url.as_deref()) {
+            Ok(value) => value,
+            Err(resp) => return resp,
+        };
+    let encrypted_participants: Vec<(String, String)> = match participants
+        .iter()
+        .map(|email| encrypt_required_field(email))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(value) => value,
+        Err(resp) => return resp,
+    };
+    let participant_ivs: Vec<String> = encrypted_participants
+        .iter()
+        .map(|(iv, _)| iv.clone())
+        .collect();
+    let participant_encrypted: Vec<String> = encrypted_participants
+        .iter()
+        .map(|(_, encrypted)| encrypted.clone())
+        .collect();
+
     // ================= TRANSACTION =================
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
@@ -130,17 +193,22 @@ pub async fn create_meeting(
     // ================= INSERT MEETING =================
     let meeting = match sqlx::query(
         r#"
-        INSERT INTO meetings (title, date, start_time, end_time, user_id, zoom_join_url)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO meetings (
+            title, title_encrypted, title_iv, date, start_time, end_time,
+            user_id, zoom_join_url, zoom_join_url_encrypted, zoom_join_url_iv
+        )
+        VALUES ('', $1, $2, $3, $4, $5, $6, NULL, $7, $8)
         RETURNING id
         "#,
     )
-    .bind(&data.title)
+    .bind(&title_encrypted)
+    .bind(&title_iv)
     .bind(date)
     .bind(start_time)
     .bind(end_time)
     .bind(user_id)
-    .bind(&zoom_join_url)
+    .bind(&zoom_join_url_encrypted)
+    .bind(&zoom_join_url_iv)
     .fetch_one(&mut *tx)
     .await
     {
@@ -157,12 +225,14 @@ pub async fn create_meeting(
     // ================= INSERT PARTICIPANTS =================
     let insert_participants = sqlx::query(
         r#"
-        INSERT INTO meeting_participants (meeting_id, email, user_id)
+        INSERT INTO meeting_participants (meeting_id, email, email_encrypted, email_iv, user_id)
         SELECT 
             $1,
-            v.email,
+            '',
+            v.email_encrypted,
+            v.email_iv,
             u.id
-        FROM UNNEST($2::text[]) AS v(email)
+        FROM UNNEST($2::text[], $3::text[], $4::text[]) AS v(email, email_encrypted, email_iv)
         LEFT JOIN users u 
         ON LOWER(TRIM(u.email)) = LOWER(TRIM(v.email))
         ON CONFLICT DO NOTHING;
@@ -170,6 +240,8 @@ pub async fn create_meeting(
     )
     .bind(meeting_id)
     .bind(&participants)
+    .bind(&participant_encrypted)
+    .bind(&participant_ivs)
     .execute(&mut *tx)
     .await;
 
@@ -184,8 +256,6 @@ pub async fn create_meeting(
         error!(target: "db", meeting_id, error = ?e, "create_meeting tx commit failed");
         return HttpResponse::InternalServerError().finish();
     }
-    MEETINGS_CACHE.invalidate(&user_id).await;
-
     info!(
         "Meeting created: id={} user_id={} title=\"{}\"",
         meeting_id, user_id, data.title
@@ -227,29 +297,27 @@ pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResp
         Err(resp) => return resp,
     };
 
-    if let Some(cached) = MEETINGS_CACHE.get(&user_id).await {
-        return HttpResponse::Ok().json(cached);
-    }
-
-    let result = sqlx::query_as::<_, Meeting>(
+    let result = sqlx::query(
         r#"
         SELECT
             m.id,
             m.title,
+            m.title_encrypted,
+            m.title_iv,
             m.date,
             m.start_time,
             m.end_time,
             m.zoom_join_url,
+            m.zoom_join_url_encrypted,
+            m.zoom_join_url_iv,
             m.source,
-            COALESCE(
-                ARRAY_AGG(mp.email) FILTER (WHERE mp.email IS NOT NULL),
-                ARRAY[]::text[]
-            ) AS participants
+            mp.email AS participant_email,
+            mp.email_encrypted AS participant_email_encrypted,
+            mp.email_iv AS participant_email_iv
         FROM meetings m
         LEFT JOIN meeting_participants mp ON mp.meeting_id = m.id
         WHERE m.user_id = $1
-        GROUP BY m.id
-        ORDER BY m.date, m.start_time
+        ORDER BY m.date, m.start_time, m.id, mp.id
         "#,
     )
     .bind(user_id)
@@ -258,8 +326,53 @@ pub async fn get_meetings(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResp
 
     match result {
         Ok(rows) => {
-            MEETINGS_CACHE.insert(user_id, rows.clone()).await;
-            HttpResponse::Ok().json(rows)
+            let mut meetings = Vec::<Meeting>::new();
+            let mut indexes = HashMap::<i32, usize>::new();
+
+            for row in rows {
+                let meeting_id: i32 = row.get("id");
+                let index = match indexes.get(&meeting_id) {
+                    Some(index) => *index,
+                    None => {
+                        let meeting = Meeting {
+                            id: meeting_id,
+                            title: decrypt_text_field(
+                                row.try_get("title_iv").ok(),
+                                row.try_get("title_encrypted").ok(),
+                                row.try_get("title").ok(),
+                            ),
+                            date: row.get("date"),
+                            start_time: row.get("start_time"),
+                            end_time: row.get("end_time"),
+                            participants: Vec::new(),
+                            zoom_join_url: decrypt_optional_text_field(
+                                row.try_get("zoom_join_url_iv").ok(),
+                                row.try_get("zoom_join_url_encrypted").ok(),
+                                row.try_get("zoom_join_url").ok(),
+                            ),
+                            source: row.get("source"),
+                        };
+
+                        meetings.push(meeting);
+                        let new_index = meetings.len() - 1;
+                        indexes.insert(meeting_id, new_index);
+                        new_index
+                    }
+                };
+
+                let participant = decrypt_optional_text_field(
+                    row.try_get("participant_email_iv").ok(),
+                    row.try_get("participant_email_encrypted").ok(),
+                    row.try_get("participant_email").ok(),
+                );
+                if let Some(participant) = participant
+                    && !participant.is_empty()
+                {
+                    meetings[index].participants.push(participant);
+                }
+            }
+
+            HttpResponse::Ok().json(meetings)
         }
         Err(e) => {
             error!(target: "db", user_id, error = ?e, "get_meetings failed");
@@ -306,18 +419,32 @@ pub async fn update_meeting(
 
     // ================= LOAD EXISTING (for change detection) =================
     let existing = match sqlx::query(
-        "SELECT title, date, start_time, end_time, zoom_join_url FROM meetings WHERE id = $1",
+        r#"
+        SELECT title, title_encrypted, title_iv, date, start_time, end_time,
+               zoom_join_url, zoom_join_url_encrypted, zoom_join_url_iv
+        FROM meetings
+        WHERE id = $1 AND user_id = $2
+        "#,
     )
     .bind(id)
+    .bind(user_id)
     .fetch_optional(pool.get_ref())
     .await
     {
         Ok(Some(row)) => Some((
-            row.get::<String, _>("title"),
+            decrypt_text_field(
+                row.try_get("title_iv").ok(),
+                row.try_get("title_encrypted").ok(),
+                row.try_get("title").ok(),
+            ),
             row.get::<NaiveDate, _>("date"),
             row.get::<NaiveTime, _>("start_time"),
             row.get::<NaiveTime, _>("end_time"),
-            row.get::<Option<String>, _>("zoom_join_url"),
+            decrypt_optional_text_field(
+                row.try_get("zoom_join_url_iv").ok(),
+                row.try_get("zoom_join_url_encrypted").ok(),
+                row.try_get("zoom_join_url").ok(),
+            ),
         )),
         Ok(None) => None,
         Err(e) => {
@@ -325,6 +452,42 @@ pub async fn update_meeting(
             return HttpResponse::InternalServerError().finish();
         }
     };
+
+    if existing.is_none() {
+        return HttpResponse::NotFound().finish();
+    }
+
+    let (title_iv, title_encrypted) = match encrypt_required_field(&data.title) {
+        Ok(value) => value,
+        Err(resp) => return resp,
+    };
+    let participants: Vec<String> = data
+        .participants
+        .iter()
+        .map(|email| email.trim().to_lowercase())
+        .filter(|email| email.contains("@") && email.contains("."))
+        .collect();
+
+    if participants.is_empty() {
+        return HttpResponse::BadRequest().body("Invalid participant emails");
+    }
+
+    let encrypted_participants: Vec<(String, String)> = match participants
+        .iter()
+        .map(|email| encrypt_required_field(email))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(value) => value,
+        Err(resp) => return resp,
+    };
+    let participant_ivs: Vec<String> = encrypted_participants
+        .iter()
+        .map(|(iv, _)| iv.clone())
+        .collect();
+    let participant_encrypted: Vec<String> = encrypted_participants
+        .iter()
+        .map(|(_, encrypted)| encrypted.clone())
+        .collect();
 
     // ================= TRANSACTION =================
     let mut tx = match pool.begin().await {
@@ -339,15 +502,18 @@ pub async fn update_meeting(
     let update = sqlx::query(
         r#"
         UPDATE meetings
-        SET title=$1, date=$2, start_time=$3, end_time=$4
-        WHERE id=$5
+        SET title='', title_encrypted=$1, title_iv=$2,
+            date=$3, start_time=$4, end_time=$5
+        WHERE id=$6 AND user_id=$7
         "#,
     )
-    .bind(&data.title)
+    .bind(&title_encrypted)
+    .bind(&title_iv)
     .bind(date)
     .bind(start_time)
     .bind(end_time)
     .bind(id)
+    .bind(user_id)
     .execute(&mut *tx)
     .await;
 
@@ -358,10 +524,19 @@ pub async fn update_meeting(
     }
 
     // ================= DELETE OLD PARTICIPANTS =================
-    if let Err(e) = sqlx::query("DELETE FROM meeting_participants WHERE meeting_id = $1")
-        .bind(id)
-        .execute(&mut *tx)
-        .await
+    if let Err(e) = sqlx::query(
+        r#"
+        DELETE FROM meeting_participants mp
+        USING meetings m
+        WHERE mp.meeting_id = m.id
+          AND mp.meeting_id = $1
+          AND m.user_id = $2
+        "#,
+    )
+    .bind(id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await
     {
         error!(target: "db", meeting_id = id, error = ?e, "delete old participants failed");
         let _ = tx.rollback().await;
@@ -371,18 +546,22 @@ pub async fn update_meeting(
     // ================= INSERT NEW PARTICIPANTS =================
     let insert = sqlx::query(
         r#"
-        INSERT INTO meeting_participants (meeting_id, email, user_id)
+        INSERT INTO meeting_participants (meeting_id, email, email_encrypted, email_iv, user_id)
         SELECT
             $1,
-            v.email,
+            '',
+            v.email_encrypted,
+            v.email_iv,
             u.id
-        FROM UNNEST($2::text[]) AS v(email)
+        FROM UNNEST($2::text[], $3::text[], $4::text[]) AS v(email, email_encrypted, email_iv)
         LEFT JOIN users u
         ON LOWER(TRIM(u.email)) = LOWER(TRIM(v.email))
         "#,
     )
     .bind(id)
-    .bind(&data.participants)
+    .bind(&participants)
+    .bind(&participant_encrypted)
+    .bind(&participant_ivs)
     .execute(&mut *tx)
     .await;
 
@@ -397,8 +576,6 @@ pub async fn update_meeting(
         error!(target: "db", meeting_id = id, error = ?e, "update_meeting tx commit failed");
         return HttpResponse::InternalServerError().finish();
     }
-    MEETINGS_CACHE.invalidate(&user_id).await;
-
     info!("Meeting updated: id={} user_id={}", id, user_id);
 
     // ================= NOTIFY ON CONTENT CHANGES =================
@@ -413,13 +590,6 @@ pub async fn update_meeting(
     };
 
     if content_changed {
-        let participants: Vec<String> = data
-            .participants
-            .iter()
-            .map(|e| e.trim().to_lowercase())
-            .filter(|e| e.contains("@") && e.contains("."))
-            .collect();
-
         if !participants.is_empty() {
             let pool_clone = pool.clone();
             let email_req = MeetingEmailRequest {
@@ -462,19 +632,33 @@ pub async fn delete_meeting(
 
     // Snapshot meeting + participants before deletion so we can email them.
     let meeting_row = sqlx::query(
-        "SELECT title, date, start_time, end_time, zoom_join_url FROM meetings WHERE id = $1",
+        r#"
+        SELECT title, title_encrypted, title_iv, date, start_time, end_time,
+               zoom_join_url, zoom_join_url_encrypted, zoom_join_url_iv
+        FROM meetings
+        WHERE id = $1 AND user_id = $2
+        "#,
     )
     .bind(id)
+    .bind(user_id)
     .fetch_optional(pool.get_ref())
     .await;
 
     let snapshot = match meeting_row {
         Ok(Some(row)) => Some((
-            row.get::<String, _>("title"),
+            decrypt_text_field(
+                row.try_get("title_iv").ok(),
+                row.try_get("title_encrypted").ok(),
+                row.try_get("title").ok(),
+            ),
             row.get::<NaiveDate, _>("date"),
             row.get::<NaiveTime, _>("start_time"),
             row.get::<NaiveTime, _>("end_time"),
-            row.get::<Option<String>, _>("zoom_join_url"),
+            decrypt_optional_text_field(
+                row.try_get("zoom_join_url_iv").ok(),
+                row.try_get("zoom_join_url_encrypted").ok(),
+                row.try_get("zoom_join_url").ok(),
+            ),
         )),
         Ok(None) => None,
         Err(e) => {
@@ -484,15 +668,27 @@ pub async fn delete_meeting(
     };
 
     let participants: Vec<String> = match sqlx::query(
-        "SELECT email FROM meeting_participants WHERE meeting_id = $1",
+        r#"
+        SELECT mp.email, mp.email_encrypted, mp.email_iv
+        FROM meeting_participants mp
+        JOIN meetings m ON m.id = mp.meeting_id
+        WHERE mp.meeting_id = $1 AND m.user_id = $2
+        "#,
     )
     .bind(id)
+    .bind(user_id)
     .fetch_all(pool.get_ref())
     .await
     {
         Ok(rows) => rows
             .into_iter()
-            .map(|r| r.get::<String, _>("email"))
+            .filter_map(|r| {
+                decrypt_optional_text_field(
+                    r.try_get("email_iv").ok(),
+                    r.try_get("email_encrypted").ok(),
+                    r.try_get("email").ok(),
+                )
+            })
             .collect(),
         Err(e) => {
             warn!(target: "db", meeting_id = id, error = ?e, "delete_meeting load participants failed");
@@ -500,14 +696,15 @@ pub async fn delete_meeting(
         }
     };
 
-    let result = sqlx::query("DELETE FROM meetings WHERE id = $1")
+    let result = sqlx::query("DELETE FROM meetings WHERE id = $1 AND user_id = $2")
         .bind(id)
+        .bind(user_id)
         .execute(pool.get_ref())
         .await;
 
     match result {
+        Ok(done) if done.rows_affected() == 0 => HttpResponse::NotFound().finish(),
         Ok(_) => {
-            MEETINGS_CACHE.invalidate(&user_id).await;
             if let Some((title, date, start_time, end_time, zoom_join_url)) = snapshot
                 && !participants.is_empty()
             {

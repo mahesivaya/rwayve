@@ -31,6 +31,9 @@ export default function Layout() {
   // Decides whether the next header-link click navigates or changes the duplicate pane.
   const [splitTarget, setSplitTarget] = useState<"left" | "right">("left");
 
+  // On narrow viewports the header nav collapses behind a hamburger toggle.
+  const [navOpen, setNavOpen] = useState(false);
+
   const middleApp = SPLIT_APPS.find((a) => a.key === middleView) ?? null;
   const MiddleComp = middleApp?.Comp ?? null;
   const middleLabel = middleApp?.label ?? null;
@@ -57,6 +60,7 @@ export default function Layout() {
         to={path}
         className={`${isLeftActive ? "active" : ""} ${isMiddleActive || isRightActive ? "active-split" : ""}`.trim()}
         onClick={(e) => {
+          setNavOpen(false);
           if (splitTarget === "right") {
             e.preventDefault();
             setRightView(app);
@@ -90,9 +94,18 @@ export default function Layout() {
             </button>
           )}
           <div className="logo" onClick={() => navigate("/")}>Wayve 🚀</div>
+          <button
+            className="nav-toggle"
+            onClick={() => setNavOpen((open) => !open)}
+            title="Menu"
+            aria-label="Toggle navigation menu"
+            aria-expanded={navOpen}
+          >
+            ☰
+          </button>
         </div>
 
-        <div className="nav">
+        <div className={`nav ${navOpen ? "open" : ""}`}>
           {renderNavItem("/", "home", "Home")}
           {renderNavItem("/emails", "emails", "Emails")}
           {renderNavItem("/chat", "chat", "Chat")}
@@ -102,6 +115,14 @@ export default function Layout() {
           {renderNavItem("/notes", "notes", "Notes")}
           {renderNavItem("/tasks", "tasks", "Tasks")}
           {renderNavItem("/aichat", "aichat", "AI Chat")}
+          <Link
+            to="/pricing"
+            className={location.pathname === "/pricing" ? "active" : ""}
+            onClick={() => setNavOpen(false)}
+          >
+            Pricing
+          </Link>
+          {renderNavItem("/about", "about", "About")}
         </div>
 
         <div className="actions">
@@ -150,6 +171,7 @@ export default function Layout() {
           <Link to="/notes">📝</Link>
           <Link to="/tasks">☑</Link>
           <Link to="/aichat">✨</Link>
+          <Link to="/about">ⓘ</Link>
 
           <div className="icon-sidebar-spacer" />
         </div>

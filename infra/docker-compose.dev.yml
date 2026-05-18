@@ -5,7 +5,7 @@ services:
     image: postgres:15
     container_name: rwayve_postgres_dev
     env_file:
-      - ../.env.development
+      - ../.env.secrets
     ports:
       - "5432:5432"
     healthcheck:
@@ -66,18 +66,16 @@ services:
       redis:
         condition: service_healthy
     env_file:
-      - ../.env.development
       - ../backend/.env.development
+      - ../.env.secrets
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: api
       DATABASE_URL: postgres://${POSTGRES_USER:-wayve_user}:${POSTGRES_PASSWORD:-wayve_password}@postgres_db:5432/${POSTGRES_DB:-wayve_dev}
       REDIS_URL: redis://redis:6379
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      GOOGLE_CLIENT_SECRET_PATH: /app/client_secret.json
       SMTP_HOST: mailhog
     volumes:
-      - ../client_secret.json:/app/client_secret.json:ro
       - ../uploads:/app/uploads
       - ../logs:/app/logs
     ports:
@@ -102,17 +100,15 @@ services:
       backend:
         condition: service_started
     env_file:
-      - ../.env.development
       - ../backend/.env.development
+      - ../.env.secrets
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: email-sync-worker
       DATABASE_URL: postgres://${POSTGRES_USER:-wayve_user}:${POSTGRES_PASSWORD:-wayve_password}@postgres_db:5432/${POSTGRES_DB:-wayve_dev}
       REDIS_URL: redis://redis:6379
-      GOOGLE_CLIENT_SECRET_PATH: /app/client_secret.json
       SMTP_HOST: mailhog
     volumes:
-      - ../client_secret.json:/app/client_secret.json:ro
       - ../logs:/app/logs
 
   email_body_worker:
@@ -128,17 +124,15 @@ services:
       backend:
         condition: service_started
     env_file:
-      - ../.env.development
       - ../backend/.env.development
+      - ../.env.secrets
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: email-body-worker
       DATABASE_URL: postgres://${POSTGRES_USER:-wayve_user}:${POSTGRES_PASSWORD:-wayve_password}@postgres_db:5432/${POSTGRES_DB:-wayve_dev}
       REDIS_URL: redis://redis:6379
-      GOOGLE_CLIENT_SECRET_PATH: /app/client_secret.json
       SMTP_HOST: mailhog
     volumes:
-      - ../client_secret.json:/app/client_secret.json:ro
       - ../uploads:/app/uploads
       - ../logs:/app/logs
 

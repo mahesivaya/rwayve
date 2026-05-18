@@ -34,6 +34,12 @@ pub fn load_env_files() {
     dotenvy::from_filename_override(format!(".env.{app_env}")).ok();
     dotenvy::from_filename_override(format!("backend/.env.{app_env}")).ok();
     dotenvy::from_filename("backend/.env").ok();
+
+    // Centralized secrets — the single source of truth for credentials, keys,
+    // and the DB connection string. Loaded last so it wins over any stale key
+    // left in the config files above. In docker this file is not in the image
+    // (a no-op); containers receive it through the `env_file:` directive.
+    dotenvy::from_filename_override(".env.secrets").ok();
 }
 
 pub fn db_max_connections(role: RuntimeRole) -> u32 {
@@ -58,6 +64,37 @@ pub fn listen_port() -> u16 {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(8080)
+}
+
+/// Resolve the Postgres connection string.
+///
+/// An explicit `DATABASE_URL` always wins — docker-compose, CI, and prod set
+/// it directly. Otherwise it is derived from the `POSTGRES_*` parts, so the
+/// credentials are written exactly once (in `.env.secrets`) rather than also
+/// being duplicated inside a `DATABASE_URL` string. `POSTGRES_HOST` defaults
+/// to `localhost` for a local `cargo run`; docker sets it to `postgres_db`.
+pub fn database_url() -> String {
+    if let Ok(url) = env::var("DATABASE_URL") {
+        let url = url.trim();
+        if !url.is_empty() {
+            return url.to_string();
+        }
+    }
+
+    let part = |key: &str, default: &str| -> String {
+        env::var(key)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| default.to_string())
+    };
+
+    let user = part("POSTGRES_USER", "wayve_user");
+    let password = part("POSTGRES_PASSWORD", "");
+    let host = part("POSTGRES_HOST", "localhost");
+    let port = part("POSTGRES_PORT", "5432");
+    let db = part("POSTGRES_DB", "wayve_dev");
+    format!("postgres://{user}:{password}@{host}:{port}/{db}")
 }
 
 #[cfg(test)]
@@ -105,5 +142,49 @@ mod config_tests {
         assert_eq!(listen_port(), 9090);
         unsafe { env::set_var("PORT", "garbage") };
         assert_eq!(listen_port(), 8080);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn database_url_prefers_explicit_value() {
+        let saved = env::var("DATABASE_URL").ok();
+        unsafe { env::set_var("DATABASE_URL", "postgres://x:y@h:1/db") };
+        assert_eq!(database_url(), "postgres://x:y@h:1/db");
+        unsafe {
+            match &saved {
+                Some(value) => env::set_var("DATABASE_URL", value),
+                None => env::remove_var("DATABASE_URL"),
+            }
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn database_url_derives_from_postgres_parts() {
+        let saved = env::var("DATABASE_URL").ok();
+        unsafe {
+            env::remove_var("DATABASE_URL");
+            env::set_var("POSTGRES_USER", "u");
+            env::set_var("POSTGRES_PASSWORD", "p");
+            env::set_var("POSTGRES_HOST", "dbhost");
+            env::set_var("POSTGRES_PORT", "6543");
+            env::set_var("POSTGRES_DB", "mydb");
+        }
+        assert_eq!(database_url(), "postgres://u:p@dbhost:6543/mydb");
+        unsafe {
+            for key in [
+                "POSTGRES_USER",
+                "POSTGRES_PASSWORD",
+                "POSTGRES_HOST",
+                "POSTGRES_PORT",
+                "POSTGRES_DB",
+            ] {
+                env::remove_var(key);
+            }
+            match &saved {
+                Some(value) => env::set_var("DATABASE_URL", value),
+                None => env::remove_var("DATABASE_URL"),
+            }
+        }
     }
 }

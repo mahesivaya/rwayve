@@ -1,8 +1,44 @@
 use crate::models::note::{Note, NoteInput};
 use crate::prelude::*;
+use crate::security::encryption::{decrypt, encrypt};
 use crate::security::jwt::get_user_id_from_request;
 use actix_web::{delete, put};
+use sqlx::Row;
 use tracing::{error, instrument};
+
+fn decrypt_field(
+    iv: Option<String>,
+    encrypted: Option<String>,
+    legacy_plaintext: Option<String>,
+) -> Option<String> {
+    match (iv, encrypted) {
+        (Some(iv), Some(encrypted)) if !iv.is_empty() && !encrypted.is_empty() => {
+            match decrypt(&iv, &encrypted) {
+                Ok(value) => Some(value),
+                Err(_) => Some("[decryption failed]".to_string()),
+            }
+        }
+        _ => legacy_plaintext,
+    }
+}
+
+fn note_from_row(row: sqlx::postgres::PgRow) -> Note {
+    Note {
+        id: row.get("id"),
+        title: decrypt_field(
+            row.try_get("title_iv").ok(),
+            row.try_get("title_encrypted").ok(),
+            row.try_get("title").ok(),
+        ),
+        content: decrypt_field(
+            row.try_get("content_iv").ok(),
+            row.try_get("content_encrypted").ok(),
+            row.try_get("content").ok(),
+        ),
+        created_at: row.try_get("created_at").ok(),
+        updated_at: row.try_get("updated_at").ok(),
+    }
+}
 
 #[get("/notes")]
 #[instrument(target = "http", skip(req, pool))]
@@ -12,8 +48,8 @@ pub async fn list_notes(req: HttpRequest, pool: web::Data<PgPool>) -> impl Respo
         None => return HttpResponse::Unauthorized().finish(),
     };
 
-    let result = sqlx::query_as::<_, Note>(
-        "SELECT id, title, content, created_at, updated_at
+    let result = sqlx::query(
+        "SELECT id, title, content, title_encrypted, title_iv, content_encrypted, content_iv, created_at, updated_at
          FROM notes
          WHERE user_id = $1
          ORDER BY updated_at DESC",
@@ -23,7 +59,9 @@ pub async fn list_notes(req: HttpRequest, pool: web::Data<PgPool>) -> impl Respo
     .await;
 
     match result {
-        Ok(rows) => HttpResponse::Ok().json(rows),
+        Ok(rows) => {
+            HttpResponse::Ok().json(rows.into_iter().map(note_from_row).collect::<Vec<_>>())
+        }
         Err(e) => {
             error!(target: "db", user_id, error = ?e, "notes list failed");
             HttpResponse::InternalServerError().finish()
@@ -43,19 +81,38 @@ pub async fn create_note(
         None => return HttpResponse::Unauthorized().finish(),
     };
 
-    let result = sqlx::query_as::<_, Note>(
-        "INSERT INTO notes (user_id, title, content)
-         VALUES ($1, $2, $3)
-         RETURNING id, title, content, created_at, updated_at",
+    let title = data.title.as_deref().unwrap_or("");
+    let content = data.content.as_deref().unwrap_or("");
+    let (title_iv, title_encrypted) = match encrypt(title) {
+        Ok(value) => value,
+        Err(e) => {
+            error!(target: "notes", user_id, error = %e, "note title encrypt failed");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let (content_iv, content_encrypted) = match encrypt(content) {
+        Ok(value) => value,
+        Err(e) => {
+            error!(target: "notes", user_id, error = %e, "note content encrypt failed");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    let result = sqlx::query(
+        "INSERT INTO notes (user_id, title, content, title_encrypted, title_iv, content_encrypted, content_iv)
+         VALUES ($1, '', '', $2, $3, $4, $5)
+         RETURNING id, title, content, title_encrypted, title_iv, content_encrypted, content_iv, created_at, updated_at",
     )
     .bind(user_id)
-    .bind(data.title.as_deref().unwrap_or(""))
-    .bind(data.content.as_deref().unwrap_or(""))
+    .bind(&title_encrypted)
+    .bind(&title_iv)
+    .bind(&content_encrypted)
+    .bind(&content_iv)
     .fetch_one(pool.get_ref())
     .await;
 
     match result {
-        Ok(note) => HttpResponse::Ok().json(note),
+        Ok(row) => HttpResponse::Ok().json(note_from_row(row)),
         Err(e) => {
             error!(target: "db", user_id, error = ?e, "notes create failed");
             HttpResponse::InternalServerError().finish()
@@ -80,21 +137,41 @@ pub async fn update_note(
 
     // Owner-scoped UPDATE — silently no-ops if the note belongs to someone
     // else, so we 404 rather than leaking that the id exists.
-    let result = sqlx::query_as::<_, Note>(
+    let title = data.title.as_deref().unwrap_or("");
+    let content = data.content.as_deref().unwrap_or("");
+    let (title_iv, title_encrypted) = match encrypt(title) {
+        Ok(value) => value,
+        Err(e) => {
+            error!(target: "notes", user_id, note_id = id, error = %e, "note title encrypt failed");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let (content_iv, content_encrypted) = match encrypt(content) {
+        Ok(value) => value,
+        Err(e) => {
+            error!(target: "notes", user_id, note_id = id, error = %e, "note content encrypt failed");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    let result = sqlx::query(
         "UPDATE notes
-         SET title = $1, content = $2, updated_at = NOW()
-         WHERE id = $3 AND user_id = $4
-         RETURNING id, title, content, created_at, updated_at",
+         SET title = '', content = '', title_encrypted = $1, title_iv = $2,
+             content_encrypted = $3, content_iv = $4, updated_at = NOW()
+         WHERE id = $5 AND user_id = $6
+         RETURNING id, title, content, title_encrypted, title_iv, content_encrypted, content_iv, created_at, updated_at",
     )
-    .bind(data.title.as_deref().unwrap_or(""))
-    .bind(data.content.as_deref().unwrap_or(""))
+    .bind(&title_encrypted)
+    .bind(&title_iv)
+    .bind(&content_encrypted)
+    .bind(&content_iv)
     .bind(id)
     .bind(user_id)
     .fetch_optional(pool.get_ref())
     .await;
 
     match result {
-        Ok(Some(note)) => HttpResponse::Ok().json(note),
+        Ok(Some(row)) => HttpResponse::Ok().json(note_from_row(row)),
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(e) => {
             error!(target: "db", user_id, note_id = id, error = ?e, "notes update failed");

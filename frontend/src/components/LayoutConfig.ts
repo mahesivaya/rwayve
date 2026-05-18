@@ -9,7 +9,8 @@ export type AppKey =
   | "drive"
   | "notes"
   | "tasks"
-  | "aichat";
+  | "aichat"
+  | "about";
 
 const HomeView = lazy(() => import("../home/Home"));
 const EmailsView = lazy(() => import("../emails/Emails"));
@@ -20,6 +21,7 @@ const DriveView = lazy(() => import("../drive/DriveBox"));
 const NotesView = lazy(() => import("../notes/Notes"));
 const TasksView = lazy(() => import("../tasks/Tasks"));
 const AIChatView = lazy(() => import("../aichat/AIChat"));
+const AboutView = lazy(() => import("../about/About"));
 
 export const SPLIT_APPS = [
   { key: "home" as AppKey, label: "Home", path: "/", icon: "🏠", Comp: HomeView },
@@ -31,4 +33,5 @@ export const SPLIT_APPS = [
   { key: "notes" as AppKey, label: "Notes", path: "/notes", icon: "📝", Comp: NotesView },
   { key: "tasks" as AppKey, label: "Tasks", path: "/tasks", icon: "☑", Comp: TasksView },
   { key: "aichat" as AppKey, label: "AI Chat", path: "/aichat", icon: "✨", Comp: AIChatView },
+  { key: "about" as AppKey, label: "About", path: "/about", icon: "ⓘ", Comp: AboutView },
 ];

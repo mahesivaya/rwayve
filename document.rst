@@ -936,3 +936,16 @@ personal:
 update users set account_type='platform_admin' where email='maheshiv199@gmail.com';
 update users set account_type='organization_admin' where email='maheshwayve@gmail.com';
 update users set account_type='personal' where email='maheshpy85@gmail.com';
+
+
+
+⚠️ To make it live — required config (not committed)
+Set in backend/.env:
+
+STRIPE_SECRET_KEY — sk_...
+STRIPE_WEBHOOK_SECRET — whsec_... (point a Stripe webhook endpoint at <host>/billing/webhook)
+Without these the module degrades gracefully — checkout returns “Billing is not configured”, the webhook ignores events. Also: the 3 seeded plans have no stripe_price_id — a platform admin must set each one (via POST /api/billing/admin/plans or directly) to a real Stripe Price before checkout works for that plan.
+
+Two deps were added to Cargo.toml: hmac (webhook signatures) and the sqlx json feature (JSONB features column). Nothing is committed — all changes are in your working tree.
+
+One scope note: entitlement resolution is complete (effective_entitlements), but I did not wire enforcement into the email/drive modules — that touches non-billing code and is best done as a deliberate follow-up. Want me to take that next?

@@ -29,6 +29,7 @@ impl Cache {
     }
 
     #[instrument(target = "cache", skip(self), fields(key))]
+    #[allow(dead_code)]
     pub async fn get_json<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
         if let Some(raw) = self.local_json.get(key).await {
             return serde_json::from_str(&raw).ok();
@@ -42,6 +43,7 @@ impl Cache {
     }
 
     #[instrument(target = "cache", skip(self, value), fields(key, ttl_secs))]
+    #[allow(dead_code)]
     pub async fn set_json_with_ttl<T: Serialize>(&self, key: &str, value: &T, ttl_secs: u64) {
         let raw = match serde_json::to_string(value) {
             Ok(s) => s,

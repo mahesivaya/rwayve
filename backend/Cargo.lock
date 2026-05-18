@@ -2817,6 +2817,7 @@ dependencies = [
  "futures",
  "futures-util",
  "hkdf",
+ "hmac",
  "jsonwebtoken",
  "lazy_static",
  "lettre",

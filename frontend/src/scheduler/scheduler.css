@@ -515,7 +515,9 @@
 }
 .modal {
   position: relative;
-  width: 380px;
+  width: min(380px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
   background: var(--surface);
   padding: 22px 22px 18px;
   border-radius: var(--radius-lg);
@@ -646,4 +648,103 @@
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+}
+
+/* ================= RESPONSIVE =================
+   The calendar must stay usable as the viewport shrinks. Below 900px the
+   fixed sidebar is dropped (Today / month nav / view switch / Schedule all
+   live in the header anyway) and the time gutter slims down; below 560px
+   everything tightens further for phone widths. */
+@media (max-width: 900px) {
+  .scheduler-sidebar {
+    display: none;
+  }
+
+  .calendar-header {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    gap: 6px;
+  }
+  .calendar-title {
+    font-size: 16px;
+    padding-left: 4px;
+  }
+  .calendar-header button {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .day-view,
+  .month-view {
+    margin: 8px;
+  }
+
+  /* Slim the time gutter so day/week columns keep usable width. */
+  .time-label,
+  .time-spacer {
+    width: 52px;
+    flex-basis: 52px;
+  }
+  .week-row .time-label {
+    width: 52px;
+    flex-basis: 52px;
+  }
+
+  .day-cell {
+    min-height: 84px;
+  }
+}
+
+@media (max-width: 560px) {
+  .calendar-header {
+    padding: 8px;
+  }
+  .calendar-title {
+    width: 100%;
+    margin: 0 0 2px;
+    font-size: 14px;
+  }
+  .calendar-header button {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .day-view,
+  .month-view {
+    margin: 6px;
+  }
+
+  .time-label,
+  .time-spacer {
+    width: 42px;
+    flex-basis: 42px;
+  }
+  .week-row .time-label {
+    width: 42px;
+    flex-basis: 42px;
+  }
+
+  .week-day-num {
+    font-size: 18px;
+  }
+  .week-day-header {
+    padding: 6px 2px 8px;
+  }
+
+  .month-weekday {
+    padding: 6px 2px;
+  }
+  .day-cell {
+    min-height: 62px;
+    padding: 4px;
+  }
+  .date {
+    font-size: 11px;
+  }
+
+  .event,
+  .event-block {
+    font-size: 10px;
+    padding: 3px 4px;
+  }
 }

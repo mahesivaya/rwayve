@@ -1,12 +1,12 @@
 use crate::prelude::*;
+use crate::security::encryption::{decrypt_binary, encrypt_binary};
 use crate::security::jwt::get_user_id_from_request;
-use actix_files::NamedFile;
 use actix_multipart::Multipart;
+use actix_web::http::header;
 use actix_web::{Error, HttpResponse, Responder, get, post, web};
 use chrono::NaiveDateTime;
 use futures_util::StreamExt;
 use sqlx::{FromRow, PgPool, Row};
-use std::path::Path;
 use tokio::{fs, io::AsyncWriteExt};
 use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
@@ -32,6 +32,7 @@ pub struct FileRecord {
     pub id: i64,
     pub name: String,
     pub file_path: String,
+    pub file_iv: Option<String>,
     pub size: i64,
     pub created_at: NaiveDateTime,
 }
@@ -82,35 +83,43 @@ pub async fn upload_file(
         let file_id = Uuid::new_v4().to_string();
         let filepath = format!("{}/{}_{}", upload_dir, file_id, filename);
 
-        let mut f = fs::File::create(&filepath).await.map_err(|e| {
-            error!(target: "http", path = %filepath, error = ?e, "file create failed");
-            actix_web::error::ErrorInternalServerError("File create error")
-        })?;
-
         let mut size: i64 = 0;
+        let mut plaintext = Vec::new();
 
         while let Some(chunk) = field.next().await {
             let data = chunk.map_err(|_| actix_web::error::ErrorBadRequest("Chunk error"))?;
 
             size += data.len() as i64;
-
-            f.write_all(&data).await.map_err(|e| {
-                error!(target: "http", path = %filepath, error = ?e, "file write failed");
-                actix_web::error::ErrorInternalServerError("Write error")
-            })?;
+            plaintext.extend_from_slice(&data);
         }
+
+        let (file_iv, encrypted_bytes) = encrypt_binary(&plaintext).map_err(|e| {
+            error!(target: "http", error = %e, "file encrypt failed");
+            actix_web::error::ErrorInternalServerError("File encrypt error")
+        })?;
+
+        let mut f = fs::File::create(&filepath).await.map_err(|e| {
+            error!(target: "http", path = %filepath, error = ?e, "file create failed");
+            actix_web::error::ErrorInternalServerError("File create error")
+        })?;
+
+        f.write_all(&encrypted_bytes).await.map_err(|e| {
+            error!(target: "http", path = %filepath, error = ?e, "file write failed");
+            actix_web::error::ErrorInternalServerError("Write error")
+        })?;
 
         // ✅ better file type extraction
         let file_type = filename.rsplit('.').next().unwrap_or("").to_string();
 
         sqlx::query(
             r#"
-            INSERT INTO files (name, file_path, size, file_type, user_id)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO files (name, file_path, file_iv, size, file_type, user_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             "#,
         )
         .bind(&filename)
         .bind(&filepath)
+        .bind(&file_iv)
         .bind(size)
         .bind(&file_type)
         .bind(user_id)
@@ -144,7 +153,7 @@ pub async fn get_files(req: HttpRequest, pool: web::Data<PgPool>) -> impl Respon
     };
 
     let result = sqlx::query_as::<_, FileRecord>(
-        "SELECT id, name, file_path, size, created_at FROM files WHERE user_id = $1 ORDER BY created_at DESC"
+        "SELECT id, name, file_path, file_iv, size, created_at FROM files WHERE user_id = $1 ORDER BY created_at DESC"
     )
     .bind(user_id)
     .fetch_all(pool.get_ref())
@@ -157,12 +166,7 @@ pub async fn get_files(req: HttpRequest, pool: web::Data<PgPool>) -> impl Respon
             let files: Vec<FileResponse> = rows
                 .into_iter()
                 .map(|row| {
-                    let file_name = Path::new(&row.file_path)
-                        .file_name()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_default();
-
-                    let file_type = file_name.split('.').next_back().unwrap_or("").to_string();
+                    let file_type = row.name.split('.').next_back().unwrap_or("").to_string();
 
                     FileResponse {
                         id: row.id,
@@ -207,14 +211,15 @@ pub async fn download_file(
 
     // Ownership check: the row is only returned when it belongs to the caller,
     // so a 404 leaks nothing about other users' files.
-    let row = sqlx::query("SELECT file_path FROM files WHERE id = $1 AND user_id = $2")
-        .bind(file_id)
-        .bind(user_id)
-        .fetch_optional(pool.get_ref())
-        .await;
+    let row =
+        sqlx::query("SELECT name, file_path, file_iv FROM files WHERE id = $1 AND user_id = $2")
+            .bind(file_id)
+            .bind(user_id)
+            .fetch_optional(pool.get_ref())
+            .await;
 
-    let file_path: String = match row {
-        Ok(Some(row)) => row.get("file_path"),
+    let (file_name, file_path, file_iv): (String, String, Option<String>) = match row {
+        Ok(Some(row)) => (row.get("name"), row.get("file_path"), row.get("file_iv")),
         Ok(None) => return HttpResponse::NotFound().finish(),
         Err(e) => {
             error!(target: "db", user_id, file_id, error = ?e, "download_file lookup failed");
@@ -222,8 +227,27 @@ pub async fn download_file(
         }
     };
 
-    match NamedFile::open_async(&file_path).await {
-        Ok(file) => file.into_response(&req),
+    match fs::read(&file_path).await {
+        Ok(bytes) => {
+            let body = match file_iv.as_deref().filter(|value| !value.is_empty()) {
+                Some(iv) => match decrypt_binary(iv, &bytes) {
+                    Ok(decrypted) => decrypted,
+                    Err(e) => {
+                        error!(target: "http", user_id, file_id, error = %e, "download_file decrypt failed");
+                        return HttpResponse::InternalServerError().finish();
+                    }
+                },
+                None => bytes,
+            };
+
+            HttpResponse::Ok()
+                .append_header((header::CONTENT_TYPE, "application/octet-stream"))
+                .append_header((
+                    header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{}\"", file_name.replace('"', "")),
+                ))
+                .body(body)
+        }
         Err(e) => {
             error!(target: "http", user_id, file_id, error = ?e, "download_file open failed");
             HttpResponse::NotFound().finish()

@@ -21,6 +21,7 @@ const Drive = lazy(() => import("./drive/DriveBox"));
 const Notes = lazy(() => import("./notes/Notes"));
 const Tasks = lazy(() => import("./tasks/Tasks"));
 const AIChat = lazy(() => import("./aichat/AIChat"));
+const About = lazy(() => import("./about/About"));
 const Profile = lazy(() => import("./profile/Profile"));
 const Settings = lazy(() => import("./profile/Settings"));
 const Organization = lazy(() => import("./organization/Organization"));
@@ -29,6 +30,8 @@ const PlatformAdminHome = lazy(() => import("./organization/PlatformAdminHome"))
 const OrganizationHome = lazy(() => import("./organization/OrganizationHome"));
 const EmailFiles = lazy(() => import("./files/EmailFiles"));
 const ServicePage = lazy(() => import("./services/ServicePage"));
+const Billing = lazy(() => import("./billing/Billing"));
+const Pricing = lazy(() => import("./pricing/Pricing"));
 
 export default function App() {
   const { user } = useAuth();
@@ -107,8 +110,11 @@ export default function App() {
             <Route path="/notes" element={<Notes />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/aichat" element={<AIChat />} />
+            <Route path="/about" element={<About />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/billing" element={<Billing />} />
+            <Route path="/pricing" element={<Pricing />} />
 
           </Route>
         </Route>

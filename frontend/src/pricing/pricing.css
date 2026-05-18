@@ -1,0 +1,220 @@
+.pricing-page {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  box-sizing: border-box;
+  background: lightsteelblue;
+}
+
+.pricing-header {
+  margin-bottom: 16px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  background: #d7e4f4;
+}
+
+.pricing-header h1 {
+  margin: 0;
+  font-size: 26px;
+  color: #111827;
+}
+
+.pricing-header p {
+  margin: 8px 0 12px;
+  max-width: 620px;
+  color: #475569;
+  font-size: 14px;
+}
+
+.pricing-billing-link {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pricing-billing-link:hover {
+  background: #1d4ed8;
+}
+
+.pricing-error {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pricing-section {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  background: #d7e4f4;
+}
+
+.pricing-section h2 {
+  margin: 0;
+  font-size: 18px;
+  color: #111827;
+}
+
+.pricing-section-sub {
+  margin: 4px 0 12px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.pricing-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.pricing-plan h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #111827;
+}
+
+.pricing-plan-price {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.pricing-plan-interval {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.pricing-plan-desc {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.pricing-plan-features {
+  margin: 6px 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #374151;
+}
+
+.pricing-plan-features li {
+  margin: 3px 0;
+}
+
+.pricing-plan-cta {
+  margin-top: auto;
+  min-height: 36px;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pricing-plan-cta:hover {
+  background: #1d4ed8;
+}
+
+.pricing-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.pricing-table th,
+.pricing-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+.pricing-table th {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pricing-table td {
+  color: #111827;
+}
+
+.pricing-cap {
+  text-transform: capitalize;
+}
+
+.pricing-included {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.pricing-included li {
+  margin: 4px 0;
+}
+
+.pricing-faq {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pricing-faq-item {
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.pricing-faq-item strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.pricing-faq-item p {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.pricing-empty {
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  color: #6b7280;
+  text-align: center;
+  font-size: 13px;
+}
