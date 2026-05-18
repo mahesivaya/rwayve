@@ -54,7 +54,7 @@ export async function createAdminOrganization(
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(data.message || "Failed to create business");
+    throw new Error(data.message || "Failed to create organization");
   }
 
   return data;

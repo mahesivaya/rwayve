@@ -33,7 +33,7 @@ export default function Login() {
 
       authLogin(data.token, data.account_type ?? "personal");
 
-      // Org slug isn't known yet at login; routing settles to /business/<slug>
+      // Org slug isn't known yet at login; routing settles to /organization/<slug>
       // once AuthContext's post-login /api/me fetch resolves.
       navigate(homePathForUser({ account_type: data.account_type }));
     } catch (err) {

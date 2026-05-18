@@ -306,14 +306,14 @@ pub async fn admin_create_organization(
                         "message": "A user with that username or email already exists"
                     }));
                 }
-                error!(target: "db", admin_id, error = ?e, "create business admin failed");
+                error!(target: "db", admin_id, error = ?e, "create organization admin failed");
                 return HttpResponse::InternalServerError().finish();
             }
         }
     }
 
     if let Err(e) = tx.commit().await {
-        error!(target: "db", admin_id, error = ?e, "commit business transaction failed");
+        error!(target: "db", admin_id, error = ?e, "commit organization transaction failed");
         return HttpResponse::InternalServerError().finish();
     }
 

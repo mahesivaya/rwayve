@@ -6,7 +6,6 @@ import { EmailItem, EmailAttachment } from "./types";
 interface EmailDetailProps {
   selectedEmail: EmailItem | null;
   viewMode: "email" | "files";
-  isNarrow: boolean;
   onBack: () => void;
   onDeleteEmail: (emailId: number) => Promise<void>;
   files: EmailAttachment[];
@@ -18,7 +17,6 @@ interface EmailDetailProps {
 export const EmailDetail: React.FC<EmailDetailProps> = ({
   selectedEmail,
   viewMode,
-  isNarrow,
   onBack,
   onDeleteEmail,
   files,
@@ -45,11 +43,9 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({
   if (viewMode === "files") {
     return (
       <div className="email-detail">
-        {isNarrow && (
-          <div className="email-detail-actions">
-            <button className="email-detail-back" onClick={onBack} title="Close" aria-label="Close">✕</button>
-          </div>
-        )}
+        <div className="email-detail-actions">
+          <button className="email-detail-back" onClick={onBack} title="Close" aria-label="Close">✕</button>
+        </div>
         <div className="email-files-inline">
           <div className="email-files-header">
             <h2>Files</h2>
@@ -141,44 +137,42 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({
 
   return (
     <div className="email-detail">
-      {isNarrow && (
-        <div className="email-detail-actions">
-          <button
-            className="email-detail-reply"
-            onClick={() => {
-              setReplyOpen((open) => !open);
-              setReplyError(null);
-            }}
-            title="Reply"
-            aria-label="Reply"
-          >
-            <svg className="email-detail-reply-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M10 8 5 13l5 5" />
-              <path d="M5 13h9a5 5 0 0 1 5 5v1" />
+      <div className="email-detail-actions">
+        <button
+          className="email-detail-reply"
+          onClick={() => {
+            setReplyOpen((open) => !open);
+            setReplyError(null);
+          }}
+          title="Reply"
+          aria-label="Reply"
+        >
+          <svg className="email-detail-reply-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10 8 5 13l5 5" />
+            <path d="M5 13h9a5 5 0 0 1 5 5v1" />
+          </svg>
+        </button>
+        <button
+          className="email-detail-delete"
+          onClick={() => void handleDelete()}
+          disabled={deleting}
+          title="Delete email"
+          aria-label="Delete email"
+        >
+          {deleting ? (
+            "…"
+          ) : (
+            <svg className="email-detail-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+              <path d="M6 7l1 14h10l1-14" />
+              <path d="M9 7V4h6v3" />
             </svg>
-          </button>
-          <button
-            className="email-detail-delete"
-            onClick={() => void handleDelete()}
-            disabled={deleting}
-            title="Delete email"
-            aria-label="Delete email"
-          >
-            {deleting ? (
-              "…"
-            ) : (
-              <svg className="email-detail-delete-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 7h16" />
-                <path d="M10 11v6" />
-                <path d="M14 11v6" />
-                <path d="M6 7l1 14h10l1-14" />
-                <path d="M9 7V4h6v3" />
-              </svg>
-            )}
-          </button>
-          <button className="email-detail-back" onClick={onBack} title="Close" aria-label="Close">✕</button>
-        </div>
-      )}
+          )}
+        </button>
+        <button className="email-detail-back" onClick={onBack} title="Close" aria-label="Close">✕</button>
+      </div>
       <h2>{selectedEmail.subject}</h2>
       {deleteError && <p className="email-body-error">{deleteError}</p>}
       <p><b>From:</b> {selectedEmail.sender}</p>

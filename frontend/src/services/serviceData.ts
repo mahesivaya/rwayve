@@ -39,7 +39,7 @@ export const SERVICES: ServiceDetail[] = [
       "Keep email connected with chat, files, and scheduling",
     ],
     useCases: [
-      "Managing personal and business inboxes",
+      "Managing personal and organization inboxes",
       "Finding past conversations and attachments",
       "Coordinating work without leaving the app",
     ],

@@ -6,7 +6,7 @@ export default function Business() {
 
   return (
     <div className="home business-welcome">
-      <h1>Hello wayve business</h1>
+      <h1>Hello wayve organization</h1>
       <div className="auth-buttons">
         <button onClick={() => navigate("/")}>Home</button>
       </div>

@@ -407,7 +407,7 @@ body {
 /* ================= EMAIL DETAIL (RIGHT PANEL) ================= */
 .email-detail {
   flex: 1;
-  padding: 24px;
+  padding: 48px 24px 24px;
   overflow-y: auto;
   background:lightsteelblue;
   position: relative;
@@ -424,7 +424,6 @@ body {
 
 .main.narrow .email-detail {
   flex: 1;
-  padding-top: 48px; /* room for the floating ✕ back button */
 }
 
 .email-detail-actions {

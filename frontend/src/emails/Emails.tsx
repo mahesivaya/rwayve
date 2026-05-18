@@ -237,7 +237,6 @@ export default function Emails() {
         <EmailDetail
           selectedEmail={selectedEmail}
           viewMode={viewMode}
-          isNarrow={useSingleColumn || emailViewLayout === "list"}
           onBack={() => { setViewMode("email"); setSelectedEmail(null); }}
           onDeleteEmail={deleteEmail}
           files={files}

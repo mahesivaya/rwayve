@@ -66,7 +66,7 @@ export default function ProjectAdminHome() {
           (created.admin ? ` with admin ${created.admin.email}` : "")
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create business");
+      setError(err instanceof Error ? err.message : "Failed to create organization");
     } finally {
       setCreating(false);
     }
@@ -84,7 +84,7 @@ export default function ProjectAdminHome() {
       <section className="project-admin-panel">
         <div className="project-admin-section-header">
           <div>
-            <h2>Create business</h2>
+            <h2>Create organization</h2>
             <p>Add a new business organization and provision its business admin account.</p>
           </div>
         </div>
@@ -128,7 +128,7 @@ export default function ProjectAdminHome() {
             />
           </label>
           <button type="submit" disabled={creating}>
-            {creating ? "Creating..." : "Create business"}
+            {creating ? "Creating..." : "Create organization"}
           </button>
         </form>
 

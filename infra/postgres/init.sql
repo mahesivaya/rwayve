@@ -27,8 +27,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id INT REFERENCES organi
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx
     ON users (username) WHERE username IS NOT NULL;
 
--- Per-business URL/email slug, e.g. "Acme Corp" -> "acmecorp". Drives both the
--- business email domain (<slug>.com) and the /business/<slug> home-page route.
+-- Per-organization URL/email slug, e.g. "Acme Corp" -> "acmecorp". Drives both the
+-- organization email domain (<slug>.com) and the /organization/<slug> home-page route.
 -- The backfill mirrors the Rust slugify() (lowercase, ASCII-alphanumeric only)
 -- and is a no-op once every row has a slug, so init.sql stays idempotent.
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS slug TEXT;
