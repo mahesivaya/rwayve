@@ -79,6 +79,7 @@ pub struct Entitlement {
 #[derive(Deserialize)]
 pub struct CheckoutInput {
     pub plan_code: String,
+    pub autopay: Option<bool>,
 }
 
 #[derive(Deserialize)]

@@ -62,6 +62,13 @@ export type UsageResponse = {
   metrics: UsageMetric[];
 };
 
+export type StripeStatus = {
+  configured: boolean;
+  test_mode: boolean;
+  country: string;
+  publishable_key: string;
+};
+
 export type OrganizationBilling = {
   organization: { id: number; name: string; slug: string | null };
   can_manage: boolean;
@@ -101,10 +108,10 @@ export const getUsage = () => json<UsageResponse>("/api/billing/usage");
 export const getOrganizationBilling = () =>
   json<OrganizationBilling>("/api/billing/organization");
 
-export const startCheckout = (planCode: string) =>
+export const startCheckout = (planCode: string, autopay = true) =>
   json<{ url: string; session_id: string }>("/api/billing/checkout", {
     method: "POST",
-    body: JSON.stringify({ plan_code: planCode }),
+    body: JSON.stringify({ plan_code: planCode, autopay }),
   });
 
 export const openBillingPortal = () =>
@@ -114,3 +121,6 @@ export const cancelSubscription = () =>
   json<{ cancel_at_period_end: boolean }>("/api/billing/subscription/cancel", {
     method: "POST",
   });
+
+export const getStripeStatus = () =>
+  json<StripeStatus>("/api/billing/stripe-status");

@@ -162,6 +162,7 @@ pub async fn create_checkout(
         success_url: format!("{base}/billing?checkout=success"),
         cancel_url: format!("{base}/billing?checkout=cancel"),
         client_reference: format!("{}:{}:{}", owner.kind(), owner_id(owner), plan_id),
+        autopay: data.autopay.unwrap_or(true),
     };
 
     match provider::create_checkout_session(&params).await {
@@ -173,6 +174,21 @@ pub async fn create_checkout(
                 .json(serde_json::json!({ "message": "Could not start checkout" }))
         }
     }
+}
+
+#[get("/billing/stripe-status")]
+#[instrument(target = "http", skip(req))]
+pub async fn stripe_status(req: HttpRequest) -> impl Responder {
+    if let Err(resp) = super::current_user(&req) {
+        return resp;
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "configured": provider::is_configured(),
+        "test_mode": provider::is_test_mode(),
+        "country": "US",
+        "publishable_key": provider::publishable_key().unwrap_or_else(|| "pk_test_sample_configure_in_env".to_string())
+    }))
 }
 
 #[post("/billing/portal")]

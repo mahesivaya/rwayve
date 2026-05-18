@@ -13,10 +13,14 @@ const FREE_STORAGE_BYTES: i64 = 1_073_741_824; // 1 GiB
 
 fn free_defaults() -> Entitlement {
     Entitlement {
-        plan_code: None,
+        plan_code: Some("basic_user".to_string()),
         storage_limit_bytes: FREE_STORAGE_BYTES,
         seat_limit: 1,
-        features: serde_json::json!({}),
+        features: serde_json::json!({
+            "emails_per_day": 1000,
+            "send_receive_per_day": 1000,
+            "autopay": false
+        }),
         active: false,
     }
 }

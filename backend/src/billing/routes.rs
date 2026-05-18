@@ -13,6 +13,7 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
         .service(plans::admin_create_plan)
         .service(checkout::create_checkout)
         .service(checkout::create_portal)
+        .service(checkout::stripe_status)
         .service(subscriptions::get_subscription)
         .service(subscriptions::cancel_subscription)
         .service(subscriptions::admin_list_subscriptions)

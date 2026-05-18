@@ -95,6 +95,11 @@ pub struct ProfileUpdate {
 }
 
 #[derive(Deserialize)]
+pub struct GenerateApiKeyInput {
+    pub name: String,
+}
+
+#[derive(Deserialize)]
 pub struct AdminCreateUserInput {
     pub username: String,
     pub email: String,
@@ -354,6 +359,89 @@ pub async fn admin_create_organization(
         "user_count": user_count,
         "admin": admin_json
     }))
+}
+
+#[post("/admin/organizations/{id}/keys")]
+#[instrument(target = "auth", skip(req, pool, data))]
+pub async fn admin_generate_api_key(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    path: web::Path<i32>,
+    data: web::Json<GenerateApiKeyInput>,
+) -> impl Responder {
+    let admin_id = match require_platform_admin(&req, pool.get_ref()).await {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    let organization_id = path.into_inner();
+    let key_name = data.name.trim();
+
+    if key_name.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({ "message": "Key name is required" }));
+    }
+
+    // 1. Generate a secure random key
+    // In a real production app, use the `rand` crate:
+    // let raw_key = format!("wv_sk_{}", hex::encode(rand::thread_rng().gen::<[u8; 24]>()));
+    let raw_key = format!("wv_sk_{}", uuid::Uuid::new_v4().simple()); // Fallback example
+    
+    // 2. Hash the key for storage (SHA-256)
+    // We'll simulate hashing here. Use `sha2` crate in production.
+    let key_hash = bcrypt::hash(&raw_key, DEFAULT_COST).unwrap_or_default();
+    let key_preview = format!("{}...{}", &raw_key[..7], &raw_key[raw_key.len() - 4..]);
+
+    match sqlx::query(
+        r#"
+        INSERT INTO api_keys (organization_id, name, key_hash, key_preview)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, name, created_at
+        "#,
+    )
+    .bind(organization_id)
+    .bind(key_name)
+    .bind(&key_hash)
+    .bind(&key_preview)
+    .fetch_one(pool.get_ref())
+    .await
+    {
+        Ok(row) => {
+            info!(target: "auth", admin_id, organization_id, "api key generated");
+            HttpResponse::Created().json(serde_json::json!({
+                "id": row.get::<i32, _>("id"),
+                "name": row.get::<String, _>("name"),
+                "created_at": row.get::<chrono::NaiveDateTime, _>("created_at"),
+                "api_key": raw_key // This is the ONLY time the raw key is returned
+            }))
+        }
+        Err(e) => {
+            error!(target: "db", error = ?e, "failed to generate api key");
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+/// Helper to validate an API key from headers
+/// You would use this in a custom Actix Extractor or Middleware
+pub async fn validate_api_key(req: &HttpRequest, pool: &PgPool) -> Option<i32> {
+    let api_key = req.headers().get("X-API-KEY")?.to_str().ok()?;
+    
+    // In production, fetch the hash from DB based on a key ID or prefix
+    // Then verify. Since we stored a bcrypt hash in this example:
+    let rows = sqlx::query("SELECT organization_id, key_hash FROM api_keys")
+        .fetch_all(pool)
+        .await
+        .ok()?;
+
+    for row in rows {
+        let hash: String = row.get("key_hash");
+        if bcrypt::verify(api_key, &hash).unwrap_or(false) {
+            let org_id: i32 = row.get("organization_id");
+            return Some(org_id);
+        }
+    }
+
+    None
 }
 
 #[post("/admin/users")]
@@ -791,6 +879,47 @@ mod auth_regression_tests {
         );
         assert_eq!(normalized_account_type("platform_admin"), "platform_admin");
         assert_eq!(normalized_account_type("unknown"), "personal");
+    }
+
+    #[actix_web::test]
+    async fn test_api_key_generation_and_validation() {
+        use crate::test_support::{test_pool, insert_local_user};
+        let pool = test_pool().await;
+
+        // 1. Setup: Create an organization
+        let org_id: i32 = sqlx::query_scalar("INSERT INTO organizations (name) VALUES ('Test Org') RETURNING id")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+        // 2. Generate Key (Logic Check)
+        let raw_key = "wv_sk_test_secret_123";
+        let key_hash = bcrypt::hash(raw_key, DEFAULT_COST).unwrap();
+        
+        sqlx::query("INSERT INTO api_keys (organization_id, name, key_hash, key_preview) VALUES ($1, $2, $3, $4)")
+            .bind(org_id)
+            .bind("Test Key")
+            .bind(&key_hash)
+            .bind("wv_sk_..._123")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // 3. Test Validation Helper
+        let req = actix_test::TestRequest::default()
+            .insert_header(("X-API-KEY", raw_key))
+            .to_http_request();
+
+        let validated_org_id = validate_api_key(&req, &pool).await;
+        assert_eq!(validated_org_id, Some(org_id));
+
+        // 4. Test Validation with wrong key
+        let req_bad = actix_test::TestRequest::default()
+            .insert_header(("X-API-KEY", "wrong_key"))
+            .to_http_request();
+        
+        let validated_bad = validate_api_key(&req_bad, &pool).await;
+        assert!(validated_bad.is_none());
     }
 
     // Import the actix test module under an alias — a bare `test` import

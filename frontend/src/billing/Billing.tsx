@@ -5,6 +5,7 @@ import {
   cancelSubscription,
   getEntitlements,
   getOrganizationBilling,
+  getStripeStatus,
   getSubscription,
   getUsage,
   listInvoices,
@@ -15,12 +16,41 @@ import {
   type Invoice,
   type OrganizationBilling,
   type Plan,
+  type StripeStatus,
   type SubscriptionResponse,
   type UsageResponse,
 } from "../api/billing";
 import "./billing.css";
 
 const BYTES_IN_GB = 1024 * 1024 * 1024;
+const UNLIMITED_STORAGE = -1;
+
+const PLAN_COPY: Record<string, { price: string; features: string[]; action?: string }> = {
+  basic_user: {
+    price: "Free",
+    features: ["Send/receive 1,000 emails per day", "Personal workspace", "Standard storage"],
+  },
+  advance_user: {
+    price: "$7 / month",
+    features: ["Encrypt and decrypt 1,000 items per day", "Personal paid workspace", "Monthly auto-renewal"],
+  },
+  organization: {
+    price: "$10 / user / month",
+    features: ["1-100 users", "Unlimited email send and receive", "Unlimited memory", "Organization billing"],
+  },
+  enterprise: {
+    price: "Discussed",
+    features: ["100+ users", "Unlimited emails", "Unlimited memory", "Custom onboarding"],
+    action: "Discuss plan",
+  },
+};
+
+const STRIPE_TEST_CARDS = [
+  { label: "Visa credit", number: "4242 4242 4242 4242", result: "Successful payment" },
+  { label: "Visa debit", number: "4000 0566 5566 5556", result: "Successful debit payment" },
+  { label: "Requires auth", number: "4000 0025 0000 3155", result: "3D Secure challenge" },
+  { label: "Declined", number: "4000 0000 0000 9995", result: "Decline test" },
+];
 
 function formatMoney(cents: number | null, currency: string | null): string {
   if (cents == null) return "—";
@@ -28,6 +58,7 @@ function formatMoney(cents: number | null, currency: string | null): string {
 }
 
 function formatBytes(bytes: number): string {
+  if (bytes === UNLIMITED_STORAGE) return "Unlimited";
   if (bytes >= BYTES_IN_GB) return `${(bytes / BYTES_IN_GB).toFixed(1)} GB`;
   return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
 }
@@ -48,6 +79,8 @@ export default function Billing() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [org, setOrg] = useState<OrganizationBilling | null>(null);
+  const [stripeStatus, setStripeStatus] = useState<StripeStatus | null>(null);
+  const [autopay, setAutopay] = useState(true);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -58,19 +91,21 @@ export default function Billing() {
   const reload = useCallback(async () => {
     setError("");
     try {
-      const [planList, subscription, ent, invoiceList, usageData] =
+      const [planList, subscription, ent, invoiceList, usageData, stripe] =
         await Promise.all([
           listPlans(),
           getSubscription(),
           getEntitlements(),
           listInvoices(),
           getUsage(),
+          getStripeStatus(),
         ]);
       setPlans(planList);
       setSub(subscription);
       setEntitlements(ent);
       setInvoices(invoiceList);
       setUsage(usageData);
+      setStripeStatus(stripe);
       if (subscription.owner_type === "organization") {
         try {
           setOrg(await getOrganizationBilling());
@@ -100,7 +135,7 @@ export default function Billing() {
     setBusy(`plan:${code}`);
     setError("");
     try {
-      const res = await startCheckout(code);
+      const res = await startCheckout(code, autopay);
       window.location.assign(res.url);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start checkout");
@@ -137,7 +172,7 @@ export default function Billing() {
     return <div className="billing-page">Loading billing…</div>;
   }
 
-  const visiblePlans = plans.filter((plan) => plan.audience === ownerType);
+  const visiblePlans = plans;
   const activeSub = sub?.subscription ?? null;
 
   return (
@@ -224,10 +259,23 @@ export default function Billing() {
       {/* ---- Plans / Checkout ---- */}
       <section className="billing-card">
         <h2>Plans</h2>
+        <label className="billing-autopay">
+          <span>
+            AutoPay monthly renewals
+            <small>Default selected: YES</small>
+          </span>
+          <select value={autopay ? "yes" : "no"} onChange={(event) => setAutopay(event.target.value === "yes")}>
+            <option value="yes">YES</option>
+            <option value="no">NO</option>
+          </select>
+        </label>
         <div className="billing-plan-grid">
           {visiblePlans.map((plan) => {
             const isCurrent = plan.code === currentPlanCode;
             const isFree = plan.amount_cents === 0;
+            const copy = PLAN_COPY[plan.code];
+            const isEnterprise = plan.code === "enterprise";
+            const canBuy = plan.audience === ownerType && !isFree && !isEnterprise;
             return (
               <article
                 key={plan.id}
@@ -235,28 +283,34 @@ export default function Billing() {
               >
                 <h3>{plan.name}</h3>
                 <p className="billing-plan-price">
-                  {isFree
+                  {copy?.price ?? (isFree
                     ? "Free"
-                    : `${formatMoney(plan.amount_cents, plan.currency)} / ${plan.billing_interval}`}
+                    : `${formatMoney(plan.amount_cents, plan.currency)} / ${plan.billing_interval}`)}
                 </p>
                 {plan.description && (
                   <p className="billing-plan-desc">{plan.description}</p>
                 )}
                 <ul className="billing-plan-features">
-                  <li>{formatBytes(plan.storage_limit_bytes)} storage</li>
-                  <li>{plan.seat_limit} seat{plan.seat_limit === 1 ? "" : "s"}</li>
+                  {(copy?.features ?? [
+                    `${formatBytes(plan.storage_limit_bytes)} storage`,
+                    `${plan.seat_limit} seat${plan.seat_limit === 1 ? "" : "s"}`,
+                  ]).map((feature) => <li key={feature}>{feature}</li>)}
                 </ul>
                 {isCurrent ? (
                   <span className="billing-plan-tag">Current plan</span>
                 ) : isFree ? (
                   <span className="billing-plan-tag muted">Included</span>
-                ) : (
+                ) : canBuy ? (
                   <button
                     onClick={() => void subscribe(plan.code)}
                     disabled={busy === `plan:${plan.code}`}
                   >
                     {busy === `plan:${plan.code}` ? "Redirecting…" : "Subscribe"}
                   </button>
+                ) : (
+                  <span className="billing-plan-tag muted">
+                    {isEnterprise ? "Discussed" : `Requires ${plan.audience} account`}
+                  </span>
                 )}
               </article>
             );
@@ -264,6 +318,34 @@ export default function Billing() {
           {visiblePlans.length === 0 && (
             <p className="billing-empty">No plans available.</p>
           )}
+        </div>
+      </section>
+
+      <section className="billing-card">
+        <h2>Payments</h2>
+        <div className="billing-payment-status">
+          <span>Stripe status</span>
+          <strong className={stripeStatus?.configured ? "ready" : "not-ready"}>
+            {stripeStatus?.configured ? "Connected" : "Not configured"}
+          </strong>
+          <span>Mode</span>
+          <strong>{stripeStatus?.test_mode ? "Test mode" : "Live/not detected"}</strong>
+          <span>Country</span>
+          <strong>{stripeStatus?.country ?? "US"}</strong>
+          <span>Publishable key</span>
+          <code>{stripeStatus?.publishable_key ?? "pk_test_sample_configure_in_env"}</code>
+        </div>
+        <p className="billing-note">
+          Use Stripe Checkout for real card entry. These are Stripe test card numbers for test mode only.
+        </p>
+        <div className="billing-card-list">
+          {STRIPE_TEST_CARDS.map((card) => (
+            <div className="billing-test-card" key={card.number}>
+              <span>{card.label}</span>
+              <strong>{card.number}</strong>
+              <small>{card.result}</small>
+            </div>
+          ))}
         </div>
       </section>
 

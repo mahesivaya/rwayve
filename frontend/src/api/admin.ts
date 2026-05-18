@@ -63,6 +63,25 @@ export async function createAdminOrganization(
   return data;
 }
 
+export async function generateOrganizationApiKey(
+  organizationId: number,
+  name: string
+): Promise<{ id: number; name: string; api_key: string }> {
+  const res = await apiFetch(`/api/admin/organizations/${organizationId}/keys`, {
+    method: "POST",
+    preserve401: true,
+    body: JSON.stringify({ name }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.message || "Failed to generate API key");
+  }
+
+  return data;
+}
+
 // Creates a user as the calling admin. `email` is the full login address; the
 // caller builds it from a handle and the organization domain (or wayve.com for
 // personal accounts).

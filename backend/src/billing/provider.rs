@@ -35,6 +35,20 @@ pub fn is_configured() -> bool {
     secret_key().is_some()
 }
 
+pub fn publishable_key() -> Option<String> {
+    std::env::var("STRIPE_PUBLISHABLE_KEY")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+pub fn is_test_mode() -> bool {
+    secret_key()
+        .or_else(publishable_key)
+        .map(|key| key.starts_with("sk_test_") || key.starts_with("pk_test_"))
+        .unwrap_or(false)
+}
+
 async fn post_form(path: &str, params: &[(&str, String)]) -> Result<Value> {
     let key = secret_key().ok_or_else(|| anyhow!("STRIPE_SECRET_KEY not configured"))?;
     let url = format!("{}/v1{}", api_base(), path);
@@ -66,6 +80,7 @@ pub struct CheckoutParams {
     pub success_url: String,
     pub cancel_url: String,
     pub client_reference: String,
+    pub autopay: bool,
 }
 
 pub struct CheckoutSession {
@@ -83,6 +98,10 @@ pub async fn create_checkout_session(p: &CheckoutParams) -> Result<CheckoutSessi
         ("success_url", p.success_url.clone()),
         ("cancel_url", p.cancel_url.clone()),
         ("client_reference_id", p.client_reference.clone()),
+        (
+            "payment_method_collection",
+            if p.autopay { "if_required" } else { "always" }.to_string(),
+        ),
     ];
     let body = post_form("/checkout/sessions", &params).await?;
     let id = body

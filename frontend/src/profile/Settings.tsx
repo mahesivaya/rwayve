@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import "./profile.css";
 
 import { deleteAccount, getAccounts } from "../api/email";
+import { getSubscription, type SubscriptionResponse } from "../api/billing";
 import { getProfile, type ProfileData } from "../api/profile";
 import { useAuth } from "../auth/useAuth";
 
@@ -27,17 +28,20 @@ export default function Settings() {
     memory_used_bytes?: number;
     memory_limit_bytes?: number;
   }) | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [accs, prof] = await Promise.all([
+      const [accs, prof, sub] = await Promise.all([
         getAccounts<Account>(),
         getProfile(),
+        getSubscription(),
       ]);
       setAccounts(accs);
       setProfile(prof);
+      setSubscription(sub);
     } finally {
       setLoaded(true);
     }
@@ -146,12 +150,28 @@ export default function Settings() {
 
         <div className="settings-usage-section">
           <div className="settings-usage-row">
-            <span>Subscription &amp; invoices</span>
+            <span>Current Plan</span>
+            <strong>{subscription?.subscription?.plan_name ?? "Basic User Free"}</strong>
+          </div>
+          <div className="settings-usage-row">
+            <span>Status</span>
+            <strong>{subscription?.subscription?.status ?? "free"}</strong>
+          </div>
+          <div className="settings-usage-row">
+            <span>Renewal</span>
+            <strong>
+              {subscription?.subscription?.current_period_end
+                ? new Date(subscription.subscription.current_period_end).toLocaleDateString()
+                : "No paid renewal"}
+            </strong>
+          </div>
+          <div className="settings-usage-row">
+            <span>Upgrade plans</span>
             <button
               className="settings-billing-link"
               onClick={() => navigate("/billing")}
             >
-              Manage billing
+              Manage billing &amp; upgrade
             </button>
           </div>
         </div>

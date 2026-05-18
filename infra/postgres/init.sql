@@ -389,11 +389,16 @@ CREATE TABLE IF NOT EXISTS plans (
 
 -- Baseline catalog. stripe_price_id is filled in by a platform admin once the
 -- matching Stripe Price exists. ON CONFLICT keeps init.sql idempotent.
-INSERT INTO plans (code, name, description, audience, amount_cents, billing_interval, storage_limit_bytes, seat_limit)
+INSERT INTO plans (code, name, description, audience, amount_cents, billing_interval, storage_limit_bytes, seat_limit, features)
 VALUES
-    ('personal_free', 'Personal Free', 'Free tier for individual accounts.', 'personal', 0, 'month', 1073741824, 1),
-    ('personal_pro', 'Personal Pro', 'More storage and features for individuals.', 'personal', 900, 'month', 10737418240, 1),
-    ('org_team', 'Organization Team', 'Shared workspace billing for organizations.', 'organization', 1900, 'month', 107374182400, 25)
+    ('basic_user', 'Basic User', 'Free personal plan with daily email send/receive limits.', 'personal', 0, 'month', 1073741824, 1,
+     '{"emails_per_day":1000,"send_receive_per_day":1000,"autopay":false}'::jsonb),
+    ('advance_user', 'Advance User', 'Personal paid plan with encrypted app usage allowance.', 'personal', 700, 'month', 10737418240, 1,
+     '{"encrypt_decrypt_per_day":1000,"autopay":true}'::jsonb),
+    ('organization', 'Organization', '1-100 users with unlimited email send/receive and unlimited memory.', 'organization', 1000, 'month', -1, 100,
+     '{"per_user":true,"min_users":1,"max_users":100,"unlimited_email":true,"unlimited_memory":true,"autopay":true}'::jsonb),
+    ('enterprise', 'Enterprise', '100+ users with unlimited emails and memory. Contact sales.', 'organization', 0, 'month', -1, 100000,
+     '{"min_users":101,"unlimited_email":true,"unlimited_memory":true,"contact_sales":true,"autopay":true}'::jsonb)
 ON CONFLICT (code) DO NOTHING;
 
 -- Subscriptions: local projection of Stripe subscription state.
