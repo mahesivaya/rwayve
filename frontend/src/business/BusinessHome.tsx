@@ -17,7 +17,7 @@ const FEATURES = [
 // business's own members may view it.
 export default function BusinessHome() {
   const { slug } = useParams();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   // Once the slug is resolved, bounce anyone who isn't a member of this
@@ -48,15 +48,6 @@ export default function BusinessHome() {
               Manage accounts
             </button>
           )}
-          <button
-            className="danger"
-            onClick={() => {
-              logout();
-              navigate("/login");
-            }}
-          >
-            Logout
-          </button>
         </div>
       </header>
 

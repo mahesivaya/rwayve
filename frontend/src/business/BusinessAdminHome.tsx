@@ -1,34 +1,26 @@
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createAdminUser, type AdminCreatedUser } from "../api/admin";
-import { normalizeAccountType, slugify, getEmailDomain } from "../auth/accountHome";
+import { slugify, getEmailDomain } from "../auth/accountHome";
 import { useAuth } from "../auth/useAuth";
 import "../home/home.css";
 import "./businessAdmin.css";
 
+// Business admins create accounts for users inside their own business. The
+// new account is always a "business" account on the business email domain;
+// provisioning businesses + business admins is the project admin's job.
 export default function BusinessAdminHome() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [handle, setHandle] = useState("");
   const [password, setPassword] = useState("");
-  const [accountType, setAccountType] = useState("personal");
-  const [organizationName, setOrganizationName] = useState("");
   const [createdUsers, setCreatedUsers] = useState<AdminCreatedUser[]>([]);
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const currentAccountType = normalizeAccountType(user?.account_type);
-  const isProjectAdmin = currentAccountType === "project_admin";
-  const pageTitle = isProjectAdmin ? "Complete Project Admin page" : "Business Admin page";
-
-  // Email domain the new account will land on — the business domain, or
-  // wayve.com for plain personal/project accounts.
-  const emailDomain = isProjectAdmin
-    ? accountType === "business_admin" && organizationName
-      ? getEmailDomain(slugify(organizationName))
-      : getEmailDomain(null)
-    : getEmailDomain(user?.organization_slug || "your-business");
+  // New accounts land on the business domain, e.g. john@<business-slug>.com.
+  const emailDomain = getEmailDomain(user?.organization_slug || "your-business");
 
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -37,17 +29,10 @@ export default function BusinessAdminHome() {
     setCreating(true);
 
     try {
-      const created = await createAdminUser(
-        handle,
-        password,
-        isProjectAdmin ? accountType : "business",
-        organizationName
-      );
+      const created = await createAdminUser(handle, password);
       setCreatedUsers((prev) => [created, ...prev]);
       setHandle("");
       setPassword("");
-      setAccountType("personal");
-      setOrganizationName("");
       setCreateSuccess(`Created account ${created.email}`);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create user");
@@ -60,17 +45,9 @@ export default function BusinessAdminHome() {
     <div className="business-admin-home">
       <div className="business-admin-header">
         <div>
-          <h1>{pageTitle}</h1>
+          <h1>Business Admin page</h1>
           <p>{user?.email}</p>
         </div>
-        <button
-          onClick={() => {
-            logout();
-            navigate("/login");
-          }}
-        >
-          Logout
-        </button>
       </div>
 
       <section className="business-admin-create">
@@ -78,9 +55,8 @@ export default function BusinessAdminHome() {
           <div>
             <h2>Create account</h2>
             <p>
-              {isProjectAdmin
-                ? "Create project admin, business admin, or personal accounts."
-                : "Add a new account inside your business. Enter a handle — the email is generated automatically."}
+              Add a new account inside your business. Enter a handle — the
+              email is generated automatically.
             </p>
           </div>
         </div>
@@ -116,34 +92,6 @@ export default function BusinessAdminHome() {
               required
             />
           </label>
-
-          {isProjectAdmin && (
-            <>
-              <label>
-                <span>Account type</span>
-                <select
-                  value={accountType}
-                  onChange={(event) => setAccountType(event.target.value)}
-                >
-                  <option value="personal">Personal</option>
-                  <option value="business_admin">Business admin</option>
-                  <option value="project_admin">Project admin</option>
-                </select>
-              </label>
-
-              {accountType === "business_admin" && (
-                <label>
-                  <span>Organization</span>
-                  <input
-                    value={organizationName}
-                    onChange={(event) => setOrganizationName(event.target.value)}
-                    placeholder="Organization name"
-                    required
-                  />
-                </label>
-              )}
-            </>
-          )}
 
           <button type="submit" disabled={creating}>
             {creating ? "Creating..." : "Create account"}

@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   createAdminOrganization,
   listAdminOrganizations,
@@ -10,8 +9,7 @@ import { slugify } from "../auth/accountHome";
 import "./projectAdmin.css";
 
 export default function ProjectAdminHome() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [businessName, setBusinessName] = useState("");
   const [adminHandle, setAdminHandle] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
@@ -80,18 +78,6 @@ export default function ProjectAdminHome() {
         <div>
           <h1>Project Admin Home</h1>
           <p>{user?.email}</p>
-        </div>
-        <div className="project-admin-header-actions">
-          <button onClick={() => navigate("/business-home")}>Create accounts</button>
-          <button
-            className="danger"
-            onClick={() => {
-              logout();
-              navigate("/login");
-            }}
-          >
-            Logout
-          </button>
         </div>
       </div>
 
