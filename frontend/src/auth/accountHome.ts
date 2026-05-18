@@ -1,4 +1,4 @@
-export type AccountType = "personal" | "business" | "business_admin" | "project_admin";
+export type AccountType = "personal" | "business" | "business_admin" | "platform_admin";
 
 export function normalizeAccountType(accountType?: string | null): AccountType {
   if (accountType === "business_admin") {
@@ -9,8 +9,8 @@ export function normalizeAccountType(accountType?: string | null): AccountType {
     return "business";
   }
 
-  if (accountType === "project_admin") {
-    return "project_admin";
+  if (accountType === "platform_admin") {
+    return "platform_admin";
   }
 
   return "personal";
@@ -27,7 +27,7 @@ export const getEmailDomain = (slug?: string | null) =>
 
 export function homePathForAccount(accountType?: string | null) {
   const normalized = normalizeAccountType(accountType);
-  if (normalized === "project_admin") return "/project-admin-home";
+  if (normalized === "platform_admin") return "/platform-admin-home";
   if (normalized === "business_admin") return "/business-home";
   return "/home";
 }
@@ -45,7 +45,7 @@ type AccountLike = {
 // re-redirects itself once the slug arrives — never a dead end.
 export function homePathForUser(user?: AccountLike | null): string {
   const normalized = normalizeAccountType(user?.account_type);
-  if (normalized === "project_admin") return "/project-admin-home";
+  if (normalized === "platform_admin") return "/platform-admin-home";
   if (normalized === "business_admin") return "/business-home";
 
   const inBusiness =

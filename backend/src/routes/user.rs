@@ -12,7 +12,7 @@ use tracing::{error, info, instrument, warn};
 /// anything unrecognized normalizes to "personal".
 pub fn normalized_account_type(value: &str) -> &str {
     match value {
-        "business" | "business_admin" | "project_admin" => value,
+        "business" | "business_admin" | "platform_admin" => value,
         _ => "personal",
     }
 }
@@ -96,7 +96,7 @@ pub struct CreateOrganizationInput {
     pub admin_password: Option<String>,
 }
 
-async fn require_project_admin(req: &HttpRequest, pool: &PgPool) -> Result<i32, HttpResponse> {
+async fn require_platform_admin(req: &HttpRequest, pool: &PgPool) -> Result<i32, HttpResponse> {
     let admin_id =
         get_user_id_from_request(req).ok_or_else(|| HttpResponse::Unauthorized().finish())?;
 
@@ -113,9 +113,9 @@ async fn require_project_admin(req: &HttpRequest, pool: &PgPool) -> Result<i32, 
             }
         };
 
-    if normalized_account_type(account_type.as_deref().unwrap_or("personal")) != "project_admin" {
+    if normalized_account_type(account_type.as_deref().unwrap_or("personal")) != "platform_admin" {
         return Err(HttpResponse::Forbidden()
-            .json(serde_json::json!({ "message": "Only project admins can manage businesses" })));
+            .json(serde_json::json!({ "message": "Only platform admins can manage businesses" })));
     }
 
     Ok(admin_id)
@@ -124,7 +124,7 @@ async fn require_project_admin(req: &HttpRequest, pool: &PgPool) -> Result<i32, 
 #[get("/admin/organizations")]
 #[instrument(target = "http", skip(req, pool))]
 pub async fn admin_list_organizations(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
-    if let Err(response) = require_project_admin(&req, pool.get_ref()).await {
+    if let Err(response) = require_platform_admin(&req, pool.get_ref()).await {
         return response;
     }
 
@@ -176,7 +176,7 @@ pub async fn admin_create_organization(
     pool: web::Data<PgPool>,
     data: web::Json<CreateOrganizationInput>,
 ) -> impl Responder {
-    let admin_id = match require_project_admin(&req, pool.get_ref()).await {
+    let admin_id = match require_platform_admin(&req, pool.get_ref()).await {
         Ok(id) => id,
         Err(response) => return response,
     };
@@ -318,7 +318,7 @@ pub async fn admin_create_organization(
     }
 
     let user_count = if admin_json.is_null() { 0 } else { 1 };
-    info!(target: "auth", admin_id, organization_id, "project admin created business");
+    info!(target: "auth", admin_id, organization_id, "platform admin created business");
     HttpResponse::Created().json(serde_json::json!({
         "id": organization_id,
         "name": organization_name,
@@ -360,7 +360,7 @@ pub async fn admin_create_user(
 
     if !matches!(
         normalized_account_type(&admin_account_type),
-        "business_admin" | "project_admin"
+        "business_admin" | "platform_admin"
     ) {
         warn!(target: "auth", admin_id, "non-business user tried to create user");
         return HttpResponse::Forbidden()
@@ -376,8 +376,8 @@ pub async fn admin_create_user(
         .unwrap_or("personal");
 
     let account_type: &str = match normalized_account_type(&admin_account_type) {
-        "project_admin" => match requested_account_type {
-            "business_admin" | "project_admin" | "business" | "personal" => requested_account_type,
+        "platform_admin" => match requested_account_type {
+            "business_admin" | "platform_admin" | "business" | "personal" => requested_account_type,
             _ => "personal",
         },
         "business_admin" => "business",
@@ -726,7 +726,7 @@ mod auth_regression_tests {
         assert_eq!(normalized_account_type("personal"), "personal");
         assert_eq!(normalized_account_type("business"), "business");
         assert_eq!(normalized_account_type("business_admin"), "business_admin");
-        assert_eq!(normalized_account_type("project_admin"), "project_admin");
+        assert_eq!(normalized_account_type("platform_admin"), "platform_admin");
         assert_eq!(normalized_account_type("unknown"), "personal");
     }
 

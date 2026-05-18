@@ -8,7 +8,7 @@ import { useAuth } from "../auth/useAuth";
 import { slugify } from "../auth/accountHome";
 import "./projectAdmin.css";
 
-export default function ProjectAdminHome() {
+export default function PlatformAdminHome() {
   const { user } = useAuth();
   const [businessName, setBusinessName] = useState("");
   const [adminHandle, setAdminHandle] = useState("");
@@ -73,23 +73,23 @@ export default function ProjectAdminHome() {
   };
 
   return (
-    <div className="project-admin-home">
-      <div className="project-admin-header">
+    <div className="platform-admin-home">
+      <div className="platform-admin-header">
         <div>
-          <h1>Project Admin Home</h1>
+          <h1>Platform Admin Home</h1>
           <p>{user?.email}</p>
         </div>
       </div>
 
-      <section className="project-admin-panel">
-        <div className="project-admin-section-header">
+      <section className="platform-admin-panel">
+        <div className="platform-admin-section-header">
           <div>
             <h2>Create organization</h2>
             <p>Add a new business organization and provision its business admin account.</p>
           </div>
         </div>
 
-        <form className="project-admin-form" onSubmit={createBusiness}>
+        <form className="platform-admin-form" onSubmit={createBusiness}>
           <label>
             <span>Business name</span>
             <input
@@ -109,7 +109,7 @@ export default function ProjectAdminHome() {
             />
           </label>
           {adminHandle && businessName && (
-            <p className="project-admin-hint">
+            <p className="platform-admin-hint">
               Login email will be{" "}
               <strong>
                 {slugify(adminHandle)}@{slugify(businessName)}.com
@@ -132,12 +132,12 @@ export default function ProjectAdminHome() {
           </button>
         </form>
 
-        {error && <div className="project-admin-error">{error}</div>}
-        {success && <div className="project-admin-success">{success}</div>}
+        {error && <div className="platform-admin-error">{error}</div>}
+        {success && <div className="platform-admin-success">{success}</div>}
       </section>
 
-      <section className="project-admin-panel">
-        <div className="project-admin-section-header">
+      <section className="platform-admin-panel">
+        <div className="platform-admin-section-header">
           <div>
             <h2>Business names</h2>
             <p>All businesses currently available in the project.</p>
@@ -146,9 +146,9 @@ export default function ProjectAdminHome() {
         </div>
 
         {loading ? (
-          <div className="project-admin-empty">Loading businesses...</div>
+          <div className="platform-admin-empty">Loading businesses...</div>
         ) : businesses.length === 0 ? (
-          <div className="project-admin-empty">No businesses created yet.</div>
+          <div className="platform-admin-empty">No businesses created yet.</div>
         ) : (
           <div className="business-name-list">
             {businesses.map((business) => (

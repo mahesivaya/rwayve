@@ -25,7 +25,7 @@ const Profile = lazy(() => import("./profile/Profile"));
 const Settings = lazy(() => import("./profile/Settings"));
 const Business = lazy(() => import("./business/Business"));
 const BusinessAdminHome = lazy(() => import("./business/BusinessAdminHome"));
-const ProjectAdminHome = lazy(() => import("./business/ProjectAdminHome"));
+const PlatformAdminHome = lazy(() => import("./business/ProjectAdminHome"));
 const BusinessHome = lazy(() => import("./business/BusinessHome"));
 const EmailFiles = lazy(() => import("./files/EmailFiles"));
 const ServicePage = lazy(() => import("./services/ServicePage"));
@@ -88,12 +88,12 @@ export default function App() {
               }
             />
             <Route
-              path="/project-admin-home"
+              path="/platform-admin-home"
               element={
-                accountType === "project_admin" ? (
-                  <ProjectAdminHome />
+                accountType === "platform_admin" ? (
+                  <PlatformAdminHome />
                 ) : (
-                  redirectToAccountHome ?? <ProjectAdminHome />
+                  redirectToAccountHome ?? <PlatformAdminHome />
                 )
               }
             />
