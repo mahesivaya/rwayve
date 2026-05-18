@@ -16,11 +16,13 @@ export type AdminOrganization = {
   admin?: AdminCreatedUser | null;
 };
 
-// The business admin's email is generated server-side as
-// <adminHandle>@<business-slug>.com — only the handle is supplied here.
-export type CreateBusinessInput = {
+// The organization admin to provision alongside the new organization. The
+// caller supplies the full login email, built from the admin handle and the
+// organization slug as <adminHandle>@<org-slug>.com.
+export type CreateOrganizationInput = {
   name: string;
-  adminHandle: string;
+  adminUsername: string;
+  adminEmail: string;
   adminPassword: string;
 };
 
@@ -32,21 +34,22 @@ export async function listAdminOrganizations(): Promise<AdminOrganization[]> {
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(data.message || "Failed to load businesses");
+    throw new Error(data.message || "Failed to load organizations");
   }
 
   return data;
 }
 
 export async function createAdminOrganization(
-  input: CreateBusinessInput
+  input: CreateOrganizationInput
 ): Promise<AdminOrganization> {
   const res = await apiFetch("/api/admin/organizations", {
     method: "POST",
     preserve401: true,
     body: JSON.stringify({
       name: input.name,
-      admin_handle: input.adminHandle,
+      admin_username: input.adminUsername,
+      admin_email: input.adminEmail,
       admin_password: input.adminPassword,
     }),
   });
@@ -60,10 +63,12 @@ export async function createAdminOrganization(
   return data;
 }
 
-// `handle` is the email local part; the backend builds the full address using
-// the business domain (or wayve.com for personal accounts).
+// Creates a user as the calling admin. `email` is the full login address; the
+// caller builds it from a handle and the organization domain (or wayve.com for
+// personal accounts).
 export async function createAdminUser(
-  handle: string,
+  username: string,
+  email: string,
   password: string,
   accountType = "personal",
   organizationName = ""
@@ -72,7 +77,8 @@ export async function createAdminUser(
     method: "POST",
     preserve401: true,
     body: JSON.stringify({
-      handle,
+      username,
+      email,
       password,
       account_type: accountType,
       organization_name: organizationName,

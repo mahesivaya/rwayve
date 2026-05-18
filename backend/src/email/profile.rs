@@ -56,7 +56,14 @@ pub async fn get_me(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder
             let account_type: String = row.get("account_type");
             let organization_id: Option<i32> = row.try_get("organization_id").ok().flatten();
             let organization_slug: Option<String> = row.try_get("organization_slug").ok().flatten();
-            let organization_name: Option<String> = row.try_get("organization_name").ok().flatten();
+            
+            // Requirement: For personal accounts, organization name is the email address.
+            let organization_name: Option<String> = if account_type == "personal" {
+                Some(email.clone())
+            } else {
+                row.try_get("organization_name").ok().flatten()
+            };
+
             let response = serde_json::json!({
                 "id": id,
                 "email": email,

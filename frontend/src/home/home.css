@@ -189,7 +189,7 @@
   background: linear-gradient(135deg, #1d78e9, #7de5ef);
 }
 
-.service-icon.business {
+.service-icon.organization {
   background: linear-gradient(135deg, #25215f, #6c5ce7);
 }
 
@@ -473,7 +473,7 @@
   transform: translateY(-1px);
 }
 
-.business-welcome {
+.organization-welcome {
   justify-content: center;
   min-height: 100vh;
 }

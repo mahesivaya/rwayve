@@ -21,6 +21,7 @@ export default function Settings() {
     total_emails?: number;
     email_storage_bytes?: number;
     drive_storage_bytes?: number;
+    other_storage_bytes?: number;
     memory_used_bytes?: number;
     memory_limit_bytes?: number;
   }) | null>(null);
@@ -104,7 +105,7 @@ export default function Settings() {
         <div className="settings-usage-section">
           <div className="settings-usage-row">
             <span>Memory Used</span>
-            <strong>
+            <strong className={!loaded ? "settings-loading-text" : ""}>
               {profile?.memory_used_bytes !== undefined 
                 ? `${(profile.memory_used_bytes / BYTES_IN_GB).toFixed(1)} GB / 
                    ${((profile.memory_limit_bytes ?? DEFAULT_MEMORY_LIMIT) / BYTES_IN_GB).toFixed(0)} GB` 
@@ -124,6 +125,10 @@ export default function Settings() {
           <div className="settings-usage-row">
             <span>Drive Storage</span>
             <strong>{profile?.drive_storage_bytes !== undefined ? `${(profile.drive_storage_bytes / BYTES_IN_MB).toFixed(1)} MB` : "Loading…"}</strong>
+          </div>
+          <div className="settings-usage-row">
+            <span>Other Apps (Chat, Notes)</span>
+            <strong>{profile?.other_storage_bytes !== undefined ? `${(profile.other_storage_bytes / BYTES_IN_MB).toFixed(1)} MB` : "Loading…"}</strong>
           </div>
           <div className="settings-usage-row">
             <span>Connected Accounts</span>

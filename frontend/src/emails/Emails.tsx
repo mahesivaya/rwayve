@@ -54,7 +54,8 @@ export default function Emails() {
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setIsNarrow(entry.contentRect.width < 800);
+        const narrow = entry.contentRect.width < 800;
+        setIsNarrow((prev) => (prev !== narrow ? narrow : prev));
       }
     });
     ro.observe(el);

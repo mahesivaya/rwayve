@@ -426,9 +426,9 @@ pub async fn oauth_callback(
     let redirect = if is_signup {
         let landing_path = if matches!(
             account_type.as_str(),
-            "business" | "business_admin" | "project_admin"
+            "organization" | "organization_admin" | "platform_admin"
         ) {
-            "business-home"
+            "organization-home"
         } else {
             "home"
         };

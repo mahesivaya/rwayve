@@ -1,4 +1,5 @@
-use crate::email::handler::invalidate_me_cache;
+use crate::email::profile::invalidate_me_cache;
+use crate::prelude::*;
 use crate::models::auth::ChangePasswordInput;
 use crate::models::email_request::UserResponse;
 use crate::security::jwt::get_user_id_from_request;
@@ -7,12 +8,28 @@ use bcrypt::{DEFAULT_COST, hash, verify};
 use serde::Deserialize;
 use sqlx::PgPool;
 use tracing::{error, info, instrument, warn};
+use moka::future::Cache as MokaCache;
+use std::time::Duration;
+
+const PROFILE_CACHE_TTL_SECS: u64 = 30;
+const PROFILE_CACHE_MAX_CAPACITY: u64 = 5000;
+
+static PROFILE_CACHE: Lazy<MokaCache<i32, serde_json::Value>> = Lazy::new(|| {
+    MokaCache::builder()
+        .max_capacity(PROFILE_CACHE_MAX_CAPACITY)
+        .time_to_live(Duration::from_secs(PROFILE_CACHE_TTL_SECS))
+        .build()
+});
+
+pub async fn invalidate_profile_cache(user_id: i32) {
+    PROFILE_CACHE.invalidate(&user_id).await;
+}
 
 /// Canonical account-type string. `account_type` is a plain TEXT column;
 /// anything unrecognized normalizes to "personal".
 pub fn normalized_account_type(value: &str) -> &str {
     match value {
-        "business" | "business_admin" | "platform_admin" => value,
+        "organization" | "organization_admin" | "platform_admin" => value,
         _ => "personal",
     }
 }
@@ -89,7 +106,7 @@ pub struct AdminCreateUserInput {
 #[derive(Deserialize)]
 pub struct CreateOrganizationInput {
     pub name: String,
-    /// Optional business admin to provision together with the business. When
+    /// Optional organization admin to provision together with the organization. When
     /// any of the three fields is supplied, all three are required.
     pub admin_username: Option<String>,
     pub admin_email: Option<String>,
@@ -108,14 +125,14 @@ async fn require_platform_admin(req: &HttpRequest, pool: &PgPool) -> Result<i32,
         {
             Ok(value) => value,
             Err(e) => {
-                error!(target: "db", admin_id, error = ?e, "project admin lookup failed");
+                error!(target: "db", admin_id, error = ?e, "platform admin lookup failed");
                 return Err(HttpResponse::InternalServerError().finish());
             }
         };
 
     if normalized_account_type(account_type.as_deref().unwrap_or("personal")) != "platform_admin" {
         return Err(HttpResponse::Forbidden()
-            .json(serde_json::json!({ "message": "Only platform admins can manage businesses" })));
+            .json(serde_json::json!({ "message": "Only platform admins can manage organizations" })));
     }
 
     Ok(admin_id)
@@ -133,11 +150,16 @@ pub async fn admin_list_organizations(req: HttpRequest, pool: web::Data<PgPool>)
         SELECT
             o.id,
             o.name,
+            o.slug,
             o.created_at,
-            COUNT(u.id) AS user_count
+            COUNT(u.id) AS user_count,
+            (SELECT json_build_object('id', u2.id, 'email', u2.email) 
+             FROM users u2 
+             WHERE u2.organization_id = o.id AND u2.account_type = 'organization_admin'
+             LIMIT 1) as admin
         FROM organizations o
         LEFT JOIN users u ON u.organization_id = o.id
-        GROUP BY o.id, o.name, o.created_at
+        GROUP BY o.id, o.name, o.slug, o.created_at
         ORDER BY o.name
         "#,
     )
@@ -150,12 +172,16 @@ pub async fn admin_list_organizations(req: HttpRequest, pool: web::Data<PgPool>)
                 .map(|row| {
                     let id: i32 = row.get("id");
                     let name: String = row.get("name");
+                    let slug: Option<String> = row.get("slug");
                     let user_count: i64 = row.get("user_count");
+                    let admin: Option<serde_json::Value> = row.get("admin");
 
                     serde_json::json!({
                         "id": id,
                         "name": name,
-                        "user_count": user_count
+                        "slug": slug,
+                        "user_count": user_count,
+                        "admin": admin
                     })
                 })
                 .collect();
@@ -184,10 +210,10 @@ pub async fn admin_create_organization(
     let name = data.name.trim();
     if name.is_empty() {
         return HttpResponse::BadRequest()
-            .json(serde_json::json!({ "message": "Business name is required" }));
+            .json(serde_json::json!({ "message": "Organization name is required" }));
     }
 
-    // The business admin block is optional, but if any field is supplied the
+    // The organization admin block is optional, but if any field is supplied the
     // whole set (username, email, password) must be present.
     let admin_username = data
         .admin_username
@@ -205,7 +231,7 @@ pub async fn admin_create_organization(
         .as_deref()
         .filter(|value| !value.is_empty());
 
-    let business_admin =
+    let organization_admin =
         if admin_username.is_some() || admin_email.is_some() || admin_password.is_some() {
             match (admin_username, admin_email.as_deref(), admin_password) {
                 (Some(username), Some(email), Some(password)) => {
@@ -222,7 +248,7 @@ pub async fn admin_create_organization(
                 }
                 _ => {
                     return HttpResponse::BadRequest().json(serde_json::json!({
-                        "message": "Business admin username, email, and password are all required"
+                        "message": "Organization admin username, email, and password are all required"
                     }));
                 }
             }
@@ -233,7 +259,7 @@ pub async fn admin_create_organization(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            error!(target: "db", admin_id, error = ?e, "begin business transaction failed");
+            error!(target: "db", admin_id, error = ?e, "begin organization transaction failed");
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -243,7 +269,7 @@ pub async fn admin_create_organization(
         INSERT INTO organizations (name)
         VALUES ($1)
         ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-        RETURNING id, name
+        RETURNING id, name, slug
         "#,
     )
     .bind(name)
@@ -259,14 +285,15 @@ pub async fn admin_create_organization(
 
     let organization_id: i32 = org_row.get("id");
     let organization_name: String = org_row.get("name");
+    let organization_slug: Option<String> = org_row.get("slug");
 
     let mut admin_json = serde_json::Value::Null;
 
-    if let Some((username, email, password)) = business_admin {
+    if let Some((username, email, password)) = organization_admin {
         let hashed = match hash(&password, DEFAULT_COST) {
             Ok(value) => value,
             Err(e) => {
-                error!(target: "auth", error = %e, "business admin bcrypt hash failed");
+                error!(target: "auth", error = %e, "organization admin bcrypt hash failed");
                 return HttpResponse::InternalServerError().finish();
             }
         };
@@ -281,7 +308,7 @@ pub async fn admin_create_organization(
         .bind(&username)
         .bind(&email)
         .bind(&hashed)
-        .bind("business_admin")
+        .bind("organization_admin")
         .bind(organization_id)
         .fetch_one(&mut *tx)
         .await
@@ -318,10 +345,11 @@ pub async fn admin_create_organization(
     }
 
     let user_count = if admin_json.is_null() { 0 } else { 1 };
-    info!(target: "auth", admin_id, organization_id, "platform admin created business");
+    info!(target: "auth", admin_id, organization_id, "platform admin created organization");
     HttpResponse::Created().json(serde_json::json!({
         "id": organization_id,
         "name": organization_name,
+        "slug": organization_slug,
         "user_count": user_count,
         "admin": admin_json
     }))
@@ -360,9 +388,9 @@ pub async fn admin_create_user(
 
     if !matches!(
         normalized_account_type(&admin_account_type),
-        "business_admin" | "platform_admin"
+        "organization_admin" | "platform_admin"
     ) {
-        warn!(target: "auth", admin_id, "non-business user tried to create user");
+        warn!(target: "auth", admin_id, "non-admin user tried to create user");
         return HttpResponse::Forbidden()
             .json(serde_json::json!({ "message": "Only admins can create users" }));
     }
@@ -377,10 +405,12 @@ pub async fn admin_create_user(
 
     let account_type: &str = match normalized_account_type(&admin_account_type) {
         "platform_admin" => match requested_account_type {
-            "business_admin" | "platform_admin" | "business" | "personal" => requested_account_type,
+            "organization_admin" | "platform_admin" | "organization" | "personal" => {
+                requested_account_type
+            }
             _ => "personal",
         },
-        "business_admin" => "business",
+        "organization_admin" => "organization",
         _ => "personal",
     };
 
@@ -394,7 +424,7 @@ pub async fn admin_create_user(
             .json(serde_json::json!({ "message": "Password must be at least 6 characters" }));
     }
 
-    let organization_id: Option<i32> = if account_type == "business_admin" {
+    let organization_id: Option<i32> = if account_type == "organization_admin" {
         let organization_name = data
             .organization_name
             .as_deref()
@@ -403,7 +433,7 @@ pub async fn admin_create_user(
 
         let Some(organization_name) = organization_name else {
             return HttpResponse::BadRequest()
-                .json(serde_json::json!({ "message": "Organization name is required for business admin accounts" }));
+                .json(serde_json::json!({ "message": "Organization name is required for organization admin accounts" }));
         };
 
         match sqlx::query(
@@ -424,12 +454,12 @@ pub async fn admin_create_user(
                 return HttpResponse::InternalServerError().finish();
             }
         }
-    } else if normalized_account_type(&admin_account_type) == "business_admin" {
+    } else if normalized_account_type(&admin_account_type) == "organization_admin" {
         match admin_organization_id {
             Some(id) => Some(id),
             None => {
                 return HttpResponse::BadRequest().json(serde_json::json!({
-                    "message": "Business admin is not assigned to an organization"
+                    "message": "Organization admin is not assigned to an organization"
                 }));
             }
         }
@@ -479,7 +509,7 @@ pub async fn admin_create_user(
             let account_type: String = row.get("account_type");
             let organization_id: Option<i32> = row.try_get("organization_id").ok().flatten();
 
-            info!(target: "auth", admin_id, user_id = id, "business admin created user");
+            info!(target: "auth", admin_id, user_id = id, "admin created user");
             HttpResponse::Created().json(serde_json::json!({
                 "id": id,
                 "username": username,
@@ -508,14 +538,22 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
         None => return HttpResponse::Unauthorized().finish(),
     };
 
+    if let Some(cached) = PROFILE_CACHE.get(&user_id).await {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let result = sqlx::query(
         r#"
         SELECT 
-            u.id, u.email, u.first_name, u.last_name, u.auth_provider, u.account_type,
+            u.id, u.email, u.first_name, u.last_name, u.auth_provider, u.account_type, u.organization_id,
+            o.name as organization_name,
             (SELECT COUNT(*)::BIGINT FROM emails e JOIN email_accounts ea ON e.account_id = ea.id WHERE ea.user_id = u.id) as total_emails,
             (SELECT COALESCE(SUM(octet_length(body_encrypted)), 0)::BIGINT FROM emails e JOIN email_accounts ea ON e.account_id = ea.id WHERE ea.user_id = u.id) as email_storage_bytes,
-            (SELECT COALESCE(SUM(size), 0)::BIGINT FROM files f WHERE f.user_id = u.id) as drive_storage_bytes
+            (SELECT COALESCE(SUM(size), 0)::BIGINT FROM files f WHERE f.user_id = u.id) as drive_storage_bytes,
+            (SELECT COALESCE(SUM(octet_length(content_encrypted)), 0)::BIGINT FROM messages m WHERE m.sender_id = u.id) as chat_storage_bytes,
+            (SELECT COALESCE(SUM(octet_length(content)), 0)::BIGINT FROM notes n WHERE n.user_id = u.id) as notes_storage_bytes
         FROM users u 
+        LEFT JOIN organizations o ON o.id = u.organization_id
         WHERE u.id = $1
         "#,
     )
@@ -538,20 +576,37 @@ pub async fn get_profile(req: HttpRequest, pool: web::Data<PgPool>) -> impl Resp
             let total_emails: i64 = row.get("total_emails");
             let email_storage_bytes: i64 = row.get("email_storage_bytes");
             let drive_storage_bytes: i64 = row.get("drive_storage_bytes");
+            let chat_storage_bytes: i64 = row.get("chat_storage_bytes");
+            let notes_storage_bytes: i64 = row.get("notes_storage_bytes");
+            let total_used = email_storage_bytes + drive_storage_bytes + chat_storage_bytes + notes_storage_bytes;
 
-            HttpResponse::Ok().json(serde_json::json!({
+            // Requirement: For personal accounts, organization name is the email address.
+            let organization_id: Option<i32> = row.try_get("organization_id").ok().flatten();
+            let organization_name: Option<String> = if account_type == "personal" {
+                Some(email.clone())
+            } else {
+                row.try_get("organization_name").ok().flatten()
+            };
+
+            let response = serde_json::json!({
                 "id": id,
                 "email": email,
                 "first_name": first_name,
                 "last_name": last_name,
                 "auth_provider": auth_provider,
                 "account_type": account_type,
+                "organization_id": organization_id,
+                "organization_name": organization_name,
                 "total_emails": total_emails,
                 "email_storage_bytes": email_storage_bytes,
                 "drive_storage_bytes": drive_storage_bytes,
-                "memory_used_bytes": 1_932_735_283_i64, // 1.8 GB placeholder
+                "other_storage_bytes": chat_storage_bytes + notes_storage_bytes,
+                "memory_used_bytes": total_used,
                 "memory_limit_bytes": 10_737_418_240_i64, // 10 GB limit
-            }))
+            });
+
+            PROFILE_CACHE.insert(user_id, response.clone()).await;
+            HttpResponse::Ok().json(response)
         }
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(e) => {
@@ -656,6 +711,7 @@ pub async fn update_profile(
     match result {
         Ok(Some(row)) => {
             invalidate_me_cache(user_id).await;
+            invalidate_profile_cache(user_id).await;
             let id: i32 = row.get("id");
             let email: String = row.get("email");
             let first_name: Option<String> = row.try_get("first_name").ok();
@@ -724,8 +780,11 @@ mod auth_regression_tests {
     #[test]
     fn test_normalized_account_type() {
         assert_eq!(normalized_account_type("personal"), "personal");
-        assert_eq!(normalized_account_type("business"), "business");
-        assert_eq!(normalized_account_type("business_admin"), "business_admin");
+        assert_eq!(normalized_account_type("organization"), "organization");
+        assert_eq!(
+            normalized_account_type("organization_admin"),
+            "organization_admin"
+        );
         assert_eq!(normalized_account_type("platform_admin"), "platform_admin");
         assert_eq!(normalized_account_type("unknown"), "personal");
     }

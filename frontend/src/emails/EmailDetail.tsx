@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { downloadEmailAttachment, sendEmail } from "../api/email";
 import { formatFileSize, renderEmailBody } from "./renderUtils";
 import { EmailItem, EmailAttachment } from "./types";
@@ -31,14 +31,15 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({
   const [replySending, setReplySending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
 
-  const visibleFiles = normalizedSearchQuery
-    ? files.filter((file) =>
-        [file.filename, file.mime_type ?? "", file.subject ?? "", file.sender ?? "", file.receiver ?? ""]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedSearchQuery)
-      )
-    : files;
+  const visibleFiles = useMemo(() => {
+    if (!normalizedSearchQuery) return files;
+    return files.filter((file) =>
+      [file.filename, file.mime_type ?? "", file.subject ?? "", file.sender ?? "", file.receiver ?? ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedSearchQuery)
+    );
+  }, [files, normalizedSearchQuery]);
 
   if (viewMode === "files") {
     return (

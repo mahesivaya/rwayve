@@ -121,7 +121,7 @@ src/
 ├── dto/             # request/response shapes (NEW)
 
 ├── handlers/        # HTTP layer ONLY
-├── services/        # organization logic (IMPORTANT)
+├── services/        # business logic (IMPORTANT)
 ├── repositories/    # DB queries (NEW, CLEAN)
 
 ├── auth/            # oauth + jwt
@@ -923,7 +923,7 @@ docker compose -f infra/docker-compose.dev.yml --env-file infra/.env.development
 
 
 
-project_admin: 
+platform_admin:
   email: maheshiv199@gmail.com
   password: mahesh
 organization_admin:
@@ -933,6 +933,6 @@ personal:
   email: maheshpy85@gmail.com
   password: mahesh
 
-update users set account_type='project_admin' where email='maheshiv199@gmail.com';
-update users set account_type='organization_amdin' where email='maheshwayve@gmail.com';
+update users set account_type='platform_admin' where email='maheshiv199@gmail.com';
+update users set account_type='organization_admin' where email='maheshwayve@gmail.com';
 update users set account_type='personal' where email='maheshpy85@gmail.com';

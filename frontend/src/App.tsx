@@ -23,10 +23,10 @@ const Tasks = lazy(() => import("./tasks/Tasks"));
 const AIChat = lazy(() => import("./aichat/AIChat"));
 const Profile = lazy(() => import("./profile/Profile"));
 const Settings = lazy(() => import("./profile/Settings"));
-const Business = lazy(() => import("./business/Business"));
-const BusinessAdminHome = lazy(() => import("./business/BusinessAdminHome"));
-const PlatformAdminHome = lazy(() => import("./business/ProjectAdminHome"));
-const BusinessHome = lazy(() => import("./business/BusinessHome"));
+const Organization = lazy(() => import("./organization/Organization"));
+const OrganizationAdminHome = lazy(() => import("./organization/OrganizationAdminHome"));
+const PlatformAdminHome = lazy(() => import("./organization/PlatformAdminHome"));
+const OrganizationHome = lazy(() => import("./organization/OrganizationHome"));
 const EmailFiles = lazy(() => import("./files/EmailFiles"));
 const ServicePage = lazy(() => import("./services/ServicePage"));
 
@@ -66,7 +66,7 @@ export default function App() {
         />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/business" element={<Business />} />
+        <Route path="/organization" element={<Organization />} />
         <Route path="/services/:slug" element={<ServicePage />} />
 
         {/* PROTECTED */}
@@ -78,12 +78,12 @@ export default function App() {
               element={redirectToAccountHome ?? <Home />}
             />
             <Route
-              path="/business-home"
+              path="/organization-home"
               element={
-                accountType === "business_admin" ? (
-                  <BusinessAdminHome />
+                accountType === "organization_admin" ? (
+                  <OrganizationAdminHome />
                 ) : (
-                  redirectToAccountHome ?? <BusinessAdminHome />
+                  redirectToAccountHome ?? <OrganizationAdminHome />
                 )
               }
             />
@@ -97,7 +97,7 @@ export default function App() {
                 )
               }
             />
-            <Route path="/business/:slug" element={<BusinessHome />} />
+            <Route path="/organization/:slug" element={<OrganizationHome />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/email-files" element={<EmailFiles />} />
             <Route path="/chat" element={<Chat />} />

@@ -6,14 +6,14 @@ import {
 } from "../api/admin";
 import { useAuth } from "../auth/useAuth";
 import { slugify } from "../auth/accountHome";
-import "./projectAdmin.css";
+import "./platformAdmin.css";
 
 export default function PlatformAdminHome() {
   const { user } = useAuth();
-  const [businessName, setBusinessName] = useState("");
+  const [organizationName, setOrganizationName] = useState("");
   const [adminHandle, setAdminHandle] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
-  const [businesses, setBusinesses] = useState<AdminOrganization[]>([]);
+  const [organizations, setOrganizations] = useState<AdminOrganization[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -24,11 +24,11 @@ export default function PlatformAdminHome() {
 
     listAdminOrganizations()
       .then((items) => {
-        if (alive) setBusinesses(items);
+        if (alive) setOrganizations(items);
       })
       .catch((err) => {
         if (alive) {
-          setError(err instanceof Error ? err.message : "Failed to load businesses");
+          setError(err instanceof Error ? err.message : "Failed to load organizations");
         }
       })
       .finally(() => {
@@ -40,29 +40,32 @@ export default function PlatformAdminHome() {
     };
   }, []);
 
-  const createBusiness = async (event: FormEvent<HTMLFormElement>) => {
+  const createOrganization = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
     setSuccess("");
     setCreating(true);
 
+    const adminEmail = `${slugify(adminHandle)}@${slugify(organizationName)}.com`;
+
     try {
       const created = await createAdminOrganization({
-        name: businessName,
-        adminHandle,
+        name: organizationName,
+        adminUsername: adminHandle,
+        adminEmail,
         adminPassword,
       });
-      setBusinesses((prev) => {
+      setOrganizations((prev) => {
         const exists = prev.some((item) => item.id === created.id);
         return exists
           ? prev.map((item) => (item.id === created.id ? created : item))
           : [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
       });
-      setBusinessName("");
+      setOrganizationName("");
       setAdminHandle("");
       setAdminPassword("");
       setSuccess(
-        `Created business ${created.name}` +
+        `Created organization ${created.name}` +
           (created.admin ? ` with admin ${created.admin.email}` : "")
       );
     } catch (err) {
@@ -85,22 +88,22 @@ export default function PlatformAdminHome() {
         <div className="platform-admin-section-header">
           <div>
             <h2>Create organization</h2>
-            <p>Add a new business organization and provision its business admin account.</p>
+            <p>Add a new organization and provision its primary administrator account.</p>
           </div>
         </div>
 
-        <form className="platform-admin-form" onSubmit={createBusiness}>
+        <form className="platform-admin-form" onSubmit={createOrganization}>
           <label>
-            <span>Business name</span>
+            <span>Organization name</span>
             <input
-              value={businessName}
-              onChange={(event) => setBusinessName(event.target.value)}
-              placeholder="Enter business name"
+              value={organizationName}
+              onChange={(event) => setOrganizationName(event.target.value)}
+              placeholder="Enter organization name"
               required
             />
           </label>
           <label>
-            <span>Business admin handle</span>
+            <span>Organization admin handle</span>
             <input
               value={adminHandle}
               onChange={(event) => setAdminHandle(event.target.value)}
@@ -108,16 +111,16 @@ export default function PlatformAdminHome() {
               required
             />
           </label>
-          {adminHandle && businessName && (
+          {adminHandle && organizationName && (
             <p className="platform-admin-hint">
               Login email will be{" "}
               <strong>
-                {slugify(adminHandle)}@{slugify(businessName)}.com
+                {slugify(adminHandle)}@{slugify(organizationName)}.com
               </strong>
             </p>
           )}
           <label>
-            <span>Business admin password</span>
+            <span>Organization admin password</span>
             <input
               type="password"
               value={adminPassword}
@@ -128,7 +131,7 @@ export default function PlatformAdminHome() {
             />
           </label>
           <button type="submit" disabled={creating}>
-            {creating ? "Creating..." : "Create organization"}
+            {creating ? "Creating..." : "Create Organization"}
           </button>
         </form>
 
@@ -139,24 +142,29 @@ export default function PlatformAdminHome() {
       <section className="platform-admin-panel">
         <div className="platform-admin-section-header">
           <div>
-            <h2>Business names</h2>
-            <p>All businesses currently available in the project.</p>
+            <h2>Organization names</h2>
+            <p>All organizations currently available on the platform.</p>
           </div>
-          <span>{businesses.length} total</span>
+          <span>{organizations.length} total</span>
         </div>
 
         {loading ? (
-          <div className="platform-admin-empty">Loading businesses...</div>
-        ) : businesses.length === 0 ? (
-          <div className="platform-admin-empty">No businesses created yet.</div>
+          <div className="platform-admin-empty">Loading organizations...</div>
+        ) : organizations.length === 0 ? (
+          <div className="platform-admin-empty">No organizations created yet.</div>
         ) : (
-          <div className="business-name-list">
-            {businesses.map((business) => (
-              <article key={business.id}>
-                <strong>{business.name}</strong>
+          <div className="organization-name-list">
+            {organizations.map((org) => (
+              <article key={org.id}>
+                <strong>{org.name}</strong>
                 <span>
-                  {business.slug ? `${business.slug}.com · ` : ""}
-                  {business.user_count} users
+                  {org.slug ? `${org.slug}.com · ` : ""}
+                  {org.user_count} users
+                  {org.admin && (
+                    <>
+                      <br /><small style={{ color: '#6b7280' }}>Admin: {org.admin.email}</small>
+                    </>
+                  )}
                 </span>
               </article>
             ))}

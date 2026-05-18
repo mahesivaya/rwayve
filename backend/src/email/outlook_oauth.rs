@@ -271,9 +271,9 @@ async fn finalize_oauth_session(pool: &PgPool, ctx: OAuthCompletion<'_>) -> Http
         let token = create_jwt_for_account(user_id, ctx.email.to_string(), account_type.clone());
         let landing = if matches!(
             account_type.as_str(),
-            "business" | "business_admin" | "project_admin"
+            "organization" | "organization_admin" | "platform_admin"
         ) {
-            "business-home"
+            "organization-home"
         } else {
             "home"
         };

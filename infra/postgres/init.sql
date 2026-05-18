@@ -17,6 +17,17 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT '
 ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'personal';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
 
+-- Account-type renames: the role strings were renamed
+--   project_admin  -> platform_admin
+--   business_admin -> organization_admin
+--   business       -> organization
+-- normalized_account_type() no longer recognizes the old strings, so any
+-- legacy row must be migrated or it silently drops to 'personal'. Each UPDATE
+-- is a no-op once every row is migrated, so init.sql stays idempotent.
+UPDATE users SET account_type = 'platform_admin'     WHERE account_type = 'project_admin';
+UPDATE users SET account_type = 'organization_admin' WHERE account_type = 'business_admin';
+UPDATE users SET account_type = 'organization'       WHERE account_type = 'business';
+
 CREATE TABLE IF NOT EXISTS organizations (
     id SERIAL PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,

@@ -1,4 +1,4 @@
-.business-home {
+.organization-home {
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -8,14 +8,14 @@
   background: lightsteelblue;
 }
 
-.business-home-header,
-.business-home-welcome {
+.organization-home-header,
+.organization-home-welcome {
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 8px;
   background: #d7e4f4;
 }
 
-.business-home-header {
+.organization-home-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -24,24 +24,24 @@
   padding: 16px;
 }
 
-.business-home-header h1 {
+.organization-home-header h1 {
   margin: 0;
   font-size: 24px;
   color: #111827;
 }
 
-.business-home-header p {
+.organization-home-header p {
   margin: 6px 0 0;
   color: #6b7280;
   font-size: 13px;
 }
 
-.business-home-actions {
+.organization-home-actions {
   display: flex;
   gap: 8px;
 }
 
-.business-home-actions button {
+.organization-home-actions button {
   min-height: 34px;
   padding: 0 12px;
   border: 1px solid #2563eb;
@@ -54,36 +54,36 @@
   white-space: nowrap;
 }
 
-.business-home-actions .danger {
+.organization-home-actions .danger {
   border-color: #fecaca;
   background: #fee2e2;
   color: #dc2626;
 }
 
-.business-home-welcome {
+.organization-home-welcome {
   margin-bottom: 16px;
   padding: 16px;
 }
 
-.business-home-welcome h2 {
+.organization-home-welcome h2 {
   margin: 0;
   font-size: 18px;
   color: #111827;
 }
 
-.business-home-welcome p {
+.organization-home-welcome p {
   margin: 6px 0 0;
   color: #6b7280;
   font-size: 13px;
 }
 
-.business-home-grid {
+.organization-home-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
 }
 
-.business-home-grid article {
+.organization-home-grid article {
   padding: 16px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -91,24 +91,24 @@
   cursor: pointer;
 }
 
-.business-home-grid article:hover {
+.organization-home-grid article:hover {
   border-color: #2563eb;
 }
 
-.business-home-grid h3 {
+.organization-home-grid h3 {
   margin: 0 0 6px;
   font-size: 15px;
   color: #111827;
 }
 
-.business-home-grid p {
+.organization-home-grid p {
   margin: 0;
   color: #6b7280;
   font-size: 13px;
 }
 
 @media (max-width: 720px) {
-  .business-home-header {
+  .organization-home-header {
     align-items: flex-start;
     flex-direction: column;
   }

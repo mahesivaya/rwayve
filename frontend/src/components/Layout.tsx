@@ -31,12 +31,6 @@ export default function Layout() {
   // Decides whether the next header-link click navigates or changes the duplicate pane.
   const [splitTarget, setSplitTarget] = useState<"left" | "right">("left");
 
-  if (!user) {
-    return (
-      <div className="layout-loading">Loading session...</div>
-    );
-  }
-
   const middleApp = SPLIT_APPS.find((a) => a.key === middleView) ?? null;
   const MiddleComp = middleApp?.Comp ?? null;
   const middleLabel = middleApp?.label ?? null;
@@ -73,6 +67,12 @@ export default function Layout() {
       </Link>
     );
   }, [location.pathname, middleView, rightView, splitTarget]);
+
+  // All hooks must run before this guard — an earlier return would change the
+  // hook call order between renders (React rules of hooks).
+  if (!user) {
+    return <div className="layout-loading">Loading session...</div>;
+  }
 
   return (
     <div className={`app ${!sidebarOpen ? "sidebar-collapsed" : ""}`}>

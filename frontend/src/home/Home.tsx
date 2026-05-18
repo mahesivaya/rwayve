@@ -5,26 +5,26 @@ import { useState, useMemo } from "react";
 import { SERVICES } from "../services/serviceData";
 import "./home.css";
 
+const HOME_CARDS = [
+  { path: "/emails", title: "📧 Emails", description: "View and send emails" },
+  { path: "/chat", title: "💬 Chat", description: "Real-time messaging" },
+  { path: "/call", title: " 📞  🎥 Call", description: "Real-time calling" },
+  { path: "/scheduler", title: "📅 Scheduler", description: "Manage your meetings" },
+  { path: "/drive", title: "📁 Drive", description: "Store and manage files" },
+  { path: "/notes", title: "📝 Notes", description: "Store and manage notes" },
+  { path: "/tasks", title: "☑ Tasks", description: "Create and track tasks" },
+  { path: "/aichat", title: "✨ AI Chat", description: "Chat with AI" },
+];
+
 export default function Home() {
   const { user } = useAuth();
   const { normalizedSearchQuery } = useGlobalSearch();
   const navigate = useNavigate();
   const [servicesOpen, setServicesOpen] = useState(true);
 
-  const cards = [
-    { path: "/emails", title: "📧 Emails", description: "View and send emails" },
-    { path: "/chat", title: "💬 Chat", description: "Real-time messaging" },
-    { path: "/call", title: " 📞  🎥 Call", description: "Real-time calling" },
-    { path: "/scheduler", title: "📅 Scheduler", description: "Manage your meetings" },
-    { path: "/drive", title: "📁 Drive", description: "Store and manage files" },
-    { path: "/notes", title: "📝 Notes", description: "Store and manage notes" },
-    { path: "/tasks", title: "☑ Tasks", description: "Create and track tasks" },
-    { path: "/aichat", title: "✨ AI Chat", description: "Chat with AI" },
-  ];
-
   const visibleCards = useMemo(() => {
-    if (!normalizedSearchQuery) return cards;
-    return cards.filter((card) =>
+    if (!normalizedSearchQuery) return HOME_CARDS;
+    return HOME_CARDS.filter((card) =>
       [card.title, card.description]
         .join(" ")
         .toLowerCase()
@@ -55,7 +55,7 @@ export default function Home() {
               </button>
             </div>
 
-            <button onClick={() => navigate("/business")}>Business</button>
+          <button onClick={() => navigate("/organization")}>Organization</button>
             <button onClick={() => navigate("/#pricing")}>Pricing</button>
             <button onClick={() => navigate("/#x")}>X</button>
             <button onClick={() => navigate("/#y")}>Y</button>
@@ -103,10 +103,10 @@ export default function Home() {
               <div className="services-more">
                 <h2>More from Wayve</h2>
                 <div className="services-more-grid">
-                  <button onClick={() => navigate("/business")}>
-                    <span className="service-icon business">B</span>
+                  <button onClick={() => navigate("/organization")}>
+                    <span className="service-icon organization">O</span>
                     <span>
-                      <strong>Wayve Business</strong>
+                      <strong>Wayve Organization</strong>
                       <small>Team tools for communication and work.</small>
                     </span>
                   </button>
@@ -146,7 +146,7 @@ export default function Home() {
 
           <section id="pricing" className="home-info-band">
             <h2>Pricing</h2>
-            <p>Simple plans for individuals, growing teams, and business workspaces.</p>
+            <p>Simple plans for individuals, growing teams, and organization workspaces.</p>
           </section>
 
           <section className="home-info-grid">
@@ -160,7 +160,7 @@ export default function Home() {
             </article>
             <article id="z">
               <h2>Z</h2>
-              <p>Secure productivity features ready for business workflows.</p>
+              <p>Secure productivity features ready for organization workflows.</p>
             </article>
           </section>
         </main>
@@ -183,9 +183,9 @@ export default function Home() {
             <p>{card.description}</p>
           </div>
         ))}
-        <div className="card" onClick={() => navigate("/business")}>
-          <h3>Business</h3>
-          <p>Welcome to Wayve Business</p>
+        <div className="card" onClick={() => navigate("/organization")}>
+          <h3>Organization</h3>
+          <p>Welcome to Wayve platform</p>
         </div>
       </div>
     </div>

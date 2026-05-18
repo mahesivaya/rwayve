@@ -221,7 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // The AuthProvider /api/me effect only runs once at mount, so a fresh
       // login needs its own profile fetch to learn the org slug/name that
-      // drive business routing.
+      // drive organization routing.
       getMe(token)
         .then(async (res) => {
           if (!res.ok) return;

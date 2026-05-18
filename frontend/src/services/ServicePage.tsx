@@ -19,7 +19,7 @@ export default function ServicePage() {
         </button>
         <nav aria-label="Service navigation">
           <button onClick={() => navigate("/")}>Services</button>
-          <button onClick={() => navigate("/business")}>Organization</button>
+          <button onClick={() => navigate("/organization")}>Organization</button>
           <button onClick={() => navigate("/#pricing")}>Pricing</button>
           <button onClick={() => navigate("/login")}>Login</button>
           <button className="service-page-register" onClick={() => navigate("/register")}>

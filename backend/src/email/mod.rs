@@ -7,7 +7,7 @@ pub mod oauth;
 mod oauth_flow;
 pub mod outlook;
 mod outlook_oauth;
-mod profile;
+pub mod profile;
 pub mod provider;
 mod send;
 pub mod sender;
