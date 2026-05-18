@@ -20,8 +20,11 @@ export default function OrganizationAdminHome() {
   const [createSuccess, setCreateSuccess] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // New accounts land on the organization domain, e.g. john@<org-slug>.com.
-  const emailDomain = getEmailDomain(user?.organization_slug || "your-organization");
+  // New accounts land on the organization's email domain — the org slug if
+  // set, otherwise a slug derived from the organization name. No placeholder.
+  const orgSlug =
+    user?.organization_slug || slugify(user?.organization_name ?? "");
+  const emailDomain = getEmailDomain(orgSlug);
 
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

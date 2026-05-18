@@ -3,10 +3,13 @@ use crate::models::auth::ChangePasswordInput;
 use crate::models::email_request::UserResponse;
 use crate::prelude::*;
 use crate::security::jwt::get_user_id_from_request;
-use actix_web::{HttpRequest, HttpResponse, Responder, get, post, put, web};
+use actix_web::{HttpRequest, HttpResponse, Responder, delete, get, post, put, web};
 use bcrypt::{DEFAULT_COST, hash, verify};
+use chrono::{DateTime, Utc};
 use moka::future::Cache as MokaCache;
+use rand::RngCore;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use std::time::Duration;
 use tracing::{error, info, instrument, warn};
@@ -97,6 +100,18 @@ pub struct ProfileUpdate {
 #[derive(Deserialize)]
 pub struct GenerateApiKeyInput {
     pub name: String,
+}
+
+/// A stored API key as exposed to the admin UI — only the redacted preview,
+/// never the raw key or its hash.
+#[derive(Serialize, FromRow)]
+pub struct ApiKeyRow {
+    pub id: i32,
+    pub name: String,
+    pub key_preview: String,
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Deserialize)]
@@ -270,11 +285,16 @@ pub async fn admin_create_organization(
         }
     };
 
+    // The slug is derived from the name at insert time (same expression as the
+    // init.sql backfill) so runtime-created orgs are never left slug-less.
+    // On a name conflict it heals a missing slug but never overwrites one,
+    // keeping existing slugs stable.
     let org_row = match sqlx::query(
         r#"
-        INSERT INTO organizations (name)
-        VALUES ($1)
-        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+        INSERT INTO organizations (name, slug)
+        VALUES ($1, lower(regexp_replace($1, '[^a-zA-Z0-9]+', '', 'g')))
+        ON CONFLICT (name) DO UPDATE
+            SET slug = COALESCE(organizations.slug, EXCLUDED.slug)
         RETURNING id, name, slug
         "#,
     )
@@ -284,6 +304,11 @@ pub async fn admin_create_organization(
     {
         Ok(row) => row,
         Err(e) => {
+            if e.to_string().contains("duplicate key") {
+                return HttpResponse::Conflict().json(serde_json::json!({
+                    "message": "Another organization already uses that URL slug"
+                }));
+            }
             error!(target: "db", admin_id, error = ?e, "create organization failed");
             return HttpResponse::InternalServerError().finish();
         }
@@ -376,32 +401,46 @@ pub async fn admin_generate_api_key(
 
     let organization_id = path.into_inner();
     let key_name = data.name.trim();
-
     if key_name.is_empty() {
-        return HttpResponse::BadRequest().json(serde_json::json!({ "message": "Key name is required" }));
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "message": "Key name is required" }));
     }
 
-    // 1. Generate a secure random key
-    // In a real production app, use the `rand` crate:
-    // let raw_key = format!("wv_sk_{}", hex::encode(rand::thread_rng().gen::<[u8; 24]>()));
-    let raw_key = format!("wv_sk_{}", uuid::Uuid::new_v4().simple()); // Fallback example
-    
-    // 2. Hash the key for storage (SHA-256)
-    // We'll simulate hashing here. Use `sha2` crate in production.
-    let key_hash = bcrypt::hash(&raw_key, DEFAULT_COST).unwrap_or_default();
-    let key_preview = format!("{}...{}", &raw_key[..7], &raw_key[raw_key.len() - 4..]);
+    // Clean 404 instead of a foreign-key 500 when the org id is wrong.
+    match sqlx::query_scalar::<_, i32>("SELECT id FROM organizations WHERE id = $1")
+        .bind(organization_id)
+        .fetch_optional(pool.get_ref())
+        .await
+    {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .json(serde_json::json!({ "message": "Unknown organization" }));
+        }
+        Err(e) => {
+            error!(target: "db", error = ?e, "api key org lookup failed");
+            return HttpResponse::InternalServerError().finish();
+        }
+    }
+
+    // The raw key is returned to the caller exactly once; only its SHA-256
+    // hash is persisted, so a leaked database never exposes usable keys.
+    let raw_key = generate_api_key();
+    let key_hash = hash_api_key(&raw_key);
+    let key_preview = format!("{}...{}", &raw_key[..10], &raw_key[raw_key.len() - 4..]);
 
     match sqlx::query(
         r#"
-        INSERT INTO api_keys (organization_id, name, key_hash, key_preview)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, name, created_at
+        INSERT INTO api_keys (organization_id, name, key_hash, key_preview, created_by)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, name, key_preview, created_at
         "#,
     )
     .bind(organization_id)
     .bind(key_name)
     .bind(&key_hash)
     .bind(&key_preview)
+    .bind(admin_id)
     .fetch_one(pool.get_ref())
     .await
     {
@@ -410,38 +449,149 @@ pub async fn admin_generate_api_key(
             HttpResponse::Created().json(serde_json::json!({
                 "id": row.get::<i32, _>("id"),
                 "name": row.get::<String, _>("name"),
-                "created_at": row.get::<chrono::NaiveDateTime, _>("created_at"),
-                "api_key": raw_key // This is the ONLY time the raw key is returned
+                "key_preview": row.get::<String, _>("key_preview"),
+                "created_at": row.get::<DateTime<Utc>, _>("created_at"),
+                "api_key": raw_key,
             }))
         }
         Err(e) => {
-            error!(target: "db", error = ?e, "failed to generate api key");
+            error!(target: "db", admin_id, error = ?e, "failed to generate api key");
             HttpResponse::InternalServerError().finish()
         }
     }
 }
 
-/// Helper to validate an API key from headers
-/// You would use this in a custom Actix Extractor or Middleware
-pub async fn validate_api_key(req: &HttpRequest, pool: &PgPool) -> Option<i32> {
-    let api_key = req.headers().get("X-API-KEY")?.to_str().ok()?;
-    
-    // In production, fetch the hash from DB based on a key ID or prefix
-    // Then verify. Since we stored a bcrypt hash in this example:
-    let rows = sqlx::query("SELECT organization_id, key_hash FROM api_keys")
-        .fetch_all(pool)
-        .await
-        .ok()?;
+#[get("/admin/organizations/{id}/keys")]
+#[instrument(target = "auth", skip(req, pool))]
+pub async fn admin_list_api_keys(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    path: web::Path<i32>,
+) -> impl Responder {
+    if let Err(response) = require_platform_admin(&req, pool.get_ref()).await {
+        return response;
+    }
+    let organization_id = path.into_inner();
 
-    for row in rows {
-        let hash: String = row.get("key_hash");
-        if bcrypt::verify(api_key, &hash).unwrap_or(false) {
-            let org_id: i32 = row.get("organization_id");
-            return Some(org_id);
+    match sqlx::query_as::<_, ApiKeyRow>(
+        r#"
+        SELECT id, name, key_preview, created_at, last_used_at, revoked_at
+          FROM api_keys
+         WHERE organization_id = $1
+         ORDER BY created_at DESC
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => HttpResponse::Ok().json(rows),
+        Err(e) => {
+            error!(target: "db", error = ?e, "api key list failed");
+            HttpResponse::InternalServerError().finish()
         }
     }
+}
 
-    None
+#[delete("/admin/organizations/{id}/keys/{key_id}")]
+#[instrument(target = "auth", skip(req, pool))]
+pub async fn admin_revoke_api_key(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    path: web::Path<(i32, i32)>,
+) -> impl Responder {
+    let admin_id = match require_platform_admin(&req, pool.get_ref()).await {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    let (organization_id, key_id) = path.into_inner();
+
+    match sqlx::query(
+        r#"
+        UPDATE api_keys SET revoked_at = NOW()
+         WHERE id = $1 AND organization_id = $2 AND revoked_at IS NULL
+        "#,
+    )
+    .bind(key_id)
+    .bind(organization_id)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(result) if result.rows_affected() == 0 => HttpResponse::NotFound()
+            .json(serde_json::json!({ "message": "Key not found or already revoked" })),
+        Ok(_) => {
+            info!(target: "auth", admin_id, organization_id, key_id, "api key revoked");
+            HttpResponse::Ok().json(serde_json::json!({ "revoked": true }))
+        }
+        Err(e) => {
+            error!(target: "db", error = ?e, "api key revoke failed");
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+/// Generate a cryptographically-random API key: `wv_sk_` + 48 hex chars
+/// (192 bits of entropy from the thread CSPRNG).
+fn generate_api_key() -> String {
+    let mut bytes = [0u8; 24];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("wv_sk_{hex}")
+}
+
+/// SHA-256 hex of an API key. API keys are high-entropy tokens, so a fast
+/// deterministic hash is correct here — it lets validation be a single
+/// indexed lookup instead of a bcrypt scan over every row.
+fn hash_api_key(raw: &str) -> String {
+    Sha256::digest(raw.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Resolve an `X-API-KEY` request header to the owning organization id.
+/// O(1): an indexed lookup on the unique `key_hash` column. Returns `None`
+/// for a missing, malformed, unknown, or revoked key, and stamps last_used_at.
+pub async fn validate_api_key(req: &HttpRequest, pool: &PgPool) -> Option<i32> {
+    let api_key = req.headers().get("X-API-KEY")?.to_str().ok()?;
+    let key_hash = hash_api_key(api_key);
+
+    sqlx::query_scalar::<_, i32>(
+        r#"
+        UPDATE api_keys SET last_used_at = NOW()
+         WHERE key_hash = $1 AND revoked_at IS NULL
+         RETURNING organization_id
+        "#,
+    )
+    .bind(&key_hash)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+}
+
+#[get("/v1/me")]
+#[instrument(target = "http", skip(req, pool))]
+pub async fn api_key_whoami(req: HttpRequest, pool: web::Data<PgPool>) -> impl Responder {
+    let organization_id = match validate_api_key(&req, pool.get_ref()).await {
+        Some(id) => id,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({ "message": "Invalid or missing API key" }));
+        }
+    };
+
+    let name: Option<String> = sqlx::query_scalar("SELECT name FROM organizations WHERE id = $1")
+        .bind(organization_id)
+        .fetch_optional(pool.get_ref())
+        .await
+        .ok()
+        .flatten();
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "organization_id": organization_id,
+        "name": name,
+    }))
 }
 
 #[post("/admin/users")]
@@ -527,9 +677,10 @@ pub async fn admin_create_user(
 
         match sqlx::query(
             r#"
-            INSERT INTO organizations (name)
-            VALUES ($1)
-            ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+            INSERT INTO organizations (name, slug)
+            VALUES ($1, lower(regexp_replace($1, '[^a-zA-Z0-9]+', '', 'g')))
+            ON CONFLICT (name) DO UPDATE
+                SET slug = COALESCE(organizations.slug, EXCLUDED.slug)
             RETURNING id
             "#,
         )
@@ -539,6 +690,11 @@ pub async fn admin_create_user(
         {
             Ok(row) => Some(row.get("id")),
             Err(e) => {
+                if e.to_string().contains("duplicate key") {
+                    return HttpResponse::Conflict().json(serde_json::json!({
+                        "message": "Another organization already uses that URL slug"
+                    }));
+                }
                 error!(target: "db", admin_id, error = ?e, "organization upsert failed");
                 return HttpResponse::InternalServerError().finish();
             }
@@ -883,7 +1039,7 @@ mod auth_regression_tests {
 
     #[actix_web::test]
     async fn test_api_key_generation_and_validation() {
-        use crate::test_support::{test_pool, insert_local_user};
+        use crate::test_support::test_pool;
         let pool = test_pool().await;
 
         // 1. Setup: Create an organization
@@ -894,7 +1050,9 @@ mod auth_regression_tests {
 
         // 2. Generate Key (Logic Check)
         let raw_key = "wv_sk_test_secret_123";
-        let key_hash = bcrypt::hash(raw_key, DEFAULT_COST).unwrap();
+        // Store the key the same way the code does — SHA-256, not bcrypt —
+        // so validate_api_key's indexed lookup on key_hash finds it.
+        let key_hash = hash_api_key(raw_key);
         
         sqlx::query("INSERT INTO api_keys (organization_id, name, key_hash, key_preview) VALUES ($1, $2, $3, $4)")
             .bind(org_id)

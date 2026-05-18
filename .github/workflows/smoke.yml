@@ -105,6 +105,19 @@ jobs:
           SMTP_PASS=ci-pass
           EOF
 
+          # Centralized secrets — consumed by postgres_db + backend + workers
+          # (docker-compose hard-fails if this env_file is missing).
+          cat <<EOF > .env.secrets
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=rwayve
+          POSTGRES_PORT=5432
+          JWT_SECRET=ci-secret
+          AES_KEY=0123456789abcdef0123456789abcdef
+          SMTP_USER=ci@example.com
+          SMTP_PASS=ci-pass
+          EOF
+
           # Frontend .env baked into the build
           cat <<EOF > frontend/.env
           VITE_API_URL=http://localhost:8080

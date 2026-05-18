@@ -9,7 +9,7 @@ import Login from "./auth/Login";
 import ForgotPassword from "./auth/ForgotPassword";
 import ResetPassword from "./auth/ResetPassword";
 import { useAuth } from "./auth/useAuth";
-import { homePathForUser, normalizeAccountType } from "./auth/accountHome";
+import { canAccessPricing, homePathForUser, normalizeAccountType } from "./auth/accountHome";
 
 // 🔥 Lazy loaded pages
 const Home = lazy(() => import("./home/Home"));
@@ -114,7 +114,16 @@ export default function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/billing" element={<Billing />} />
-            <Route path="/pricing" element={<Pricing />} />
+            <Route
+              path="/pricing"
+              element={
+                canAccessPricing(user?.account_type) ? (
+                  <Pricing />
+                ) : (
+                  redirectToAccountHome ?? <Pricing />
+                )
+              }
+            />
 
           </Route>
         </Route>

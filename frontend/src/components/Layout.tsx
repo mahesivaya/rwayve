@@ -1,5 +1,6 @@
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
+import { canAccessPricing } from "../auth/accountHome";
 import { Suspense, useState, useCallback } from "react";
 import SearchProvider from "../search/SearchProvider";
 import SearchBar from "../search/SearchBar";
@@ -115,13 +116,17 @@ export default function Layout() {
           {renderNavItem("/notes", "notes", "Notes")}
           {renderNavItem("/tasks", "tasks", "Tasks")}
           {renderNavItem("/aichat", "aichat", "AI Chat")}
-          <Link
-            to="/pricing"
-            className={location.pathname === "/pricing" ? "active" : ""}
-            onClick={() => setNavOpen(false)}
-          >
-            Pricing
-          </Link>
+          {/* Pricing: hidden from regular organization members (covered by
+              the organization subscription); shown to everyone else. */}
+          {canAccessPricing(user.account_type) && (
+            <Link
+              to="/pricing"
+              className={location.pathname === "/pricing" ? "active" : ""}
+              onClick={() => setNavOpen(false)}
+            >
+              Pricing
+            </Link>
+          )}
           {renderNavItem("/about", "about", "About")}
         </div>
 

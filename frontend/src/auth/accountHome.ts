@@ -32,6 +32,19 @@ export function homePathForAccount(accountType?: string | null) {
   return "/home";
 }
 
+// Pricing is for accounts that manage their own billing — personal users,
+// organization admins, and platform admins. Regular organization members are
+// covered by the organization's subscription, so pricing is hidden and the
+// /pricing route is guarded against them.
+export function canAccessPricing(accountType?: string | null): boolean {
+  const normalized = normalizeAccountType(accountType);
+  return (
+    normalized === "personal" ||
+    normalized === "organization_admin" ||
+    normalized === "platform_admin"
+  );
+}
+
 type AccountLike = {
   account_type?: string | null;
   organization_id?: number | null;

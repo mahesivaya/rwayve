@@ -71,7 +71,7 @@ services:
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: api
-      DATABASE_URL: postgres://${POSTGRES_USER:-wayve_user}:${POSTGRES_PASSWORD:-wayve_password}@postgres_db:5432/${POSTGRES_DB:-wayve_dev}
+      POSTGRES_HOST: postgres_db
       REDIS_URL: redis://redis:6379
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       SMTP_HOST: mailhog
@@ -105,7 +105,7 @@ services:
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: email-sync-worker
-      DATABASE_URL: postgres://${POSTGRES_USER:-wayve_user}:${POSTGRES_PASSWORD:-wayve_password}@postgres_db:5432/${POSTGRES_DB:-wayve_dev}
+      POSTGRES_HOST: postgres_db
       REDIS_URL: redis://redis:6379
       SMTP_HOST: mailhog
     volumes:
@@ -129,7 +129,7 @@ services:
     environment:
       RWAYVE_ENV: development
       RWAYVE_ROLE: email-body-worker
-      DATABASE_URL: postgres://${POSTGRES_USER:-wayve_user}:${POSTGRES_PASSWORD:-wayve_password}@postgres_db:5432/${POSTGRES_DB:-wayve_dev}
+      POSTGRES_HOST: postgres_db
       REDIS_URL: redis://redis:6379
       SMTP_HOST: mailhog
     volumes:

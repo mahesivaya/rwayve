@@ -63,10 +63,29 @@ export async function createAdminOrganization(
   return data;
 }
 
+// A stored API key as shown in the admin UI. `key_preview` is redacted; the
+// raw key is returned only once, by generateOrganizationApiKey.
+export type ApiKey = {
+  id: number;
+  name: string;
+  key_preview: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+};
+
+export type GeneratedApiKey = {
+  id: number;
+  name: string;
+  key_preview: string;
+  created_at: string;
+  api_key: string;
+};
+
 export async function generateOrganizationApiKey(
   organizationId: number,
   name: string
-): Promise<{ id: number; name: string; api_key: string }> {
+): Promise<GeneratedApiKey> {
   const res = await apiFetch(`/api/admin/organizations/${organizationId}/keys`, {
     method: "POST",
     preserve401: true,
@@ -80,6 +99,32 @@ export async function generateOrganizationApiKey(
   }
 
   return data;
+}
+
+export async function listOrganizationApiKeys(
+  organizationId: number
+): Promise<ApiKey[]> {
+  const res = await apiFetch(`/api/admin/organizations/${organizationId}/keys`, {
+    preserve401: true,
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.message || "Failed to load API keys");
+  }
+
+  return data;
+}
+
+export async function revokeOrganizationApiKey(
+  organizationId: number,
+  keyId: number
+): Promise<void> {
+  await apiFetch(
+    `/api/admin/organizations/${organizationId}/keys/${keyId}`,
+    { method: "DELETE", preserve401: true }
+  );
 }
 
 // Creates a user as the calling admin. `email` is the full login address; the

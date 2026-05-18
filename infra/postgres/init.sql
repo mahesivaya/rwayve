@@ -484,3 +484,26 @@ CREATE TABLE IF NOT EXISTS webhook_events (
     event_type TEXT NOT NULL,
     processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ============================================================
+-- 🔑 API KEYS — programmatic access scoped to an organization.
+-- ------------------------------------------------------------
+-- The raw key is shown to the caller exactly once at creation;
+-- only its SHA-256 hash is stored. key_hash is UNIQUE so
+-- validation is a single indexed lookup (never a scan). API
+-- keys are high-entropy tokens, so a fast hash is correct here
+-- — unlike passwords, which need bcrypt. key_preview is a
+-- redacted form safe to display in the UI.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS api_keys (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    key_hash TEXT NOT NULL UNIQUE,
+    key_preview TEXT NOT NULL,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    last_used_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS api_keys_org_idx ON api_keys(organization_id);
