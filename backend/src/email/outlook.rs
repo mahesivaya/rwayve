@@ -180,7 +180,7 @@ fn parse_message(m: &Value) -> Option<OutlookMessage> {
         received,
         body,
         has_attachments: m["hasAttachments"].as_bool().unwrap_or(false),
-        is_read: m["isRead"].as_bool().unwrap_or(true),
+        is_read: m["isRead"].as_bool().unwrap_or(false),
     })
 }
 

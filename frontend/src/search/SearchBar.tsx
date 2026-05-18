@@ -35,7 +35,7 @@ export default function SearchBar() {
           </button>
         )}
       </div>
-      {location.pathname === "/emails" && (
+      {location.pathname.startsWith("/emails") && (
         <div className="email-layout-actions" role="group" aria-label="View layout">
           <button
             type="button"

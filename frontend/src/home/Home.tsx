@@ -1,7 +1,7 @@
 import { useAuth } from "../auth/useAuth";
 import { useNavigate } from "react-router-dom";
 import { useGlobalSearch } from "../search/SearchContext";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { SERVICES } from "../services/serviceData";
 import "./home.css";
 
@@ -22,14 +22,15 @@ export default function Home() {
     { path: "/aichat", title: "✨ AI Chat", description: "Chat with AI" },
   ];
 
-  const visibleCards = normalizedSearchQuery
-    ? cards.filter((card) =>
-        [card.title, card.description]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedSearchQuery)
-      )
-    : cards;
+  const visibleCards = useMemo(() => {
+    if (!normalizedSearchQuery) return cards;
+    return cards.filter((card) =>
+      [card.title, card.description]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedSearchQuery)
+    );
+  }, [normalizedSearchQuery]);
 
   if (!user) {
     return (
